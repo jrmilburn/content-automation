@@ -1,0 +1,1998 @@
+{
+  "schema_version": 1,
+  "repository": "jrmilburn/content-automation",
+  "repository_visibility_at_generation": "public",
+  "generated_at": "2026-07-28",
+  "issue_count": 76,
+  "implementation_issue_count": 61,
+  "capability_issue_count": 14,
+  "default_label_policy": "Reuse the repository's existing enhancement label if present; create no taxonomy labels automatically.",
+  "milestone_policy": "No milestone is created because the greenfield repository has no milestone convention; target release remains authoritative issue-body metadata.",
+  "placeholder_format": "{{ISSUE:slug}} and {{TITLE:slug}} are resolved by scripts/import-github-backlog.ps1 after GitHub numbers exist.",
+  "issues": [
+    {
+      "order": 1,
+      "slug": "project-v1",
+      "type": "project",
+      "title": "[Project] Studio Parallel Instagram content intelligence v1",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Product foundation",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": null,
+      "dependencies": [],
+      "blocks": [
+        "cap-foundation",
+        "cap-access",
+        "cap-instagram-connection",
+        "cap-instagram-sync",
+        "cap-content-ingestion",
+        "cap-background-jobs",
+        "cap-video-analysis",
+        "cap-analysis-review",
+        "cap-analytics",
+        "cap-strategy",
+        "cap-recommendations",
+        "cap-operations",
+        "cap-security",
+        "cap-launch"
+      ],
+      "body_file": "docs/delivery/issues/000-project-v1.md"
+    },
+    {
+      "order": 2,
+      "slug": "cap-foundation",
+      "type": "capability",
+      "title": "[Capability] Product foundation and technical architecture",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Product foundation",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [],
+      "blocks": [
+        "cap-access",
+        "cap-instagram-connection",
+        "cap-content-ingestion",
+        "cap-background-jobs",
+        "foundation-approval",
+        "foundation-scaffold",
+        "foundation-database",
+        "foundation-ci",
+        "foundation-observability"
+      ],
+      "body_file": "docs/delivery/issues/001-cap-foundation.md"
+    },
+    {
+      "order": 3,
+      "slug": "cap-access",
+      "type": "capability",
+      "title": "[Capability] Internal access and application shell",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Internal access",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-foundation"
+      ],
+      "blocks": [
+        "cap-instagram-connection",
+        "cap-content-ingestion",
+        "cap-security",
+        "access-auth",
+        "access-shell",
+        "access-dashboard"
+      ],
+      "body_file": "docs/delivery/issues/002-cap-access.md"
+    },
+    {
+      "order": 4,
+      "slug": "cap-instagram-connection",
+      "type": "capability",
+      "title": "[Capability] Instagram account integration",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Instagram integration",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-foundation",
+        "cap-access"
+      ],
+      "blocks": [
+        "cap-instagram-sync",
+        "cap-security",
+        "instagram-contract",
+        "instagram-oauth",
+        "instagram-token-health",
+        "instagram-account-ui"
+      ],
+      "body_file": "docs/delivery/issues/003-cap-instagram-connection.md"
+    },
+    {
+      "order": 5,
+      "slug": "cap-instagram-sync",
+      "type": "capability",
+      "title": "[Capability] Instagram post and metric synchronisation",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Instagram integration",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-instagram-connection",
+        "cap-background-jobs"
+      ],
+      "blocks": [
+        "cap-content-ingestion",
+        "cap-analysis-review",
+        "cap-analytics",
+        "cap-recommendations",
+        "cap-operations",
+        "sync-media",
+        "sync-insights",
+        "sync-orchestration",
+        "posts-list",
+        "sync-history"
+      ],
+      "body_file": "docs/delivery/issues/004-cap-instagram-sync.md"
+    },
+    {
+      "order": 6,
+      "slug": "cap-content-ingestion",
+      "type": "capability",
+      "title": "[Capability] Video upload and transcript management",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Content ingestion",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-foundation",
+        "cap-access",
+        "cap-instagram-sync",
+        "cap-background-jobs"
+      ],
+      "blocks": [
+        "cap-video-analysis",
+        "cap-analysis-review",
+        "cap-operations",
+        "cap-security",
+        "upload-storage",
+        "asset-validation",
+        "source-editor",
+        "asset-lifecycle"
+      ],
+      "body_file": "docs/delivery/issues/005-cap-content-ingestion.md"
+    },
+    {
+      "order": 7,
+      "slug": "cap-background-jobs",
+      "type": "capability",
+      "title": "[Capability] Background processing and job reliability",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-foundation"
+      ],
+      "blocks": [
+        "cap-instagram-sync",
+        "cap-content-ingestion",
+        "cap-video-analysis",
+        "cap-analytics",
+        "cap-strategy",
+        "cap-security",
+        "jobs-queue",
+        "jobs-policy",
+        "jobs-reconcile",
+        "jobs-operations-ui"
+      ],
+      "body_file": "docs/delivery/issues/006-cap-background-jobs.md"
+    },
+    {
+      "order": 8,
+      "slug": "cap-video-analysis",
+      "type": "capability",
+      "title": "[Capability] Gemini per-video analysis",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Video analysis",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-content-ingestion",
+        "cap-background-jobs"
+      ],
+      "blocks": [
+        "cap-analysis-review",
+        "cap-analytics",
+        "cap-strategy",
+        "cap-operations",
+        "gemini-adapter",
+        "analysis-contract",
+        "analysis-handler",
+        "analysis-reanalysis",
+        "analysis-evaluation"
+      ],
+      "body_file": "docs/delivery/issues/007-cap-video-analysis.md"
+    },
+    {
+      "order": 9,
+      "slug": "cap-analysis-review",
+      "type": "capability",
+      "title": "[Capability] Analysis review and post detail",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Video analysis",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-instagram-sync",
+        "cap-content-ingestion",
+        "cap-video-analysis"
+      ],
+      "blocks": [
+        "cap-launch",
+        "post-detail",
+        "analysis-result-ui",
+        "analysis-history-ui"
+      ],
+      "body_file": "docs/delivery/issues/008-cap-analysis-review.md"
+    },
+    {
+      "order": 10,
+      "slug": "cap-analytics",
+      "type": "capability",
+      "title": "[Capability] Account analytics and trend calculation",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Analytics",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-instagram-sync",
+        "cap-video-analysis",
+        "cap-background-jobs"
+      ],
+      "blocks": [
+        "cap-strategy",
+        "cap-launch",
+        "metrics-engine",
+        "analytics-cohorts",
+        "analytics-feature-stats",
+        "analytics-recalculation",
+        "trends-ui"
+      ],
+      "body_file": "docs/delivery/issues/009-cap-analytics.md"
+    },
+    {
+      "order": 11,
+      "slug": "cap-strategy",
+      "type": "capability",
+      "title": "[Capability] Automated content strategy",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Content strategy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-analytics",
+        "cap-video-analysis",
+        "cap-background-jobs"
+      ],
+      "blocks": [
+        "cap-recommendations",
+        "cap-operations",
+        "strategy-retrieval",
+        "strategy-contract",
+        "strategy-handler",
+        "strategy-ui"
+      ],
+      "body_file": "docs/delivery/issues/010-cap-strategy.md"
+    },
+    {
+      "order": 12,
+      "slug": "cap-recommendations",
+      "type": "capability",
+      "title": "[Capability] Recommendation experience",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Recommendations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-strategy",
+        "cap-instagram-sync"
+      ],
+      "blocks": [
+        "cap-launch",
+        "recommendation-model",
+        "recommendation-ui",
+        "recommendation-workflow"
+      ],
+      "body_file": "docs/delivery/issues/011-cap-recommendations.md"
+    },
+    {
+      "order": 13,
+      "slug": "cap-operations",
+      "type": "capability",
+      "title": "[Capability] Internal operations and failure recovery",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-instagram-sync",
+        "cap-content-ingestion",
+        "cap-video-analysis",
+        "cap-strategy"
+      ],
+      "blocks": [
+        "cap-launch",
+        "operations-dashboard",
+        "operations-settings",
+        "operations-health",
+        "operations-runbooks"
+      ],
+      "body_file": "docs/delivery/issues/012-cap-operations.md"
+    },
+    {
+      "order": 14,
+      "slug": "cap-security",
+      "type": "capability",
+      "title": "[Capability] Security, privacy and data lifecycle",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Security and privacy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-access",
+        "cap-instagram-connection",
+        "cap-content-ingestion",
+        "cap-background-jobs"
+      ],
+      "blocks": [
+        "cap-launch",
+        "security-secrets",
+        "security-authz-abuse",
+        "security-deletion",
+        "security-supply-chain",
+        "security-review"
+      ],
+      "body_file": "docs/delivery/issues/013-cap-security.md"
+    },
+    {
+      "order": 15,
+      "slug": "cap-launch",
+      "type": "capability",
+      "title": "[Capability] Testing, deployment and launch readiness",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Launch readiness",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "project-v1",
+      "dependencies": [
+        "cap-analysis-review",
+        "cap-analytics",
+        "cap-recommendations",
+        "cap-operations",
+        "cap-security"
+      ],
+      "blocks": [
+        "e2e-import",
+        "e2e-analysis",
+        "e2e-strategy",
+        "deployment-pipeline",
+        "backup-monitoring",
+        "acceptance-a11y",
+        "launch-guide"
+      ],
+      "body_file": "docs/delivery/issues/014-cap-launch.md"
+    },
+    {
+      "order": 16,
+      "slug": "foundation-approval",
+      "type": "implementation",
+      "title": "Confirm v1 product, terminology, screen map and architecture baseline",
+      "priority": "P0",
+      "size": "S",
+      "product_area": "Product foundation",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-foundation",
+      "dependencies": [],
+      "blocks": [
+        "foundation-scaffold",
+        "instagram-contract",
+        "analysis-contract"
+      ],
+      "body_file": "docs/delivery/issues/015-foundation-approval.md"
+    },
+    {
+      "order": 17,
+      "slug": "foundation-scaffold",
+      "type": "implementation",
+      "title": "Scaffold the TypeScript web and worker workspace",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Product foundation",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-foundation",
+      "dependencies": [
+        "foundation-approval"
+      ],
+      "blocks": [
+        "foundation-database",
+        "foundation-ci",
+        "foundation-observability",
+        "access-shell",
+        "instagram-contract",
+        "security-supply-chain"
+      ],
+      "body_file": "docs/delivery/issues/016-foundation-scaffold.md"
+    },
+    {
+      "order": 18,
+      "slug": "foundation-database",
+      "type": "implementation",
+      "title": "Establish PostgreSQL, Prisma and workspace ownership foundation",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Product foundation",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-foundation",
+      "dependencies": [
+        "foundation-scaffold"
+      ],
+      "blocks": [
+        "foundation-ci",
+        "foundation-observability",
+        "access-auth",
+        "jobs-queue",
+        "instagram-oauth",
+        "upload-storage",
+        "metrics-engine",
+        "strategy-retrieval"
+      ],
+      "body_file": "docs/delivery/issues/017-foundation-database.md"
+    },
+    {
+      "order": 19,
+      "slug": "foundation-ci",
+      "type": "implementation",
+      "title": "Establish CI and automated test quality gates",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Launch readiness",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-foundation",
+      "dependencies": [
+        "foundation-scaffold",
+        "foundation-database"
+      ],
+      "blocks": [
+        "analysis-contract",
+        "analysis-evaluation",
+        "metrics-engine",
+        "strategy-contract",
+        "security-supply-chain",
+        "deployment-pipeline"
+      ],
+      "body_file": "docs/delivery/issues/018-foundation-ci.md"
+    },
+    {
+      "order": 20,
+      "slug": "foundation-observability",
+      "type": "implementation",
+      "title": "Add structured logging, correlation and error-monitoring foundations",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-foundation",
+      "dependencies": [
+        "foundation-scaffold",
+        "foundation-database"
+      ],
+      "blocks": [
+        "access-auth",
+        "access-dashboard",
+        "jobs-queue",
+        "instagram-oauth",
+        "upload-storage",
+        "gemini-adapter",
+        "operations-health",
+        "security-secrets",
+        "deployment-pipeline"
+      ],
+      "body_file": "docs/delivery/issues/019-foundation-observability.md"
+    },
+    {
+      "order": 21,
+      "slug": "access-auth",
+      "type": "implementation",
+      "title": "Implement Google Workspace sign-in and server-side workspace authorisation",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Internal access",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-access",
+      "dependencies": [
+        "foundation-database",
+        "foundation-observability"
+      ],
+      "blocks": [
+        "access-shell",
+        "instagram-oauth",
+        "upload-storage",
+        "security-authz-abuse"
+      ],
+      "body_file": "docs/delivery/issues/020-access-auth.md"
+    },
+    {
+      "order": 22,
+      "slug": "access-shell",
+      "type": "implementation",
+      "title": "Build the responsive accessible internal application shell",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Internal access",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-access",
+      "dependencies": [
+        "access-auth",
+        "foundation-scaffold"
+      ],
+      "blocks": [
+        "access-dashboard",
+        "jobs-operations-ui",
+        "instagram-account-ui",
+        "posts-list",
+        "sync-history",
+        "source-editor",
+        "post-detail",
+        "trends-ui",
+        "strategy-ui",
+        "operations-dashboard",
+        "operations-settings"
+      ],
+      "body_file": "docs/delivery/issues/021-access-shell.md"
+    },
+    {
+      "order": 23,
+      "slug": "access-dashboard",
+      "type": "implementation",
+      "title": "Deliver the internal setup and attention dashboard",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Internal access",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-access",
+      "dependencies": [
+        "access-shell",
+        "foundation-observability"
+      ],
+      "blocks": [],
+      "body_file": "docs/delivery/issues/022-access-dashboard.md"
+    },
+    {
+      "order": 24,
+      "slug": "jobs-queue",
+      "type": "implementation",
+      "title": "Implement the PostgreSQL-backed queue and transactional dispatch",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-background-jobs",
+      "dependencies": [
+        "foundation-database",
+        "foundation-observability"
+      ],
+      "blocks": [
+        "jobs-policy",
+        "deployment-pipeline"
+      ],
+      "body_file": "docs/delivery/issues/023-jobs-queue.md"
+    },
+    {
+      "order": 25,
+      "slug": "jobs-policy",
+      "type": "implementation",
+      "title": "Implement logical job states, leases, retries and idempotent handler framework",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-background-jobs",
+      "dependencies": [
+        "jobs-queue"
+      ],
+      "blocks": [
+        "jobs-reconcile",
+        "jobs-operations-ui",
+        "instagram-token-health",
+        "upload-storage",
+        "asset-validation",
+        "sync-media",
+        "gemini-adapter",
+        "analysis-handler",
+        "analytics-recalculation",
+        "strategy-handler"
+      ],
+      "body_file": "docs/delivery/issues/024-jobs-policy.md"
+    },
+    {
+      "order": 26,
+      "slug": "jobs-reconcile",
+      "type": "implementation",
+      "title": "Add cancellation, manual retry and background reconciliation",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-background-jobs",
+      "dependencies": [
+        "jobs-policy"
+      ],
+      "blocks": [
+        "sync-orchestration",
+        "asset-lifecycle",
+        "analysis-reanalysis",
+        "security-deletion",
+        "e2e-analysis"
+      ],
+      "body_file": "docs/delivery/issues/025-jobs-reconcile.md"
+    },
+    {
+      "order": 27,
+      "slug": "jobs-operations-ui",
+      "type": "implementation",
+      "title": "Provide job list and diagnostic detail experience",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-background-jobs",
+      "dependencies": [
+        "jobs-policy",
+        "access-shell"
+      ],
+      "blocks": [
+        "post-detail",
+        "analysis-history-ui",
+        "operations-dashboard"
+      ],
+      "body_file": "docs/delivery/issues/026-jobs-operations-ui.md"
+    },
+    {
+      "order": 28,
+      "slug": "instagram-contract",
+      "type": "implementation",
+      "title": "Prove Meta app, account, permissions and current API contract",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Instagram integration",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-instagram-connection",
+      "dependencies": [
+        "foundation-approval",
+        "foundation-scaffold"
+      ],
+      "blocks": [
+        "instagram-oauth"
+      ],
+      "body_file": "docs/delivery/issues/027-instagram-contract.md"
+    },
+    {
+      "order": 29,
+      "slug": "instagram-oauth",
+      "type": "implementation",
+      "title": "Implement Instagram connection callback and encrypted credential storage",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Instagram integration",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-instagram-connection",
+      "dependencies": [
+        "instagram-contract",
+        "access-auth",
+        "foundation-database",
+        "foundation-observability"
+      ],
+      "blocks": [
+        "instagram-token-health",
+        "instagram-account-ui",
+        "sync-media",
+        "security-secrets"
+      ],
+      "body_file": "docs/delivery/issues/028-instagram-oauth.md"
+    },
+    {
+      "order": 30,
+      "slug": "instagram-token-health",
+      "type": "implementation",
+      "title": "Implement Instagram token health, refresh and reconnect handling",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Instagram integration",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-instagram-connection",
+      "dependencies": [
+        "instagram-oauth",
+        "jobs-policy"
+      ],
+      "blocks": [
+        "instagram-account-ui",
+        "sync-orchestration",
+        "operations-dashboard",
+        "operations-health"
+      ],
+      "body_file": "docs/delivery/issues/029-instagram-token-health.md"
+    },
+    {
+      "order": 31,
+      "slug": "instagram-account-ui",
+      "type": "implementation",
+      "title": "Deliver Instagram account configuration and safe disconnection",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Instagram integration",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-instagram-connection",
+      "dependencies": [
+        "instagram-oauth",
+        "instagram-token-health",
+        "access-shell"
+      ],
+      "blocks": [
+        "security-deletion",
+        "e2e-import"
+      ],
+      "body_file": "docs/delivery/issues/030-instagram-account-ui.md"
+    },
+    {
+      "order": 32,
+      "slug": "upload-storage",
+      "type": "implementation",
+      "title": "Implement private object storage and signed multipart video upload",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Content ingestion",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-content-ingestion",
+      "dependencies": [
+        "foundation-database",
+        "access-auth",
+        "foundation-observability",
+        "jobs-policy"
+      ],
+      "blocks": [
+        "asset-validation",
+        "operations-health",
+        "security-secrets",
+        "deployment-pipeline"
+      ],
+      "body_file": "docs/delivery/issues/031-upload-storage.md"
+    },
+    {
+      "order": 33,
+      "slug": "asset-validation",
+      "type": "implementation",
+      "title": "Validate uploaded video assets in an isolated worker",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Content ingestion",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-content-ingestion",
+      "dependencies": [
+        "upload-storage",
+        "jobs-policy"
+      ],
+      "blocks": [
+        "source-editor",
+        "gemini-adapter"
+      ],
+      "body_file": "docs/delivery/issues/032-asset-validation.md"
+    },
+    {
+      "order": 34,
+      "slug": "sync-media",
+      "type": "implementation",
+      "title": "Import Instagram media with pagination and Reel classification",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Instagram integration",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-instagram-sync",
+      "dependencies": [
+        "instagram-oauth",
+        "jobs-policy"
+      ],
+      "blocks": [
+        "sync-insights",
+        "sync-orchestration",
+        "posts-list"
+      ],
+      "body_file": "docs/delivery/issues/033-sync-media.md"
+    },
+    {
+      "order": 35,
+      "slug": "sync-insights",
+      "type": "implementation",
+      "title": "Import supported insights as immutable metric snapshots",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Instagram integration",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-instagram-sync",
+      "dependencies": [
+        "sync-media"
+      ],
+      "blocks": [
+        "sync-orchestration",
+        "post-detail",
+        "metrics-engine"
+      ],
+      "body_file": "docs/delivery/issues/034-sync-insights.md"
+    },
+    {
+      "order": 36,
+      "slug": "sync-orchestration",
+      "type": "implementation",
+      "title": "Deliver manual, incremental and scheduled sync orchestration",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Instagram integration",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-instagram-sync",
+      "dependencies": [
+        "sync-media",
+        "sync-insights",
+        "jobs-reconcile",
+        "instagram-token-health"
+      ],
+      "blocks": [
+        "sync-history",
+        "security-authz-abuse"
+      ],
+      "body_file": "docs/delivery/issues/035-sync-orchestration.md"
+    },
+    {
+      "order": 37,
+      "slug": "posts-list",
+      "type": "implementation",
+      "title": "Deliver the imported posts triage list",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Instagram integration",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-instagram-sync",
+      "dependencies": [
+        "sync-media",
+        "access-shell"
+      ],
+      "blocks": [
+        "source-editor",
+        "recommendation-workflow"
+      ],
+      "body_file": "docs/delivery/issues/036-posts-list.md"
+    },
+    {
+      "order": 38,
+      "slug": "sync-history",
+      "type": "implementation",
+      "title": "Deliver sync history, detail and failure recovery",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-instagram-sync",
+      "dependencies": [
+        "sync-orchestration",
+        "access-shell"
+      ],
+      "blocks": [
+        "operations-dashboard",
+        "e2e-import"
+      ],
+      "body_file": "docs/delivery/issues/037-sync-history.md"
+    },
+    {
+      "order": 39,
+      "slug": "source-editor",
+      "type": "implementation",
+      "title": "Deliver source video association and transcript/context editor",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Content ingestion",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-content-ingestion",
+      "dependencies": [
+        "asset-validation",
+        "posts-list",
+        "access-shell"
+      ],
+      "blocks": [
+        "asset-lifecycle",
+        "analysis-handler",
+        "post-detail"
+      ],
+      "body_file": "docs/delivery/issues/038-source-editor.md"
+    },
+    {
+      "order": 40,
+      "slug": "asset-lifecycle",
+      "type": "implementation",
+      "title": "Implement source asset replacement, transcript deletion and storage lifecycle",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Security and privacy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-content-ingestion",
+      "dependencies": [
+        "source-editor",
+        "jobs-reconcile"
+      ],
+      "blocks": [
+        "operations-dashboard",
+        "security-deletion"
+      ],
+      "body_file": "docs/delivery/issues/039-asset-lifecycle.md"
+    },
+    {
+      "order": 41,
+      "slug": "gemini-adapter",
+      "type": "implementation",
+      "title": "Integrate paid Gemini video file and model APIs with usage controls",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Video analysis",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-video-analysis",
+      "dependencies": [
+        "asset-validation",
+        "jobs-policy",
+        "foundation-observability"
+      ],
+      "blocks": [
+        "analysis-handler",
+        "analysis-evaluation",
+        "strategy-handler",
+        "operations-health",
+        "security-secrets"
+      ],
+      "body_file": "docs/delivery/issues/040-gemini-adapter.md"
+    },
+    {
+      "order": 42,
+      "slug": "analysis-contract",
+      "type": "implementation",
+      "title": "Define and evaluate the v1 analysis schema, taxonomy and prompt",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Video analysis",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-video-analysis",
+      "dependencies": [
+        "foundation-approval",
+        "foundation-ci"
+      ],
+      "blocks": [
+        "analysis-handler",
+        "analysis-evaluation",
+        "strategy-contract",
+        "operations-settings"
+      ],
+      "body_file": "docs/delivery/issues/041-analysis-contract.md"
+    },
+    {
+      "order": 43,
+      "slug": "analysis-handler",
+      "type": "implementation",
+      "title": "Process and transactionally publish one validated post analysis",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Video analysis",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-video-analysis",
+      "dependencies": [
+        "gemini-adapter",
+        "analysis-contract",
+        "source-editor",
+        "jobs-policy"
+      ],
+      "blocks": [
+        "analysis-reanalysis",
+        "analysis-result-ui",
+        "analytics-feature-stats",
+        "strategy-retrieval",
+        "security-authz-abuse"
+      ],
+      "body_file": "docs/delivery/issues/042-analysis-handler.md"
+    },
+    {
+      "order": 44,
+      "slug": "analysis-reanalysis",
+      "type": "implementation",
+      "title": "Support analysis version activation and safe reanalysis",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Video analysis",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-video-analysis",
+      "dependencies": [
+        "analysis-handler",
+        "jobs-reconcile"
+      ],
+      "blocks": [
+        "analysis-history-ui",
+        "operations-dashboard"
+      ],
+      "body_file": "docs/delivery/issues/043-analysis-reanalysis.md"
+    },
+    {
+      "order": 45,
+      "slug": "analysis-evaluation",
+      "type": "implementation",
+      "title": "Create Gemini analysis fixtures, mocks and model acceptance evaluation",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Video analysis",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-video-analysis",
+      "dependencies": [
+        "gemini-adapter",
+        "analysis-contract",
+        "foundation-ci"
+      ],
+      "blocks": [],
+      "body_file": "docs/delivery/issues/044-analysis-evaluation.md"
+    },
+    {
+      "order": 46,
+      "slug": "post-detail",
+      "type": "implementation",
+      "title": "Build unified post detail with metrics, source and processing status",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Video analysis",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-analysis-review",
+      "dependencies": [
+        "sync-insights",
+        "source-editor",
+        "jobs-operations-ui",
+        "access-shell"
+      ],
+      "blocks": [
+        "analysis-result-ui"
+      ],
+      "body_file": "docs/delivery/issues/045-post-detail.md"
+    },
+    {
+      "order": 47,
+      "slug": "analysis-result-ui",
+      "type": "implementation",
+      "title": "Present structured creative analysis with confidence and estimation labels",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Video analysis",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-analysis-review",
+      "dependencies": [
+        "post-detail",
+        "analysis-handler"
+      ],
+      "blocks": [
+        "analysis-history-ui",
+        "trends-ui"
+      ],
+      "body_file": "docs/delivery/issues/046-analysis-result-ui.md"
+    },
+    {
+      "order": 48,
+      "slug": "analysis-history-ui",
+      "type": "implementation",
+      "title": "Deliver analysis history, stale state, reanalysis and failure recovery UX",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Video analysis",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-analysis-review",
+      "dependencies": [
+        "analysis-result-ui",
+        "analysis-reanalysis",
+        "jobs-operations-ui"
+      ],
+      "blocks": [
+        "e2e-analysis"
+      ],
+      "body_file": "docs/delivery/issues/047-analysis-history-ui.md"
+    },
+    {
+      "order": 49,
+      "slug": "metrics-engine",
+      "type": "implementation",
+      "title": "Implement canonical metric definitions and rate formula engine",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Analytics",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-analytics",
+      "dependencies": [
+        "sync-insights",
+        "foundation-database",
+        "foundation-ci"
+      ],
+      "blocks": [
+        "analytics-cohorts"
+      ],
+      "body_file": "docs/delivery/issues/048-metrics-engine.md"
+    },
+    {
+      "order": 50,
+      "slug": "analytics-cohorts",
+      "type": "implementation",
+      "title": "Implement comparable snapshot cohorts and robust baselines",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Analytics",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-analytics",
+      "dependencies": [
+        "metrics-engine"
+      ],
+      "blocks": [
+        "analytics-feature-stats"
+      ],
+      "body_file": "docs/delivery/issues/049-analytics-cohorts.md"
+    },
+    {
+      "order": 51,
+      "slug": "analytics-feature-stats",
+      "type": "implementation",
+      "title": "Calculate feature statistics, confidence and outlier sensitivity",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Analytics",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-analytics",
+      "dependencies": [
+        "analytics-cohorts",
+        "analysis-handler"
+      ],
+      "blocks": [
+        "analytics-recalculation"
+      ],
+      "body_file": "docs/delivery/issues/050-analytics-feature-stats.md"
+    },
+    {
+      "order": 52,
+      "slug": "analytics-recalculation",
+      "type": "implementation",
+      "title": "Publish versioned account analytics through a debounced recalculation job",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Analytics",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-analytics",
+      "dependencies": [
+        "analytics-feature-stats",
+        "jobs-policy"
+      ],
+      "blocks": [
+        "trends-ui",
+        "strategy-retrieval",
+        "operations-settings"
+      ],
+      "body_file": "docs/delivery/issues/051-analytics-recalculation.md"
+    },
+    {
+      "order": 53,
+      "slug": "trends-ui",
+      "type": "implementation",
+      "title": "Deliver account trends dashboard and evidence detail",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Analytics",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-analytics",
+      "dependencies": [
+        "analytics-recalculation",
+        "analysis-result-ui",
+        "access-shell"
+      ],
+      "blocks": [
+        "strategy-ui",
+        "e2e-strategy"
+      ],
+      "body_file": "docs/delivery/issues/052-trends-ui.md"
+    },
+    {
+      "order": 54,
+      "slug": "strategy-retrieval",
+      "type": "implementation",
+      "title": "Build deterministic strategy evidence retrieval and frozen manifests",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Content strategy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-strategy",
+      "dependencies": [
+        "analytics-recalculation",
+        "analysis-handler",
+        "foundation-database"
+      ],
+      "blocks": [
+        "strategy-handler"
+      ],
+      "body_file": "docs/delivery/issues/053-strategy-retrieval.md"
+    },
+    {
+      "order": 55,
+      "slug": "strategy-contract",
+      "type": "implementation",
+      "title": "Define the structured strategy and recommendation prompt contract",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Content strategy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-strategy",
+      "dependencies": [
+        "analysis-contract",
+        "foundation-ci"
+      ],
+      "blocks": [
+        "strategy-handler",
+        "operations-settings"
+      ],
+      "body_file": "docs/delivery/issues/054-strategy-contract.md"
+    },
+    {
+      "order": 56,
+      "slug": "strategy-handler",
+      "type": "implementation",
+      "title": "Generate, validate and preserve immutable strategy history",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Content strategy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-strategy",
+      "dependencies": [
+        "strategy-retrieval",
+        "strategy-contract",
+        "jobs-policy",
+        "gemini-adapter"
+      ],
+      "blocks": [
+        "strategy-ui",
+        "recommendation-model",
+        "operations-dashboard",
+        "security-authz-abuse"
+      ],
+      "body_file": "docs/delivery/issues/055-strategy-handler.md"
+    },
+    {
+      "order": 57,
+      "slug": "strategy-ui",
+      "type": "implementation",
+      "title": "Deliver evidence-first strategy generation and history experience",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Content strategy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-strategy",
+      "dependencies": [
+        "strategy-handler",
+        "trends-ui",
+        "access-shell"
+      ],
+      "blocks": [
+        "recommendation-ui",
+        "e2e-strategy"
+      ],
+      "body_file": "docs/delivery/issues/056-strategy-ui.md"
+    },
+    {
+      "order": 58,
+      "slug": "recommendation-model",
+      "type": "implementation",
+      "title": "Persist actionable recommendations, evidence and duplicate fingerprints",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Recommendations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-recommendations",
+      "dependencies": [
+        "strategy-handler"
+      ],
+      "blocks": [
+        "recommendation-ui"
+      ],
+      "body_file": "docs/delivery/issues/057-recommendation-model.md"
+    },
+    {
+      "order": 59,
+      "slug": "recommendation-ui",
+      "type": "implementation",
+      "title": "Deliver recommendation detail as an actionable evidence-linked video brief",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Recommendations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-recommendations",
+      "dependencies": [
+        "recommendation-model",
+        "strategy-ui"
+      ],
+      "blocks": [
+        "recommendation-workflow"
+      ],
+      "body_file": "docs/delivery/issues/058-recommendation-ui.md"
+    },
+    {
+      "order": 60,
+      "slug": "recommendation-workflow",
+      "type": "implementation",
+      "title": "Implement recommendation status and resulting-post learning loop",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Recommendations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-recommendations",
+      "dependencies": [
+        "recommendation-ui",
+        "posts-list"
+      ],
+      "blocks": [
+        "security-deletion",
+        "e2e-strategy"
+      ],
+      "body_file": "docs/delivery/issues/059-recommendation-workflow.md"
+    },
+    {
+      "order": 61,
+      "slug": "operations-dashboard",
+      "type": "implementation",
+      "title": "Deliver the manual-attention operations dashboard",
+      "priority": "P1",
+      "size": "L",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-operations",
+      "dependencies": [
+        "jobs-operations-ui",
+        "sync-history",
+        "instagram-token-health",
+        "asset-lifecycle",
+        "analysis-reanalysis",
+        "strategy-handler",
+        "access-shell"
+      ],
+      "blocks": [
+        "operations-runbooks"
+      ],
+      "body_file": "docs/delivery/issues/060-operations-dashboard.md"
+    },
+    {
+      "order": 62,
+      "slug": "operations-settings",
+      "type": "implementation",
+      "title": "Deliver safe internal settings and version visibility",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-operations",
+      "dependencies": [
+        "access-shell",
+        "analysis-contract",
+        "analytics-recalculation",
+        "strategy-contract"
+      ],
+      "blocks": [],
+      "body_file": "docs/delivery/issues/061-operations-settings.md"
+    },
+    {
+      "order": 63,
+      "slug": "operations-health",
+      "type": "implementation",
+      "title": "Expose integration, storage and Gemini usage/cost health signals",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-operations",
+      "dependencies": [
+        "foundation-observability",
+        "gemini-adapter",
+        "instagram-token-health",
+        "upload-storage"
+      ],
+      "blocks": [
+        "operations-runbooks",
+        "backup-monitoring"
+      ],
+      "body_file": "docs/delivery/issues/062-operations-health.md"
+    },
+    {
+      "order": 64,
+      "slug": "operations-runbooks",
+      "type": "implementation",
+      "title": "Create internal operating and failure-recovery runbooks",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Internal operations",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-operations",
+      "dependencies": [
+        "operations-dashboard",
+        "operations-health"
+      ],
+      "blocks": [
+        "security-review",
+        "launch-guide"
+      ],
+      "body_file": "docs/delivery/issues/063-operations-runbooks.md"
+    },
+    {
+      "order": 65,
+      "slug": "security-secrets",
+      "type": "implementation",
+      "title": "Harden secrets, credential encryption and logging redaction",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Security and privacy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-security",
+      "dependencies": [
+        "foundation-observability",
+        "instagram-oauth",
+        "gemini-adapter",
+        "upload-storage"
+      ],
+      "blocks": [
+        "security-review"
+      ],
+      "body_file": "docs/delivery/issues/064-security-secrets.md"
+    },
+    {
+      "order": 66,
+      "slug": "security-authz-abuse",
+      "type": "implementation",
+      "title": "Complete negative authorisation, crafted-identifier and API-abuse controls",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Security and privacy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-security",
+      "dependencies": [
+        "access-auth",
+        "sync-orchestration",
+        "analysis-handler",
+        "strategy-handler"
+      ],
+      "blocks": [
+        "security-review",
+        "e2e-import",
+        "e2e-analysis"
+      ],
+      "body_file": "docs/delivery/issues/065-security-authz-abuse.md"
+    },
+    {
+      "order": 67,
+      "slug": "security-deletion",
+      "type": "implementation",
+      "title": "Implement approved retention and full data-deletion workflows",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Security and privacy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-security",
+      "dependencies": [
+        "asset-lifecycle",
+        "instagram-account-ui",
+        "recommendation-workflow",
+        "jobs-reconcile"
+      ],
+      "blocks": [
+        "security-review",
+        "backup-monitoring"
+      ],
+      "body_file": "docs/delivery/issues/066-security-deletion.md"
+    },
+    {
+      "order": 68,
+      "slug": "security-supply-chain",
+      "type": "implementation",
+      "title": "Add dependency, action, container and media-tool supply-chain controls",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Security and privacy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-security",
+      "dependencies": [
+        "foundation-ci",
+        "foundation-scaffold"
+      ],
+      "blocks": [
+        "security-review",
+        "deployment-pipeline"
+      ],
+      "body_file": "docs/delivery/issues/067-security-supply-chain.md"
+    },
+    {
+      "order": 69,
+      "slug": "security-review",
+      "type": "implementation",
+      "title": "Complete pre-launch security and privacy review",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Security and privacy",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-security",
+      "dependencies": [
+        "security-secrets",
+        "security-authz-abuse",
+        "security-deletion",
+        "security-supply-chain",
+        "operations-runbooks"
+      ],
+      "blocks": [
+        "launch-guide"
+      ],
+      "body_file": "docs/delivery/issues/068-security-review.md"
+    },
+    {
+      "order": 70,
+      "slug": "e2e-import",
+      "type": "implementation",
+      "title": "Prove end-to-end Instagram connection, import and sync recovery",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Launch readiness",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-launch",
+      "dependencies": [
+        "sync-history",
+        "instagram-account-ui",
+        "security-authz-abuse"
+      ],
+      "blocks": [
+        "acceptance-a11y"
+      ],
+      "body_file": "docs/delivery/issues/069-e2e-import.md"
+    },
+    {
+      "order": 71,
+      "slug": "e2e-analysis",
+      "type": "implementation",
+      "title": "Prove end-to-end upload, transcript, analysis and reanalysis recovery",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Launch readiness",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-launch",
+      "dependencies": [
+        "analysis-history-ui",
+        "jobs-reconcile",
+        "security-authz-abuse"
+      ],
+      "blocks": [
+        "acceptance-a11y"
+      ],
+      "body_file": "docs/delivery/issues/070-e2e-analysis.md"
+    },
+    {
+      "order": 72,
+      "slug": "e2e-strategy",
+      "type": "implementation",
+      "title": "Prove end-to-end analytics, strategy and recommendation evidence flow",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Launch readiness",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-launch",
+      "dependencies": [
+        "recommendation-workflow",
+        "trends-ui",
+        "strategy-ui"
+      ],
+      "blocks": [
+        "acceptance-a11y"
+      ],
+      "body_file": "docs/delivery/issues/071-e2e-strategy.md"
+    },
+    {
+      "order": 73,
+      "slug": "deployment-pipeline",
+      "type": "implementation",
+      "title": "Provision staging/production and implement the safe deployment pipeline",
+      "priority": "P0",
+      "size": "L",
+      "product_area": "Launch readiness",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-launch",
+      "dependencies": [
+        "foundation-ci",
+        "foundation-observability",
+        "jobs-queue",
+        "upload-storage",
+        "security-supply-chain"
+      ],
+      "blocks": [
+        "backup-monitoring"
+      ],
+      "body_file": "docs/delivery/issues/072-deployment-pipeline.md"
+    },
+    {
+      "order": 74,
+      "slug": "backup-monitoring",
+      "type": "implementation",
+      "title": "Verify backups, restore, monitoring and production alerts",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Launch readiness",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-launch",
+      "dependencies": [
+        "deployment-pipeline",
+        "operations-health",
+        "security-deletion"
+      ],
+      "blocks": [
+        "launch-guide"
+      ],
+      "body_file": "docs/delivery/issues/073-backup-monitoring.md"
+    },
+    {
+      "order": 75,
+      "slug": "acceptance-a11y",
+      "type": "implementation",
+      "title": "Complete cross-browser, mobile, accessibility and Studio Parallel acceptance",
+      "priority": "P1",
+      "size": "M",
+      "product_area": "Launch readiness",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-launch",
+      "dependencies": [
+        "e2e-import",
+        "e2e-analysis",
+        "e2e-strategy"
+      ],
+      "blocks": [
+        "launch-guide"
+      ],
+      "body_file": "docs/delivery/issues/074-acceptance-a11y.md"
+    },
+    {
+      "order": 76,
+      "slug": "launch-guide",
+      "type": "implementation",
+      "title": "Complete operating guide, release blockers and internal launch sign-off",
+      "priority": "P0",
+      "size": "M",
+      "product_area": "Launch readiness",
+      "target_release": "v1.0-internal",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null,
+      "parent": "cap-launch",
+      "dependencies": [
+        "backup-monitoring",
+        "acceptance-a11y",
+        "security-review",
+        "operations-runbooks"
+      ],
+      "blocks": [],
+      "body_file": "docs/delivery/issues/075-launch-guide.md"
+    }
+  ]
+}

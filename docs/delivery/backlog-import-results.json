@@ -1,0 +1,843 @@
+{
+  "repository": "jrmilburn/content-automation",
+  "imported_at": "2026-07-27T21:59:08.262Z",
+  "issue_count": 76,
+  "issues": [
+    {
+      "order": 1,
+      "slug": "project-v1",
+      "number": 1,
+      "title": "[Project] Studio Parallel Instagram content intelligence v1",
+      "url": "https://github.com/jrmilburn/content-automation/issues/1",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 2,
+      "slug": "cap-foundation",
+      "number": 2,
+      "title": "[Capability] Product foundation and technical architecture",
+      "url": "https://github.com/jrmilburn/content-automation/issues/2",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 3,
+      "slug": "cap-access",
+      "number": 3,
+      "title": "[Capability] Internal access and application shell",
+      "url": "https://github.com/jrmilburn/content-automation/issues/3",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 4,
+      "slug": "cap-instagram-connection",
+      "number": 4,
+      "title": "[Capability] Instagram account integration",
+      "url": "https://github.com/jrmilburn/content-automation/issues/4",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 5,
+      "slug": "cap-instagram-sync",
+      "number": 5,
+      "title": "[Capability] Instagram post and metric synchronisation",
+      "url": "https://github.com/jrmilburn/content-automation/issues/5",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 6,
+      "slug": "cap-content-ingestion",
+      "number": 6,
+      "title": "[Capability] Video upload and transcript management",
+      "url": "https://github.com/jrmilburn/content-automation/issues/6",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 7,
+      "slug": "cap-background-jobs",
+      "number": 7,
+      "title": "[Capability] Background processing and job reliability",
+      "url": "https://github.com/jrmilburn/content-automation/issues/7",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 8,
+      "slug": "cap-video-analysis",
+      "number": 8,
+      "title": "[Capability] Gemini per-video analysis",
+      "url": "https://github.com/jrmilburn/content-automation/issues/8",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 9,
+      "slug": "cap-analysis-review",
+      "number": 9,
+      "title": "[Capability] Analysis review and post detail",
+      "url": "https://github.com/jrmilburn/content-automation/issues/9",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 10,
+      "slug": "cap-analytics",
+      "number": 10,
+      "title": "[Capability] Account analytics and trend calculation",
+      "url": "https://github.com/jrmilburn/content-automation/issues/10",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 11,
+      "slug": "cap-strategy",
+      "number": 11,
+      "title": "[Capability] Automated content strategy",
+      "url": "https://github.com/jrmilburn/content-automation/issues/11",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 12,
+      "slug": "cap-recommendations",
+      "number": 12,
+      "title": "[Capability] Recommendation experience",
+      "url": "https://github.com/jrmilburn/content-automation/issues/12",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 13,
+      "slug": "cap-operations",
+      "number": 13,
+      "title": "[Capability] Internal operations and failure recovery",
+      "url": "https://github.com/jrmilburn/content-automation/issues/13",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 14,
+      "slug": "cap-security",
+      "number": 14,
+      "title": "[Capability] Security, privacy and data lifecycle",
+      "url": "https://github.com/jrmilburn/content-automation/issues/14",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 15,
+      "slug": "cap-launch",
+      "number": 15,
+      "title": "[Capability] Testing, deployment and launch readiness",
+      "url": "https://github.com/jrmilburn/content-automation/issues/15",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 16,
+      "slug": "foundation-approval",
+      "number": 16,
+      "title": "Confirm v1 product, terminology, screen map and architecture baseline",
+      "url": "https://github.com/jrmilburn/content-automation/issues/16",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 17,
+      "slug": "foundation-scaffold",
+      "number": 17,
+      "title": "Scaffold the TypeScript web and worker workspace",
+      "url": "https://github.com/jrmilburn/content-automation/issues/17",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 18,
+      "slug": "foundation-database",
+      "number": 18,
+      "title": "Establish PostgreSQL, Prisma and workspace ownership foundation",
+      "url": "https://github.com/jrmilburn/content-automation/issues/18",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 19,
+      "slug": "foundation-ci",
+      "number": 19,
+      "title": "Establish CI and automated test quality gates",
+      "url": "https://github.com/jrmilburn/content-automation/issues/19",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 20,
+      "slug": "foundation-observability",
+      "number": 20,
+      "title": "Add structured logging, correlation and error-monitoring foundations",
+      "url": "https://github.com/jrmilburn/content-automation/issues/20",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 21,
+      "slug": "access-auth",
+      "number": 21,
+      "title": "Implement Google Workspace sign-in and server-side workspace authorisation",
+      "url": "https://github.com/jrmilburn/content-automation/issues/21",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 22,
+      "slug": "access-shell",
+      "number": 22,
+      "title": "Build the responsive accessible internal application shell",
+      "url": "https://github.com/jrmilburn/content-automation/issues/22",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 23,
+      "slug": "access-dashboard",
+      "number": 23,
+      "title": "Deliver the internal setup and attention dashboard",
+      "url": "https://github.com/jrmilburn/content-automation/issues/23",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 24,
+      "slug": "jobs-queue",
+      "number": 24,
+      "title": "Implement the PostgreSQL-backed queue and transactional dispatch",
+      "url": "https://github.com/jrmilburn/content-automation/issues/24",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 25,
+      "slug": "jobs-policy",
+      "number": 25,
+      "title": "Implement logical job states, leases, retries and idempotent handler framework",
+      "url": "https://github.com/jrmilburn/content-automation/issues/25",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 26,
+      "slug": "jobs-reconcile",
+      "number": 26,
+      "title": "Add cancellation, manual retry and background reconciliation",
+      "url": "https://github.com/jrmilburn/content-automation/issues/26",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 27,
+      "slug": "jobs-operations-ui",
+      "number": 27,
+      "title": "Provide job list and diagnostic detail experience",
+      "url": "https://github.com/jrmilburn/content-automation/issues/27",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 28,
+      "slug": "instagram-contract",
+      "number": 28,
+      "title": "Prove Meta app, account, permissions and current API contract",
+      "url": "https://github.com/jrmilburn/content-automation/issues/28",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 29,
+      "slug": "instagram-oauth",
+      "number": 29,
+      "title": "Implement Instagram connection callback and encrypted credential storage",
+      "url": "https://github.com/jrmilburn/content-automation/issues/29",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 30,
+      "slug": "instagram-token-health",
+      "number": 30,
+      "title": "Implement Instagram token health, refresh and reconnect handling",
+      "url": "https://github.com/jrmilburn/content-automation/issues/30",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 31,
+      "slug": "instagram-account-ui",
+      "number": 31,
+      "title": "Deliver Instagram account configuration and safe disconnection",
+      "url": "https://github.com/jrmilburn/content-automation/issues/31",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 32,
+      "slug": "upload-storage",
+      "number": 32,
+      "title": "Implement private object storage and signed multipart video upload",
+      "url": "https://github.com/jrmilburn/content-automation/issues/32",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 33,
+      "slug": "asset-validation",
+      "number": 33,
+      "title": "Validate uploaded video assets in an isolated worker",
+      "url": "https://github.com/jrmilburn/content-automation/issues/33",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 34,
+      "slug": "sync-media",
+      "number": 34,
+      "title": "Import Instagram media with pagination and Reel classification",
+      "url": "https://github.com/jrmilburn/content-automation/issues/34",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 35,
+      "slug": "sync-insights",
+      "number": 35,
+      "title": "Import supported insights as immutable metric snapshots",
+      "url": "https://github.com/jrmilburn/content-automation/issues/35",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 36,
+      "slug": "sync-orchestration",
+      "number": 36,
+      "title": "Deliver manual, incremental and scheduled sync orchestration",
+      "url": "https://github.com/jrmilburn/content-automation/issues/36",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 37,
+      "slug": "posts-list",
+      "number": 37,
+      "title": "Deliver the imported posts triage list",
+      "url": "https://github.com/jrmilburn/content-automation/issues/37",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 38,
+      "slug": "sync-history",
+      "number": 38,
+      "title": "Deliver sync history, detail and failure recovery",
+      "url": "https://github.com/jrmilburn/content-automation/issues/38",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 39,
+      "slug": "source-editor",
+      "number": 39,
+      "title": "Deliver source video association and transcript/context editor",
+      "url": "https://github.com/jrmilburn/content-automation/issues/39",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 40,
+      "slug": "asset-lifecycle",
+      "number": 40,
+      "title": "Implement source asset replacement, transcript deletion and storage lifecycle",
+      "url": "https://github.com/jrmilburn/content-automation/issues/40",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 41,
+      "slug": "gemini-adapter",
+      "number": 41,
+      "title": "Integrate paid Gemini video file and model APIs with usage controls",
+      "url": "https://github.com/jrmilburn/content-automation/issues/41",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 42,
+      "slug": "analysis-contract",
+      "number": 42,
+      "title": "Define and evaluate the v1 analysis schema, taxonomy and prompt",
+      "url": "https://github.com/jrmilburn/content-automation/issues/42",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 43,
+      "slug": "analysis-handler",
+      "number": 43,
+      "title": "Process and transactionally publish one validated post analysis",
+      "url": "https://github.com/jrmilburn/content-automation/issues/43",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 44,
+      "slug": "analysis-reanalysis",
+      "number": 44,
+      "title": "Support analysis version activation and safe reanalysis",
+      "url": "https://github.com/jrmilburn/content-automation/issues/44",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 45,
+      "slug": "analysis-evaluation",
+      "number": 45,
+      "title": "Create Gemini analysis fixtures, mocks and model acceptance evaluation",
+      "url": "https://github.com/jrmilburn/content-automation/issues/45",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 46,
+      "slug": "post-detail",
+      "number": 46,
+      "title": "Build unified post detail with metrics, source and processing status",
+      "url": "https://github.com/jrmilburn/content-automation/issues/46",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 47,
+      "slug": "analysis-result-ui",
+      "number": 47,
+      "title": "Present structured creative analysis with confidence and estimation labels",
+      "url": "https://github.com/jrmilburn/content-automation/issues/47",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 48,
+      "slug": "analysis-history-ui",
+      "number": 48,
+      "title": "Deliver analysis history, stale state, reanalysis and failure recovery UX",
+      "url": "https://github.com/jrmilburn/content-automation/issues/48",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 49,
+      "slug": "metrics-engine",
+      "number": 49,
+      "title": "Implement canonical metric definitions and rate formula engine",
+      "url": "https://github.com/jrmilburn/content-automation/issues/49",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 50,
+      "slug": "analytics-cohorts",
+      "number": 50,
+      "title": "Implement comparable snapshot cohorts and robust baselines",
+      "url": "https://github.com/jrmilburn/content-automation/issues/50",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 51,
+      "slug": "analytics-feature-stats",
+      "number": 51,
+      "title": "Calculate feature statistics, confidence and outlier sensitivity",
+      "url": "https://github.com/jrmilburn/content-automation/issues/51",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 52,
+      "slug": "analytics-recalculation",
+      "number": 52,
+      "title": "Publish versioned account analytics through a debounced recalculation job",
+      "url": "https://github.com/jrmilburn/content-automation/issues/52",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 53,
+      "slug": "trends-ui",
+      "number": 53,
+      "title": "Deliver account trends dashboard and evidence detail",
+      "url": "https://github.com/jrmilburn/content-automation/issues/53",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 54,
+      "slug": "strategy-retrieval",
+      "number": 54,
+      "title": "Build deterministic strategy evidence retrieval and frozen manifests",
+      "url": "https://github.com/jrmilburn/content-automation/issues/54",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 55,
+      "slug": "strategy-contract",
+      "number": 55,
+      "title": "Define the structured strategy and recommendation prompt contract",
+      "url": "https://github.com/jrmilburn/content-automation/issues/55",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 56,
+      "slug": "strategy-handler",
+      "number": 56,
+      "title": "Generate, validate and preserve immutable strategy history",
+      "url": "https://github.com/jrmilburn/content-automation/issues/56",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 57,
+      "slug": "strategy-ui",
+      "number": 57,
+      "title": "Deliver evidence-first strategy generation and history experience",
+      "url": "https://github.com/jrmilburn/content-automation/issues/57",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 58,
+      "slug": "recommendation-model",
+      "number": 58,
+      "title": "Persist actionable recommendations, evidence and duplicate fingerprints",
+      "url": "https://github.com/jrmilburn/content-automation/issues/58",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 59,
+      "slug": "recommendation-ui",
+      "number": 59,
+      "title": "Deliver recommendation detail as an actionable evidence-linked video brief",
+      "url": "https://github.com/jrmilburn/content-automation/issues/59",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 60,
+      "slug": "recommendation-workflow",
+      "number": 60,
+      "title": "Implement recommendation status and resulting-post learning loop",
+      "url": "https://github.com/jrmilburn/content-automation/issues/60",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 61,
+      "slug": "operations-dashboard",
+      "number": 61,
+      "title": "Deliver the manual-attention operations dashboard",
+      "url": "https://github.com/jrmilburn/content-automation/issues/61",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 62,
+      "slug": "operations-settings",
+      "number": 62,
+      "title": "Deliver safe internal settings and version visibility",
+      "url": "https://github.com/jrmilburn/content-automation/issues/62",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 63,
+      "slug": "operations-health",
+      "number": 63,
+      "title": "Expose integration, storage and Gemini usage/cost health signals",
+      "url": "https://github.com/jrmilburn/content-automation/issues/63",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 64,
+      "slug": "operations-runbooks",
+      "number": 64,
+      "title": "Create internal operating and failure-recovery runbooks",
+      "url": "https://github.com/jrmilburn/content-automation/issues/64",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 65,
+      "slug": "security-secrets",
+      "number": 65,
+      "title": "Harden secrets, credential encryption and logging redaction",
+      "url": "https://github.com/jrmilburn/content-automation/issues/65",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 66,
+      "slug": "security-authz-abuse",
+      "number": 66,
+      "title": "Complete negative authorisation, crafted-identifier and API-abuse controls",
+      "url": "https://github.com/jrmilburn/content-automation/issues/66",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 67,
+      "slug": "security-deletion",
+      "number": 67,
+      "title": "Implement approved retention and full data-deletion workflows",
+      "url": "https://github.com/jrmilburn/content-automation/issues/67",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 68,
+      "slug": "security-supply-chain",
+      "number": 68,
+      "title": "Add dependency, action, container and media-tool supply-chain controls",
+      "url": "https://github.com/jrmilburn/content-automation/issues/68",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 69,
+      "slug": "security-review",
+      "number": 69,
+      "title": "Complete pre-launch security and privacy review",
+      "url": "https://github.com/jrmilburn/content-automation/issues/69",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 70,
+      "slug": "e2e-import",
+      "number": 70,
+      "title": "Prove end-to-end Instagram connection, import and sync recovery",
+      "url": "https://github.com/jrmilburn/content-automation/issues/70",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 71,
+      "slug": "e2e-analysis",
+      "number": 71,
+      "title": "Prove end-to-end upload, transcript, analysis and reanalysis recovery",
+      "url": "https://github.com/jrmilburn/content-automation/issues/71",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 72,
+      "slug": "e2e-strategy",
+      "number": 72,
+      "title": "Prove end-to-end analytics, strategy and recommendation evidence flow",
+      "url": "https://github.com/jrmilburn/content-automation/issues/72",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 73,
+      "slug": "deployment-pipeline",
+      "number": 73,
+      "title": "Provision staging/production and implement the safe deployment pipeline",
+      "url": "https://github.com/jrmilburn/content-automation/issues/73",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 74,
+      "slug": "backup-monitoring",
+      "number": 74,
+      "title": "Verify backups, restore, monitoring and production alerts",
+      "url": "https://github.com/jrmilburn/content-automation/issues/74",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 75,
+      "slug": "acceptance-a11y",
+      "number": 75,
+      "title": "Complete cross-browser, mobile, accessibility and Studio Parallel acceptance",
+      "url": "https://github.com/jrmilburn/content-automation/issues/75",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    },
+    {
+      "order": 76,
+      "slug": "launch-guide",
+      "number": 76,
+      "title": "Complete operating guide, release blockers and internal launch sign-off",
+      "url": "https://github.com/jrmilburn/content-automation/issues/76",
+      "labels": [
+        "enhancement"
+      ],
+      "milestone": null
+    }
+  ]
+}
