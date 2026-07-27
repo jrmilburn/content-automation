@@ -43,7 +43,8 @@
     "test:e2e:install": "playwright install chromium",
     "test:e2e:install:ci": "playwright install --with-deps chromium",
     "test:watch": "vitest",
-    "typecheck": "npm run build:packages && tsc -p tsconfig.tools.json --noEmit && npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run build:packages && tsc -p tsconfig.tools.json --noEmit && npm run typecheck --workspaces --if-present",
+    "validate:local": "npm run check && npm run security:dependencies && npm run security:secrets && npm run test:db:integration && npm run test:e2e"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",

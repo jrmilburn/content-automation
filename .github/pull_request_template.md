@@ -15,13 +15,13 @@ Primary issue: #
 ## Validation
 
 - [ ] Linked issue acceptance criteria have been checked.
-- [ ] Relevant automated checks pass.
+- [ ] Required local checks pass and their commands/results are recorded below.
 - [ ] Relevant failure, retry, idempotency and negative-authorisation paths were tested.
 - [ ] Manual verification is recorded where automation is impractical.
 
 Validation evidence:
 
-<!-- Commands, test results, screenshots or provider-contract evidence. -->
+<!-- Record `npm ci` and `npm run validate:local`, or explain precisely why a gate is not applicable. Add screenshots or provider-contract evidence where relevant. GitHub-hosted Actions are temporarily disabled. -->
 
 ## Scope and safety
 
