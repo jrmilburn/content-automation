@@ -115,6 +115,12 @@ At least one controlled staging smoke uses real Meta/Gemini/storage integrations
 
 Pull requests: install from lockfile, generated-code/schema check, format/lint/typecheck, unit/component, PostgreSQL integration, adapter fixtures, critical Playwright, accessibility, dependency/secret/SAST scans and build.
 
+The v1 foundation implements this as one `.github/workflows/ci.yml` workflow with parallel quality/build, PostgreSQL, browser/accessibility and security jobs. Pull-request jobs use `APP_ENV=test` and `PROVIDER_MODE=fake`, never `pull_request_target`, and receive no production provider secrets. All reusable GitHub Actions are pinned to immutable commit SHAs with least-privilege `contents: read` permissions and checkout credentials are not persisted.
+
+Local equivalents are `npm run check`, `npm run build`, `npm run test:db:integration`, `npm run test:e2e` and the `security:*` scripts. Install the pinned Chromium runtime once with `npm run test:e2e:install`. Playwright builds and starts the production Next.js application, then runs the same desktop and 390px mobile accessibility smoke used on pull requests.
+
+CI publishes only JUnit result files for seven days. Browser screenshots, video and traces are disabled, and fixture policy prohibits tokens, provider payloads and private content from test output. Later feature issues extend these jobs rather than adding provider credentials to pull-request workflows.
+
 Main/release: full browser matrix, migration rehearsal, container scan/SBOM, AI contract fixture evaluation for changed schema/prompt/model, deployment smoke and manual production approval.
 
 Flaky tests are quarantined only with an owner/expiry issue; critical authorisation/idempotency tests cannot be quarantined.

@@ -3,6 +3,9 @@ node_modules/
 dist/
 packages/db/src/generated/
 coverage/
+artifacts/
+playwright-report/
+test-results/
 *.tsbuildinfo
 .env
 .env.*

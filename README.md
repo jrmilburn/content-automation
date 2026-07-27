@@ -65,3 +65,19 @@ npm run test:db:integration
 ```
 
 The script owns its dedicated Docker Compose project and removes its test volume when finished. It never uses `DATABASE_URL` from another environment.
+
+## Quality gates
+
+Pull requests run formatting, linting, strict type checks, unit/component tests, production builds, real PostgreSQL integration tests, dependency/secret checks, and built-app Playwright accessibility smoke tests. The same core gates are available locally:
+
+```powershell
+npm run check
+npm run build
+npm run test:db:integration
+npm run test:e2e:install
+npm run test:e2e
+npm run security:dependencies
+npm run security:secrets
+```
+
+All pull-request providers run in deterministic fake mode. CI has no production provider credentials, and its bounded test artifacts contain only JUnit test names and redacted failure detail.
