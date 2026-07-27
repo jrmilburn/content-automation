@@ -55,3 +55,13 @@ npm run start:worker
 Configuration is parsed by `@studio-parallel/config`. Errors identify invalid field names and constraints but never echo values. Production-like environments require an HTTPS non-localhost `PUBLIC_ORIGIN`; local, test and preview environments reject `PROVIDER_MODE=live`.
 
 Provider credentials, authentication, database configuration and deployment wiring belong to their dedicated backlog issues. Do not add real secrets to examples, fixtures, browser code or logs.
+
+## Database development
+
+The PostgreSQL/Prisma foundation is documented in [`packages/db/README.md`](packages/db/README.md). To create an isolated PostgreSQL container, apply the committed migrations, seed the single non-PII development workspace, verify drift and run the real-database tests:
+
+```powershell
+npm run test:db:integration
+```
+
+The script owns its dedicated Docker Compose project and removes its test volume when finished. It never uses `DATABASE_URL` from another environment.

@@ -1,0 +1,40 @@
+{
+  "name": "@studio-parallel/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm run generate && tsc -p tsconfig.build.json",
+    "drift:check": "prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code",
+    "generate": "prisma generate",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:dev": "prisma migrate dev",
+    "seed": "prisma db seed",
+    "typecheck": "npm run generate && tsc -p tsconfig.json --noEmit",
+    "validate": "prisma validate"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.9.1",
+    "@prisma/client": "7.9.1",
+    "@studio-parallel/config": "*",
+    "dotenv": "17.4.2",
+    "pg": "8.22.0",
+    "uuid": "14.0.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.20.0",
+    "prisma": "7.9.1"
+  }
+}

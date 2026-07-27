@@ -49,6 +49,30 @@ const runtimeConfigSchema = z
 
 export type RuntimeConfig = Readonly<z.infer<typeof runtimeConfigSchema>>;
 
+const databaseConfigSchema = z
+  .object({
+    DATABASE_URL: z.url(),
+  })
+  .superRefine((config, context) => {
+    let url: URL;
+
+    try {
+      url = new URL(config.DATABASE_URL);
+    } catch {
+      return;
+    }
+
+    if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
+      context.addIssue({
+        code: "custom",
+        path: ["DATABASE_URL"],
+        message: "must use the postgres or postgresql protocol",
+      });
+    }
+  });
+
+export type DatabaseConfig = Readonly<z.infer<typeof databaseConfigSchema>>;
+
 export class ConfigurationError extends Error {
   readonly fields: readonly string[];
 
@@ -71,6 +95,18 @@ export function loadRuntimeConfig(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): RuntimeConfig {
   const result = runtimeConfigSchema.safeParse(environment);
+
+  if (!result.success) {
+    throw new ConfigurationError(result.error.issues);
+  }
+
+  return Object.freeze(result.data);
+}
+
+export function loadDatabaseConfig(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): DatabaseConfig {
+  const result = databaseConfigSchema.safeParse(environment);
 
   if (!result.success) {
     throw new ConfigurationError(result.error.issues);
