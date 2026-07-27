@@ -68,16 +68,14 @@ The script owns its dedicated Docker Compose project and removes its test volume
 
 ## Quality gates
 
-Pull requests run formatting, linting, strict type checks, unit/component tests, production builds, real PostgreSQL integration tests, dependency/secret checks, and built-app Playwright accessibility smoke tests. The same core gates are available locally:
+GitHub-hosted Actions are temporarily disabled to avoid runner spend during early internal development. Before opening or merging a pull request, install from the lockfile and run the complete local gate:
 
 ```powershell
-npm run check
-npm run build
-npm run test:db:integration
+npm ci
 npm run test:e2e:install
-npm run test:e2e
-npm run security:dependencies
-npm run security:secrets
+npm run validate:local
 ```
 
-All pull-request providers run in deterministic fake mode. CI has no production provider credentials, and its bounded test artifacts contain only JUnit test names and redacted failure detail.
+`validate:local` covers formatting, linting, strict type checks, unit/component tests, dependency and secret checks, a disposable real-PostgreSQL migration/integration suite, the production build, and desktop/mobile Playwright accessibility smoke tests. Record the commands and results in the pull request. Tests run in deterministic fake mode and require no production provider credentials or content.
+
+Hosted CI must be restored before internal launch or before branch protection relies on required remote checks.

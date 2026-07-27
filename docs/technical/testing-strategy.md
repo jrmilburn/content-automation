@@ -115,11 +115,11 @@ At least one controlled staging smoke uses real Meta/Gemini/storage integrations
 
 Pull requests: install from lockfile, generated-code/schema check, format/lint/typecheck, unit/component, PostgreSQL integration, adapter fixtures, critical Playwright, accessibility, dependency/secret/SAST scans and build.
 
-The v1 foundation implements this as one `.github/workflows/ci.yml` workflow with parallel quality/build, PostgreSQL, browser/accessibility and security jobs. Pull-request jobs use `APP_ENV=test` and `PROVIDER_MODE=fake`, never `pull_request_target`, and receive no production provider secrets. All reusable GitHub Actions are pinned to immutable commit SHAs with least-privilege `contents: read` permissions and checkout credentials are not persisted.
+GitHub-hosted Actions are temporarily disabled during early internal development to avoid runner spend. Until hosted CI is restored, every implementation pull request runs `npm ci`, installs the pinned Chromium version when needed with `npm run test:e2e:install`, and records the result of `npm run validate:local`. Documentation-only pull requests may omit database/browser execution only with a written applicability rationale; formatting, secret scanning and directly affected checks remain required.
 
-Local equivalents are `npm run check`, `npm run build`, `npm run test:db:integration`, `npm run test:e2e` and the `security:*` scripts. Install the pinned Chromium runtime once with `npm run test:e2e:install`. Playwright builds and starts the production Next.js application, then runs the same desktop and 390px mobile accessibility smoke used on pull requests.
+`validate:local` runs quality/type/unit/component checks, dependency auditing, the redacting secret scan, disposable real-PostgreSQL integration, the production build, and Playwright/axe smoke at desktop and 390px mobile widths. Provider mode remains fake and fixtures remain synthetic, so local validation requires no production credentials or private content.
 
-CI publishes only JUnit result files for seven days. Browser screenshots, video and traces are disabled, and fixture policy prohibits tokens, provider payloads and private content from test output. Later feature issues extend these jobs rather than adding provider credentials to pull-request workflows.
+This is a temporary enforcement limitation: pull-request evidence is manually reviewed and no remote required-check status exists. Restore the least-privilege, immutable-action-pinned parallel workflow before internal launch or before enabling branch protection that depends on required checks. When restored, artifacts must remain bounded to concise JUnit results; browser screenshots, video and traces stay disabled for pull requests.
 
 Main/release: full browser matrix, migration rehearsal, container scan/SBOM, AI contract fixture evaluation for changed schema/prompt/model, deployment smoke and manual production approval.
 
