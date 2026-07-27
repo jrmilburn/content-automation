@@ -1,0 +1,118 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WorkspaceStatus {
+  ACTIVE
+  DISABLED
+
+  @@map("workspace_status")
+}
+
+enum InternalUserStatus {
+  ACTIVE
+  DISABLED
+
+  @@map("internal_user_status")
+}
+
+enum AuditActorType {
+  USER
+  SERVICE
+  SYSTEM
+
+  @@map("audit_actor_type")
+}
+
+enum SettingValueType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+
+  @@map("setting_value_type")
+}
+
+model Workspace {
+  id          String          @id @db.Uuid
+  slug        String          @unique @db.VarChar(63)
+  name        String          @db.VarChar(120)
+  timezone    String          @default("Australia/Sydney") @db.VarChar(64)
+  status      WorkspaceStatus @default(ACTIVE)
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  auditEvents AuditEvent[]
+  settings    SystemSetting[]
+  users       InternalUser[]
+
+  @@index([status])
+  @@map("workspaces")
+}
+
+model InternalUser {
+  id              String             @id @db.Uuid
+  workspaceId     String             @map("workspace_id") @db.Uuid
+  oidcSubject     String             @map("oidc_subject") @db.VarChar(255)
+  email           String             @db.Citext
+  displayName     String?            @map("display_name") @db.VarChar(160)
+  status          InternalUserStatus @default(ACTIVE)
+  lastLoginAt     DateTime?          @map("last_login_at") @db.Timestamptz(3)
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  actorAuditEvents AuditEvent[]      @relation("audit_actor_user")
+  changedSettings SystemSetting[]    @relation("setting_changed_by_user")
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, oidcSubject])
+  @@unique([workspaceId, email])
+  @@index([workspaceId, status])
+  @@map("internal_users")
+}
+
+model AuditEvent {
+  id            String         @id @db.Uuid
+  workspaceId   String         @map("workspace_id") @db.Uuid
+  actorType     AuditActorType @map("actor_type")
+  actorUserId   String?        @map("actor_user_id") @db.Uuid
+  actorService  String?        @map("actor_service") @db.VarChar(100)
+  action        String         @db.VarChar(120)
+  resourceType  String         @map("resource_type") @db.VarChar(100)
+  resourceId    String?        @map("resource_id") @db.VarChar(255)
+  beforeHash    String?        @map("before_hash") @db.Char(64)
+  afterHash     String?        @map("after_hash") @db.Char(64)
+  correlationId String         @map("correlation_id") @db.Uuid
+  occurredAt    DateTime       @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  actorUser     InternalUser?  @relation("audit_actor_user", fields: [workspaceId, actorUserId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@index([workspaceId, occurredAt(sort: Desc)])
+  @@index([workspaceId, resourceType, resourceId])
+  @@map("audit_events")
+}
+
+model SystemSetting {
+  id               String           @id @db.Uuid
+  workspaceId      String           @map("workspace_id") @db.Uuid
+  key              String           @db.VarChar(120)
+  valueType        SettingValueType @map("value_type")
+  value            Json
+  version          Int
+  effectiveAt      DateTime         @map("effective_at") @db.Timestamptz(3)
+  changedByUserId  String?          @map("changed_by_user_id") @db.Uuid
+  changedByService String?          @map("changed_by_service") @db.VarChar(100)
+  changeReason     String           @map("change_reason") @db.VarChar(500)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  changedByUser    InternalUser?    @relation("setting_changed_by_user", fields: [workspaceId, changedByUserId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@unique([workspaceId, key, version])
+  @@index([workspaceId, key, effectiveAt(sort: Desc)])
+  @@map("system_settings")
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfigurationError, loadRuntimeConfig } from "./index.js";
+import { ConfigurationError, loadDatabaseConfig, loadRuntimeConfig } from "./index.js";
 
 describe("loadRuntimeConfig", () => {
   it("uses safe local fake-provider defaults", () => {
@@ -69,5 +69,26 @@ describe("loadRuntimeConfig", () => {
       APP_ENV: "production",
       PROVIDER_MODE: "live",
     });
+  });
+});
+
+describe("loadDatabaseConfig", () => {
+  it("requires a PostgreSQL URL without echoing malformed values", () => {
+    const privateValue = "private-database-value";
+
+    expect(() => loadDatabaseConfig({ DATABASE_URL: privateValue })).toThrow(ConfigurationError);
+
+    try {
+      loadDatabaseConfig({ DATABASE_URL: privateValue });
+    } catch (error) {
+      expect((error as Error).message).toContain("DATABASE_URL");
+      expect((error as Error).message).not.toContain(privateValue);
+    }
+  });
+
+  it("rejects non-PostgreSQL protocols", () => {
+    expect(() => loadDatabaseConfig({ DATABASE_URL: "https://database.example" })).toThrow(
+      /DATABASE_URL must use the postgres or postgresql protocol/,
+    );
   });
 });
