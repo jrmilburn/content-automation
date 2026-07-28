@@ -63,7 +63,28 @@ Configuration is parsed by `@studio-parallel/config`. Errors identify invalid fi
 defaults to `development` locally and should be set to the deployed commit or image identifier in
 staging and production.
 
-Provider credentials, authentication, database configuration and deployment wiring belong to their dedicated backlog issues. Do not add real secrets to examples, fixtures, browser code or logs.
+Database and provider credentials must remain in the deployment secret manager. Do not add real secrets to examples, fixtures, browser code or logs.
+
+### Google Workspace authentication
+
+The web app uses the pinned Auth.js v5 Google OIDC provider. Register
+`${PUBLIC_ORIGIN}/api/auth/callback/google` as the exact authorised redirect URI and supply
+`AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_SECRET` and `GOOGLE_WORKSPACE_DOMAIN` from the
+environment. Staging and production reject placeholder credentials, non-HTTPS origins and origins
+containing paths or credentials.
+
+Access is allowlist-first: an active `InternalUser` with the normalised Google Workspace email must
+already exist in an active workspace. Its nullable `oidcSubject` binds to Google's stable `sub` on
+the first approved sign-in; a changed subject is denied. The application does not persist or place
+Google access tokens, ID tokens, email addresses or display names in the session cookie.
+
+Sessions use encrypted JWT cookies with `Secure` outside local/test, `HttpOnly`, `SameSite=Lax` and
+an eight-hour default absolute lifetime. Auth.js re-encrypts a valid cookie when a session is
+resolved, while the original session start remains hard-bounded. Every session resolution checks
+the current user, workspace and `sessionVersion`; disabling a user increments that version and
+immediately invalidates older cookies. Rotating `AUTH_SECRET` invalidates every outstanding session.
+Server code must enter protected work through `requireAuthenticatedActor` and fetch entity data
+through a workspace-scoped repository or `requireWorkspaceResource`.
 
 ## Observability
 

@@ -9,6 +9,12 @@ This package owns the Prisma/PostgreSQL client, committed migrations and workspa
 - IDs are application-generated UUIDv7 values; provider identifiers remain strings in later entities.
 - PostgreSQL stores UTC `timestamptz(3)` values.
 - Audit records contain identifiers and hashes, never secret or content bodies.
+- OIDC access is allowlist-first: a nullable stable subject binds only after an approved email,
+  hosted-domain and active-workspace check. Provider tokens are not stored in this package.
+- Active session lookups require the internal user ID, workspace ID and current session version;
+  status changes increment the version so old sessions cannot revive after reactivation.
+- Resource helpers combine ID and workspace scope and return one not-found result for malformed,
+  missing and cross-workspace identifiers.
 - Production and staging Prisma commands require an explicit `DATABASE_URL`; the fallback URL is local-only.
 
 ## Commands

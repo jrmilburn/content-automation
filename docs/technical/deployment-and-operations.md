@@ -43,6 +43,13 @@ Typed startup validation separates:
 
 Critical runtime setting changes require admin confirmation, reason/audit and validation. Secret values are never stored as `SystemSetting`.
 
+The Google OAuth client for each environment registers only the exact
+`${PUBLIC_ORIGIN}/api/auth/callback/google` redirect. `PUBLIC_ORIGIN` is an HTTPS origin with no
+path in staging and production. `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` and a minimum 32-character
+`AUTH_SECRET` come from the environment's secret manager; rotating `AUTH_SECRET` is the emergency
+all-session revocation control. Internal users are provisioned into a workspace allowlist before
+sign-in, and deactivation increments their session version for immediate per-user revocation.
+
 ## Health and observability
 
 - `/health/live`: process/event-loop basic liveness, no external calls.
