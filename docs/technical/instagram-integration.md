@@ -23,6 +23,13 @@ Fallback: Instagram API with Facebook Login is only selected if a proof against 
 
 ## OAuth and credential lifecycle
 
+The deployed web application exposes
+`GET /api/integrations/instagram/callback` so Meta can verify the exact HTTPS Business Login
+redirect during development setup. Until issue #29 is delivered, this is a verification-only,
+non-cacheable readiness endpoint: it ignores all query parameters and does not validate state,
+exchange an authorisation code or persist credentials. Do not complete a real account
+authorisation against the placeholder endpoint because any returned code will be discarded.
+
 1. An authenticated internal user starts the connection.
 2. The server creates high-entropy `state`, PKCE verifier/challenge where supported, nonce, requested-scope hash and a short expiry; values are bound to user/workspace/session.
 3. The callback validates state, issuer/host, expiry and one-time use before code exchange.
