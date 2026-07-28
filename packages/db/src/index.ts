@@ -1,5 +1,21 @@
 export { createDatabaseClient, type DatabaseClient } from "./client.js";
 export {
+  claimBackgroundJob,
+  heartbeatBackgroundJob,
+  InjectedJobCrash,
+  JobLeaseLostError,
+  makeBackgroundJobRetryDue,
+  recordBackgroundJobStage,
+  recoverExpiredBackgroundJobLease,
+  runIdempotentJobHandler,
+  type JobClaimResult,
+  type JobCrashPoint,
+  type JobDatabaseExecutor,
+  type JobHandlerExecutionContext,
+  type JobHandlerRunResult,
+  type TransactionalJobResult,
+} from "./job-execution.js";
+export {
   enqueueBackgroundJob,
   enqueueBackgroundJobInTransaction,
   reconcileJobOutbox,

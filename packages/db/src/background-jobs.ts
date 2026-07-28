@@ -9,7 +9,7 @@ import {
 } from "@studio-parallel/observability";
 
 import type { Prisma, PrismaClient } from "./generated/prisma/client.js";
-import { createId } from "./id.js";
+import { createId, isUuidV7 } from "./id.js";
 import type { WorkspaceContext } from "./workspace-context.js";
 
 type QueueDatabase = PrismaClient;
@@ -19,7 +19,12 @@ export type EnqueueBackgroundJobInput = Readonly<{
   correlationId: string;
   handlerVersion: number;
   idempotencyKey: string;
+  inputVersion?: string;
+  maxAttempts?: number;
+  priority?: number;
   queueName: QueueName;
+  resourceId?: string;
+  resourceType?: string;
 }>;
 
 export type EnqueueBackgroundJobResult = Readonly<{
@@ -66,6 +71,8 @@ const defaultBatchSize = 20;
 const defaultFailureDelayMs = 5_000;
 const defaultLeaseDurationMs = 30_000;
 const safeIdempotencyKeyPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$/u;
+const safeInputVersionPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const safeResourceTypePattern = /^[a-z][a-z0-9_]{0,63}$/u;
 
 export async function enqueueBackgroundJob(
   database: QueueDatabase,
@@ -94,6 +101,10 @@ export async function enqueueBackgroundJobInTransaction(
   },
 ): Promise<EnqueueBackgroundJobResult> {
   const idempotencyKey = input.idempotencyKey.trim();
+  const maxAttempts = input.maxAttempts ?? 8;
+  const priority = input.priority ?? 0;
+  const resourceType = input.resourceType?.trim();
+  const inputVersion = input.inputVersion?.trim();
 
   if (!safeIdempotencyKeyPattern.test(idempotencyKey)) {
     throw new OperationalError({
@@ -127,6 +138,30 @@ export async function enqueueBackgroundJobInTransaction(
     });
   }
 
+  if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 100) {
+    throw validationError("JOB_MAX_ATTEMPTS_INVALID");
+  }
+
+  if (!Number.isSafeInteger(priority) || priority < -1_000 || priority > 1_000) {
+    throw validationError("JOB_PRIORITY_INVALID");
+  }
+
+  if ((resourceType === undefined) !== (input.resourceId === undefined)) {
+    throw validationError("JOB_RESOURCE_INVALID");
+  }
+
+  if (resourceType !== undefined && !safeResourceTypePattern.test(resourceType)) {
+    throw validationError("JOB_RESOURCE_INVALID");
+  }
+
+  if (input.resourceId !== undefined && !isUuidV7(input.resourceId)) {
+    throw validationError("JOB_RESOURCE_INVALID");
+  }
+
+  if (inputVersion !== undefined && !safeInputVersionPattern.test(inputVersion)) {
+    throw validationError("JOB_INPUT_VERSION_INVALID");
+  }
+
   try {
     const job = await transaction.backgroundJob.upsert({
       create: {
@@ -134,7 +169,12 @@ export async function enqueueBackgroundJobInTransaction(
         handlerVersion: input.handlerVersion,
         id: generatedIds.jobId,
         idempotencyKey,
+        inputVersion: inputVersion ?? null,
+        maxAttempts,
+        priority,
         queueName: input.queueName,
+        resourceId: input.resourceId ?? null,
+        resourceType: resourceType ?? null,
         workspaceId: context.workspaceId,
       },
       update: {},
@@ -147,6 +187,21 @@ export async function enqueueBackgroundJobInTransaction(
         },
       },
     });
+
+    if (
+      job.id !== generatedIds.jobId &&
+      (job.inputVersion !== (inputVersion ?? null) ||
+        job.maxAttempts !== maxAttempts ||
+        job.priority !== priority ||
+        job.resourceId !== (input.resourceId ?? null) ||
+        job.resourceType !== (resourceType ?? null))
+    ) {
+      throw new OperationalError({
+        code: "JOB_IDEMPOTENCY_CONFLICT",
+        errorClass: "conflict",
+        statusCode: 409,
+      });
+    }
 
     await transaction.jobOutbox.upsert({
       create: {
@@ -388,4 +443,8 @@ function validatePositiveInteger(value: number, code: string): void {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new OperationalError({ code, errorClass: "validation", statusCode: 400 });
   }
+}
+
+function validationError(code: string): OperationalError {
+  return new OperationalError({ code, errorClass: "validation", statusCode: 400 });
 }

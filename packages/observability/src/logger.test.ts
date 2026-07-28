@@ -18,6 +18,10 @@ describe("createJsonLogger", () => {
     };
     const attributes = {
       correlationId,
+      handlerVersion: 1,
+      jobState: "RETRY_SCHEDULED",
+      nextAction: "RETRY_AUTOMATIC",
+      queueName: "analysis.run.v1",
       stage: "dispatch",
       workspaceId: "workspace_03",
       jobId: "job_03",
@@ -50,8 +54,12 @@ describe("createJsonLogger", () => {
         event: "job.dispatched",
         stage: "dispatch",
         correlationId,
+        handlerVersion: 1,
+        jobState: "RETRY_SCHEDULED",
         workspaceId: "workspace_03",
         jobId: "job_03",
+        nextAction: "RETRY_AUTOMATIC",
+        queueName: "analysis.run.v1",
         route: "/commands/run",
       }),
     ]);

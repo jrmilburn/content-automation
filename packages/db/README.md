@@ -19,6 +19,10 @@ This package owns the Prisma/PostgreSQL client, committed migrations and workspa
 - Background commands create/deduplicate `BackgroundJob` and `JobOutbox` in the caller's Prisma
   transaction. Outbox leases expire and can be reclaimed; queue payloads contain identifiers and
   version metadata only.
+- `runIdempotentJobHandler` validates the workspace/versioned envelope, claims with optimistic
+  concurrency, records a unique leased `JobAttempt`, exposes heartbeat and safe-stage callbacks,
+  applies the bounded retry taxonomy, and commits the result plus successful job/attempt state in
+  one transaction. Lease reconciliation requeues abandoned work only after expiry.
 
 ## Commands
 

@@ -39,6 +39,29 @@ export {
   type QueuePublishResult,
   type VersionedQueue,
 } from "./background-jobs.js";
+export {
+  assertJobTransition,
+  backgroundJobStates,
+  canTransitionJob,
+  isSafeJobStage,
+  isTerminalJobState,
+  jobAttemptStates,
+  terminalBackgroundJobStates,
+  InvalidJobTransitionError,
+  type BackgroundJobState,
+  type JobAttemptState,
+} from "./job-lifecycle.js";
+export {
+  classifyJobHandlerError,
+  decideJobRetry,
+  jobFailureClasses,
+  JobHandlerFailure,
+  jobNextActions,
+  type JobFailure,
+  type JobFailureClass,
+  type JobNextAction,
+  type JobRetryDecision,
+} from "./job-retry.js";
 
 export type ServiceName = (typeof serviceNames)[number];
 

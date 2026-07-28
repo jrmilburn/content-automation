@@ -48,7 +48,7 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 
-Stages refine processing (for analysis: `loading_inputs`, `uploading_file`, `waiting_file`, `generating`, `validating`, `committing`, `cleaning_up`). State transitions use compare-and-swap/transactions so two workers cannot both publish.
+Stages refine processing (for analysis: `loading_inputs`, `uploading_file`, `waiting_file`, `generating`, `validating`, `committing`, `cleaning_up`). Stage names are safe, bounded identifiers rather than free-form content. State transitions use a versioned compare-and-swap and a unique attempt number, so concurrent deliveries produce one lease and one active attempt.
 
 ## Creation and dispatch
 
@@ -67,6 +67,9 @@ If `pg-boss` transactional send shares the same database transaction safely, the
 
 - Workers take bounded batches and hold a queue lease.
 - Long handlers heartbeat both queue and domain job at a configured interval shorter than lease expiry.
+- A heartbeat extends the domain lease and its attempt atomically. Reconciliation only requeues a
+  processing job after `lease_expires_at`; it never steals a healthy lease. An expired final attempt
+  moves to `failed_attention` rather than starting an unbounded paid call.
 - Global and per-provider semaphores cap Gemini/Meta calls; per-account locks stop overlapping syncs/token refreshes.
 - Asset probing uses a separate CPU pool/process constraint.
 - Shutdown stops leasing, lets short work finish within grace, persists checkpoint/heartbeat and returns unfinished leases.
@@ -81,7 +84,7 @@ Initial conservative defaults (configuration, tune with measured quotas):
 
 ## Retry classification
 
-Default bounded exponential delays with full jitter; provider `Retry-After`/usage guidance takes precedence.
+Default bounded exponential delays with full jitter; provider `Retry-After`/usage guidance takes precedence. A provider hint can lengthen a delay but cannot extend the job beyond its configured attempt cap or the 24-hour retry horizon.
 
 | Failure | Attempts/delay | Terminal behaviour |
 | --- | --- | --- |
@@ -94,7 +97,10 @@ Default bounded exponential delays with full jitter; provider `Retry-After`/usag
 | Database serialization/deadlock | Short retry up to 3 | attention/alert |
 | Cleanup/delete transient | Up to 10 over 48h | cleanup-debt alert; valid result remains |
 
-Handler-specific policy can be stricter. Store `error_class`, stable code, safe detail, provider request ID and next retry. Do not store tokens, signed URLs, request bodies, transcripts or videos in error records.
+Handler-specific policy can be stricter. The shared framework stores only an allowlisted error class,
+stable code and safe next action on the logical job and attempt. Provider-specific tables may retain
+an opaque request ID. Do not store exception messages, tokens, signed URLs, request bodies,
+transcripts or videos in error records or job logs.
 
 ## Idempotent handler pattern
 
@@ -107,6 +113,12 @@ Every handler:
 5. Commits the immutable result and terminal job state in one transaction.
 6. Enqueues follow-up work using outbox/dedup keys.
 7. Runs cleanup as a separate idempotent concern.
+
+`runIdempotentJobHandler` owns steps 1-5. A handler receives only its leased identifiers, abort
+signal, heartbeat and stage callbacks, and returns a `TransactionalJobResult`. Its `commit` callback
+runs in the same Prisma transaction that marks the job and attempt succeeded. Re-delivery after that
+commit returns `ALREADY_SUCCEEDED` without invoking the handler. A crash before commit leaves the
+lease for the reconciler; no partial result is visible.
 
 External side effects record provider object/request IDs immediately. If a worker crashes after upload but before completion, the next attempt reuses or deletes the known provider file rather than blindly uploading duplicates.
 

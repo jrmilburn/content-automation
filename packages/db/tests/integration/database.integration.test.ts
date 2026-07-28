@@ -26,6 +26,9 @@ beforeAll(() => {
 
 beforeEach(async () => {
   await database.auditEvent.deleteMany();
+  await database.jobAttempt.deleteMany();
+  await database.jobOutbox.deleteMany();
+  await database.backgroundJob.deleteMany();
   await database.systemSetting.deleteMany();
   await database.internalUser.deleteMany();
   await database.workspace.deleteMany({

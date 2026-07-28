@@ -37,12 +37,14 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   logEvents = [];
+  await database.jobAttempt.deleteMany();
   await database.jobOutbox.deleteMany();
   await database.backgroundJob.deleteMany();
 });
 
 afterAll(async () => {
   await queue.stop();
+  await database.jobAttempt.deleteMany();
   await database.jobOutbox.deleteMany();
   await database.backgroundJob.deleteMany();
   await database.$disconnect();
