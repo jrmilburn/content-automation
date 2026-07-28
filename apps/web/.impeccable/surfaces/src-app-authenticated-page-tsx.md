@@ -2,33 +2,38 @@
 version: 1
 slug: "src-app-authenticated-page-tsx"
 primary_target: "src/app/(authenticated)/page.tsx"
-related_targets: ["src/components/app-shell.tsx", "src/app/globals.css"]
+related_targets: ["src/components/dashboard.tsx", "src/app/globals.css"]
 ---
 
 ## Scope and mode
 
-Operate mode. Covers the authenticated global shell, public sign-in/denial entry, shared route
-boundaries and responsive navigation; feature-page contents remain outside issue #22.
+Operate mode. Covers the authenticated `/` operational summary introduced by issue #23; detailed
+account, post, trend, strategy and job manipulation remains in the owning routes.
 
 ## Audience, job and action
 
-Approved Studio Parallel strategists, founders and operators need to establish location, identify
-blocking attention and take one safe next action before moving into evidence or configuration detail.
+Approved Studio Parallel strategists, founders and operators need to identify the highest-impact
+prerequisite or manual action, understand which summaries are partial, and move to the owning screen
+without mistaking unavailable downstream data for zero.
 
 ## Content and constraints
 
-Use the approved screen-map destinations and canonical terminology. Server authorisation happens
-before shell rendering. Never expose unauthorised resource names, secrets or workspace data in access
-or error states. Keyboard flow, named non-colour statuses, polite async messages and a usable 390px
-composition are release requirements.
+Follow the approved dashboard hierarchy: integration health, manual attention, strategy/next videos,
+coverage/recent performance, then processing activity. The production state must truthfully lead with
+Connect Instagram account because downstream capabilities do not yet exist. Summary reads are
+workspace-scoped server-side. Each region owns its loading, stale, unavailable and error treatment;
+one failure cannot hide another region. Counts become links only when their owning filter contract
+exists. At 390px actions remain visible and the reading order is unchanged.
 
 ## Direction and memorable moment
 
-The Studio Work Ledger: a stable dark desktop frame around a warm paper work canvas, with one page
-command line and bounded state. At 390px the whole frame becomes a focused modal navigation sheet that
-returns focus to its opener.
+Extend The Studio Work Ledger as a priority dispatch register: one full-width prerequisite dispatch
+leads into a vertically ordered, ruled ledger whose sections expose freshness and availability in the
+same place every time. Large status words, narrow metadata columns and action rows create character
+without ornamental dashboard cards. The desktop rhythm compresses into one intact mobile reading
+column rather than hiding lower-priority evidence.
 
 ## Unresolved decision
 
-The “triage then act” primary job is inferred from repository contracts because structured user input
-was unavailable; direct user confirmation remains open.
+The exact first connected-account summary values remain intentionally unavailable until the owning
+Instagram, job, analysis and strategy capabilities establish their persisted contracts.

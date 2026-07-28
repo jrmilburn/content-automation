@@ -8,14 +8,26 @@ test("the authenticated shell is navigable and accessible at its active viewport
 
   expect(response?.ok()).toBe(true);
   await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
+  const setupAction = page.getByRole("link", { name: "Connect Instagram account" });
+  await expect(setupAction).toBeVisible();
+  await expect(setupAction).toHaveAttribute("href", "/accounts");
 
   const viewport = page.viewportSize();
   if (viewport && viewport.width <= 390) {
+    const pageWidth = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+    expect(pageWidth.scrollWidth).toBeLessThanOrEqual(pageWidth.clientWidth);
+
     const menuButton = page.getByRole("button", { name: "Menu" });
     await expect(menuButton).toBeVisible();
     const box = await menuButton.boundingBox();
     expect(box).not.toBeNull();
     expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(viewport.width);
+    const setupBox = await setupAction.boundingBox();
+    expect(setupBox).not.toBeNull();
+    expect((setupBox?.x ?? 0) + (setupBox?.width ?? 0)).toBeLessThanOrEqual(viewport.width);
 
     await menuButton.focus();
     await menuButton.press("Enter");

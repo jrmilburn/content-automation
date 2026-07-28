@@ -13,6 +13,10 @@ colors:
   warning-ochre: "#8b5a00"
   danger-red: "#a63a32"
   information-blue: "#365f8d"
+  warning-paper: "#fffbef"
+  success-paper: "#f3faf5"
+  danger-paper: "#fff8f6"
+  danger-rule: "#d7aaa5"
 typography:
   headline:
     fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
@@ -36,6 +40,29 @@ typography:
     fontWeight: 700
     lineHeight: 1.3
     letterSpacing: "0.1em"
+  metadata:
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.82rem"
+    fontWeight: 680
+    lineHeight: 1.5
+  sectionHeading:
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.15rem"
+    fontWeight: 680
+    lineHeight: 1.3
+    letterSpacing: "-0.02em"
+  dispatchHeading:
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "clamp(1.75rem, 4vw, 3rem)"
+    fontWeight: 650
+    lineHeight: 1.05
+    letterSpacing: "-0.04em"
+  metric:
+    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "clamp(1.75rem, 4vw, 2.75rem)"
+    fontWeight: 650
+    lineHeight: 1
+    letterSpacing: "-0.04em"
 rounded:
   compact: "4px"
   control: "8px"
@@ -187,6 +214,15 @@ the incumbent language.
 Primary destinations occupy the stable dark frame with large touch targets and a solid active-route
 marker. Secondary destinations are grouped separately but remain visible. Mobile navigation uses a
 modal sheet with a labelled close control, Escape support and focus returned to the opener.
+
+### Dashboard priority dispatch
+
+The dashboard is a dispatch register, not a card gallery. One full-width integration prerequisite
+leads into a fixed vertical ledger: manual attention, strategy, coverage and processing. Every region
+keeps its label, heading, freshness and availability in a stable place, so partial data and isolated
+errors do not reorder the user's mental model. Attention rows are ordered blocking, security, manual
+action, then information. At 390px the same ledger becomes one reading column; no region or action is
+removed.
 
 ## Do's and Don'ts
 

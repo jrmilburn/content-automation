@@ -48,6 +48,26 @@
           "#b6c7f5",
           "#edf1fd"
         ]
+      },
+      "warning-paper": {
+        "role": "secondary",
+        "displayName": "Warning Paper",
+        "canonical": "#fffbef"
+      },
+      "success-paper": {
+        "role": "secondary",
+        "displayName": "Success Paper",
+        "canonical": "#f3faf5"
+      },
+      "danger-paper": {
+        "role": "secondary",
+        "displayName": "Danger Paper",
+        "canonical": "#fff8f6"
+      },
+      "danger-rule": {
+        "role": "secondary",
+        "displayName": "Danger Rule",
+        "canonical": "#d7aaa5"
       }
     },
     "typographyMeta": {
@@ -58,6 +78,22 @@
       "body": {
         "displayName": "Operational Body",
         "purpose": "Explains state, safety and next action at a readable measure."
+      },
+      "metadata": {
+        "displayName": "Freshness Metadata",
+        "purpose": "Names check and update times without competing with status."
+      },
+      "sectionHeading": {
+        "displayName": "Ledger Section Heading",
+        "purpose": "Names one fixed dashboard region or attention row."
+      },
+      "dispatchHeading": {
+        "displayName": "Priority Dispatch Heading",
+        "purpose": "Leads the one highest-value dashboard prerequisite."
+      },
+      "metric": {
+        "displayName": "Measured Summary",
+        "purpose": "Displays an available safe aggregate with its explicit label."
       }
     },
     "shadows": [
@@ -119,6 +155,13 @@
       "description": "A bounded loading, empty, partial or error explanation with one next action.",
       "html": "<section class=\"ds-state\"><strong>Nothing here yet</strong><p>Complete the prerequisite to continue.</p></section>",
       "css": ".ds-state { border: 1px solid #d8d2c7; border-radius: 4px; padding: 24px; background: #fffdf8; color: #1c1b19; font: 400 1rem/1.6 Inter, ui-sans-serif, system-ui, sans-serif; } .ds-state strong { display: block; margin-bottom: 8px; font-weight: 650; } .ds-state p { margin: 0; color: #625d54; }"
+    },
+    {
+      "name": "Dashboard Priority Dispatch",
+      "kind": "section",
+      "description": "The one full-width prerequisite followed by a fixed ruled summary ledger.",
+      "html": "<section class=\"ds-dispatch\"><small>01 / Integration health</small><strong>Connect an Instagram account</strong><a href=\"#\">Connect Instagram account</a></section>",
+      "css": ".ds-dispatch { border: 1px solid #d8d2c7; border-left: 8px solid #8b5a00; padding: 32px; background: #fffbef; color: #1c1b19; } .ds-dispatch strong { display: block; margin: 16px 0; font: 650 2rem/1.05 Inter, ui-sans-serif, system-ui, sans-serif; }"
     }
   ],
   "narrative": {

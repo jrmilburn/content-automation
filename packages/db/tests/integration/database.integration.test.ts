@@ -11,6 +11,7 @@ import {
   requireWorkspaceResource,
   WorkspaceResourceNotFoundError,
 } from "../../src/authorisation.js";
+import { loadWorkspaceDashboardFoundation } from "../../src/dashboard.js";
 import { isUuidV7 } from "../../src/id.js";
 import { createWorkspaceRepositories, withWorkspaceTransaction } from "../../src/repositories.js";
 import { developmentWorkspace } from "../../src/seed-data.js";
@@ -76,6 +77,39 @@ describe("database foundation", () => {
       id: user.id,
       workspaceId: secondWorkspace.id,
     });
+  });
+
+  it("loads dashboard foundations only through the requested active workspace scope", async () => {
+    const secondWorkspace = await database.workspace.create({
+      data: {
+        id: "01900000-0000-7000-8000-000000000003",
+        name: "Dashboard Isolation Workspace",
+        slug: "dashboard-isolation",
+      },
+    });
+    const checkedAt = new Date("2026-07-28T02:00:00.000Z");
+
+    await expect(
+      loadWorkspaceDashboardFoundation(
+        database,
+        createWorkspaceContext(secondWorkspace.id),
+        checkedAt,
+      ),
+    ).resolves.toEqual({
+      checkedAt,
+      workspaceId: secondWorkspace.id,
+      workspaceUpdatedAt: secondWorkspace.updatedAt,
+    });
+    await database.workspace.update({
+      data: { status: "DISABLED" },
+      where: { id: secondWorkspace.id },
+    });
+    await expect(
+      loadWorkspaceDashboardFoundation(database, createWorkspaceContext(secondWorkspace.id)),
+    ).resolves.toBeNull();
+    await expect(
+      loadWorkspaceDashboardFoundation(database, createWorkspaceContext(developmentWorkspace.id)),
+    ).resolves.toMatchObject({ workspaceId: developmentWorkspace.id });
   });
 
   it("enforces normalized identity uniqueness within a workspace", async () => {
