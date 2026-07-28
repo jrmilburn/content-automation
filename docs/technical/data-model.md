@@ -32,6 +32,8 @@ erDiagram
   StrategyGeneration ||--o{ ContentRecommendation : contains
   ContentRecommendation ||--o{ RecommendationEvidence : supported_by
   Workspace ||--o{ SystemSetting : configures
+  Workspace ||--o{ BackgroundJob : owns
+  BackgroundJob ||--o{ JobAttempt : records
 ```
 
 ## Entity catalogue
@@ -119,6 +121,23 @@ erDiagram
 - **Indexes:** state/next attempt, post/time, heartbeat, correlation ID.
 - **Retention/sensitivity:** operational metadata retained for audit (recommended 180 days, aggregate thereafter); no raw prompt/token/video.
 
+### BackgroundJob
+
+- **Purpose/ownership:** workspace-owned logical execution record shared by every asynchronous handler; queue rows remain delivery mechanics.
+- **Fields:** queue and handler version, idempotency/correlation keys, logical state and safe stage, priority, optimistic version, attempt counters, optional resource/input version, queue/start/heartbeat/lease/retry/completion times, and allowlisted error class/code/next action.
+- **Relationships:** owns one outbox record and ordered `JobAttempt` records; handler-specific jobs or results refer to its stable ID.
+- **Constraints/idempotency:** unique `(workspace_id, queue_name, handler_version, idempotency_key)`; reusing that key with different resource, input version, attempt cap or priority is a conflict. State, lease, timing, stage, resource and error shapes are database-checked.
+- **Indexes:** workspace/state/due time/priority, state/lease expiry and correlation ID.
+- **Retention/sensitivity:** identifiers and safe operational metadata only; no provider payload, prompt, transcript, media, token, URL or raw exception.
+
+### JobAttempt
+
+- **Purpose/ownership:** immutable-numbered execution history for one claimed `BackgroundJob` lease.
+- **Fields:** attempt and handler version, state/stage, unique lease and correlation IDs, start/heartbeat/completion/next-attempt times, and allowlisted error class/code/next action.
+- **Constraints/idempotency:** unique `(background_job_id, attempt_number)` and lease ID; ownership is enforced by a composite workspace/job foreign key. Active, retry and terminal timing/error shapes are database-checked.
+- **Indexes:** workspace/state/start time and job/completion time.
+- **Retention/sensitivity:** follows the logical job; contains no handler inputs, result bodies or exception text.
+
 ### PostAnalysis
 
 - **Purpose/ownership:** one immutable, validated creative analysis of one video.
@@ -185,7 +204,7 @@ erDiagram
 ## Additional supporting entities
 
 - `AuditEvent`: actor/service, action, resource, before/after hashes, time and correlation ID for access-sensitive mutations.
-- `JobDelivery` or queue-native metadata: physical attempts separate from logical `AnalysisJob`/strategy/sync records.
+- `JobOutbox` and queue-native metadata: durable dispatch intent and physical delivery remain separate from `BackgroundJob` and `JobAttempt` execution state.
 - `DeletionRequest`: scope, requested/approved/executed actor/times, dependency plan and outcome.
 - `StatisticPostMembership`: normalised list of posts/snapshots/analyses contributing to a statistic when JSON arrays would become unwieldy.
 - `PromptVersion`: immutable prompt text or secure artifact hash, analysis/strategy kind, evaluation status and compatibility.

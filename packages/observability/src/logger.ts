@@ -16,12 +16,16 @@ export type LogAttributes = Readonly<{
   errorCode?: string;
   expected?: boolean;
   healthKind?: "live" | "ready";
+  handlerVersion?: number;
   jobId?: string;
+  jobState?: string;
   method?: string;
   metric?: string;
+  nextAction?: string;
   postId?: string;
   providerRequestId?: string;
   providerStatus?: number;
+  queueName?: string;
   retryable?: boolean;
   route?: string;
   signal?: string;
@@ -120,7 +124,16 @@ function pickAllowedAttributes(
   const providerRequestId = normaliseSafeResourceId(attributes.providerRequestId);
   if (providerRequestId) output.providerRequestId = providerRequestId;
 
-  for (const key of ["errorClass", "errorCode", "metric", "signal", "unit"] as const) {
+  for (const key of [
+    "errorClass",
+    "errorCode",
+    "jobState",
+    "metric",
+    "nextAction",
+    "queueName",
+    "signal",
+    "unit",
+  ] as const) {
     const value = attributes[key];
     if (value) output[key] = normaliseToken(value, "unknown");
   }
@@ -134,7 +147,14 @@ function pickAllowedAttributes(
     if (path && safeRoutePattern.test(path)) output.route = path;
   }
 
-  for (const key of ["attempt", "durationMs", "providerStatus", "statusCode", "value"] as const) {
+  for (const key of [
+    "attempt",
+    "durationMs",
+    "handlerVersion",
+    "providerStatus",
+    "statusCode",
+    "value",
+  ] as const) {
     const value = attributes[key];
     if (typeof value === "number" && Number.isFinite(value) && value >= 0) output[key] = value;
   }

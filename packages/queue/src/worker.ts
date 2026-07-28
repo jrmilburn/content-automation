@@ -9,6 +9,12 @@ import { OperationalError } from "@studio-parallel/observability";
 
 import { queueError, type QueueStopOptions, type WorkerQueueClient } from "./queue.js";
 
+export {
+  createProviderConcurrencyGate,
+  type ConcurrencyPermit,
+  type ProviderConcurrencyGate,
+} from "./concurrency.js";
+
 export type QueueHandlerRegistry = Readonly<{
   registrations: readonly QueueHandlerRegistration[];
   supports(queue: VersionedQueue): boolean;

@@ -22,3 +22,8 @@ contracts for deterministic unit tests.
 Queue names are physicalised as `<domain-name>.v<handler-version>`. A delivery uses the domain job
 UUID as both its pg-boss job ID and singleton key, so replay after a crash returns the existing
 delivery instead of creating a second logical job.
+
+`createJobConcurrencyGate` supplies the worker-side global and per-provider semaphore hook used by
+the shared handler framework. A permit consumes both budgets, releases idempotently, removes
+aborted waiters, and allows work for another provider to proceed when the head provider is at its
+own limit.
