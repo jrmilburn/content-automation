@@ -180,6 +180,16 @@ const authConfigSchema = z
 
 export type AuthConfig = Readonly<z.infer<typeof authConfigSchema>>;
 
+const metaWebhookConfigSchema = z.object({
+  META_WEBHOOK_VERIFY_TOKEN: z
+    .string()
+    .min(32)
+    .max(128)
+    .regex(/^[A-Za-z0-9_-]+$/u, "must be a URL-safe secret"),
+});
+
+export type MetaWebhookConfig = Readonly<z.infer<typeof metaWebhookConfigSchema>>;
+
 export class ConfigurationError extends Error {
   readonly fields: readonly string[];
 
@@ -226,6 +236,18 @@ export function loadAuthConfig(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): AuthConfig {
   const result = authConfigSchema.safeParse(environment);
+
+  if (!result.success) {
+    throw new ConfigurationError(result.error.issues);
+  }
+
+  return Object.freeze(result.data);
+}
+
+export function loadMetaWebhookConfig(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): MetaWebhookConfig {
+  const result = metaWebhookConfigSchema.safeParse(environment);
 
   if (!result.success) {
     throw new ConfigurationError(result.error.issues);

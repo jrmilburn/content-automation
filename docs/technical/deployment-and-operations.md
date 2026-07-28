@@ -50,6 +50,14 @@ path in staging and production. `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` and a min
 all-session revocation control. Internal users are provisioned into a workspace allowlist before
 sign-in, and deactivation increments their session version for immediate per-user revocation.
 
+Meta webhook verification uses a distinct 32–128 character URL-safe
+`META_WEBHOOK_VERIFY_TOKEN` generated with a cryptographically secure secret generator. Store it in
+the environment's secret manager and enter the identical value in Meta's **Verify Token** field.
+The callback URL is exactly `${PUBLIC_ORIGIN}/api/integrations/instagram/webhook`; it is separate
+from the Instagram Business Login redirect. Rotate the value in the deployment and Meta dashboard
+together. Never commit it, place it in Vercel build settings as plain configuration, or include it
+in support output.
+
 ## Health and observability
 
 - `/health/live`: process/event-loop basic liveness, no external calls.

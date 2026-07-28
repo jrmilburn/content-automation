@@ -115,6 +115,21 @@ The first internal release may guarantee manual sync plus daily scheduling and o
 
 Use polling for post discovery and metric snapshots. Meta webhooks are useful for supported interaction events, but do not replace scheduled retrieval of changing performance insights. V1 does not request messaging/comment scopes merely to obtain webhooks. A later `media`-event trigger may enqueue an earlier poll if the selected API version documents it, with polling/reconciliation remaining authoritative.
 
+Meta configuration uses two distinct endpoints:
+
+- Instagram Business Login redirects to
+  `${PUBLIC_ORIGIN}/api/integrations/instagram/callback`.
+- Webhook verification calls `${PUBLIC_ORIGIN}/api/integrations/instagram/webhook` with
+  `hub.mode`, `hub.verify_token` and `hub.challenge` query parameters.
+
+The webhook verify token is a deployment-managed, URL-safe secret of 32–128 characters stored as
+`META_WEBHOOK_VERIFY_TOKEN`; the identical value is entered in Meta's **Verify Token** field. The
+server returns only a valid numeric challenge after a constant-time token comparison. It returns
+empty, non-cacheable failures for mismatches or missing configuration and never logs request query
+values. Event-delivery `POST` requests are refused until a selected event use case implements raw
+body `X-Hub-Signature-256` validation, replay/deduplication controls and bounded processing. Do not
+subscribe to webhook fields before that handler is delivered.
+
 ## Rate limiting and provider errors
 
 Do not encode one universal calls-per-hour number. Meta applies limits by app, account/use case and endpoint, and communicates usage through response headers such as `x-app-usage`/business-use-case usage plus 429/error bodies.
