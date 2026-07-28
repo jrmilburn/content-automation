@@ -6,6 +6,7 @@ describe("loadRuntimeConfig", () => {
   it("uses safe local fake-provider defaults", () => {
     expect(loadRuntimeConfig({})).toMatchObject({
       APP_ENV: "local",
+      APP_RELEASE: "development",
       PROVIDER_MODE: "fake",
       PUBLIC_ORIGIN: "http://localhost:3000",
     });
@@ -62,13 +63,23 @@ describe("loadRuntimeConfig", () => {
     expect(
       loadRuntimeConfig({
         APP_ENV: "production",
+        APP_RELEASE: "git-a1b2c3d",
         PROVIDER_MODE: "live",
         PUBLIC_ORIGIN: "https://content.studioparallel.example",
       }),
     ).toMatchObject({
       APP_ENV: "production",
+      APP_RELEASE: "git-a1b2c3d",
       PROVIDER_MODE: "live",
     });
+  });
+
+  it("rejects release identifiers that could inject structured content", () => {
+    expect(() =>
+      loadRuntimeConfig({
+        APP_RELEASE: 'release"},"token":"canary',
+      }),
+    ).toThrow(/APP_RELEASE must be a safe release identifier/);
   });
 });
 
