@@ -394,6 +394,22 @@ describe("authorised manual retry", () => {
     });
     await expect(database.auditEvent.count()).resolves.toBe(auditsBefore);
   });
+
+  it("refuses manual retry while a consistency check is unresolved", async () => {
+    const envelope = await failedJob("reconciliation-required");
+    await database.backgroundJob.update({
+      data: {
+        reconciliationCode: "TERMINAL_RESULT_CONFLICT",
+        reconciliationRequiredAt: new Date("2026-07-28T04:22:00.000Z"),
+      },
+      where: { id: envelope.domainJobId },
+    });
+
+    await expect(retry(envelope)).resolves.toEqual({
+      outcome: "REFUSED",
+      reasonCode: "JOB_RECONCILIATION_REQUIRED",
+    });
+  });
 });
 
 describe("background job reconciliation", () => {

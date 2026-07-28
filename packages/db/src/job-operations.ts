@@ -55,6 +55,7 @@ export type ManualRetryJob = Readonly<{
   inputVersion: string | null;
   maxAttempts: number;
   queueName: string;
+  reconciliationCode: string | null;
   resourceId: string | null;
   resourceType: string | null;
   workspaceId: string;
@@ -225,6 +226,13 @@ export async function retryBackgroundJob(options: ManualRetryOptions): Promise<J
       return auditAndReturn(transaction, guard.actor, prepared, "job.retry", {
         outcome: "REFUSED",
         reasonCode: "JOB_NOT_FAILED_ATTENTION",
+      });
+    }
+
+    if (job.reconciliationRequiredAt || job.reconciliationCode) {
+      return auditAndReturn(transaction, guard.actor, prepared, "job.retry", {
+        outcome: "REFUSED",
+        reasonCode: "JOB_RECONCILIATION_REQUIRED",
       });
     }
 
@@ -457,6 +465,7 @@ function toManualRetryJob(job: ManualRetryJob): ManualRetryJob {
     inputVersion: job.inputVersion,
     maxAttempts: job.maxAttempts,
     queueName: job.queueName,
+    reconciliationCode: job.reconciliationCode,
     resourceId: job.resourceId,
     resourceType: job.resourceType,
     workspaceId: job.workspaceId,

@@ -31,6 +31,18 @@ export {
   type ManualRetryPrerequisiteResult,
 } from "./job-operations.js";
 export {
+  loadJobDiagnosticDetail,
+  loadJobDiagnosticList,
+  type JobActionEligibility,
+  type JobActionUnavailableReason,
+  type JobDiagnosticAttempt,
+  type JobDiagnosticDetail,
+  type JobDiagnosticFilters,
+  type JobDiagnosticList,
+  type JobDiagnosticListItem,
+  type JobUsageSummary,
+} from "./job-diagnostics.js";
+export {
   reconcileBackgroundJobs,
   type CleanupDebtOutcome,
   type JobCleanupDebtHook,
