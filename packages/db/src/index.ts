@@ -1,5 +1,9 @@
 export { createDatabaseClient, type DatabaseClient } from "./client.js";
 export {
+  loadWorkspaceDashboardFoundation,
+  type WorkspaceDashboardFoundation,
+} from "./dashboard.js";
+export {
   authoriseOidcIdentity,
   findActiveSessionPrincipal,
   parseSessionPrincipal,

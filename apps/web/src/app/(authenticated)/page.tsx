@@ -1,14 +1,8 @@
-import { SectionPlaceholder } from "../../components/section-placeholder";
+import { Dashboard } from "../../components/dashboard";
+import { loadDashboardSummary } from "../../lib/server/dashboard-summary";
 
-export default function DashboardPage() {
-  return (
-    <SectionPlaceholder
-      actionHref="/accounts"
-      actionLabel="Open Instagram accounts"
-      description="See workspace readiness and the safest next step."
-      emptyDescription="Connect an approved professional account before posts, trends and strategy can populate."
-      emptyTitle="No Instagram account is connected"
-      title="Dashboard"
-    />
-  );
+export default async function DashboardPage() {
+  const summary = await loadDashboardSummary();
+
+  return <Dashboard summary={summary} />;
 }

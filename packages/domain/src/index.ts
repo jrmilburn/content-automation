@@ -9,6 +9,22 @@ export {
   type GoogleOidcIdentity,
   type OidcDenialReason,
 } from "./auth.js";
+export {
+  createAvailableDashboardSection,
+  dashboardAttentionPriorities,
+  orderDashboardAttentionItems,
+  type DashboardAction,
+  type DashboardAttentionItem,
+  type DashboardAttentionPriority,
+  type DashboardAttentionSummary,
+  type DashboardCoverageSummary,
+  type DashboardIntegrationSummary,
+  type DashboardMetric,
+  type DashboardProcessingSummary,
+  type DashboardSection,
+  type DashboardStrategySummary,
+  type DashboardSummary,
+} from "./dashboard.js";
 
 export type ServiceName = (typeof serviceNames)[number];
 
