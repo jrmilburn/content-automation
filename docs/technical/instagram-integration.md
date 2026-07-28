@@ -11,6 +11,8 @@ Prefer **Instagram API with Instagram Login** (`graph.instagram.com`) because it
 
 Do not request publish, message or comment-management scopes. Meta’s [official Instagram API collection](https://www.postman.com/meta/instagram/collection/6yqw8pt/instagram-api) and [Insights guide](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api?entity=request-23987686-26e7999c-fc7e-44c8-8f71-ab2de8d35c32) are the implementation baseline.
 
+The repository pins this path to Graph API `v25.0`. The sanitised, account-specific proof procedure and current evidence status are recorded in [Meta contract proof](meta-contract-proof.md). A version change is material: update the capability map and rerun that proof before dependent implementation proceeds.
+
 Fallback: Instagram API with Facebook Login is only selected if a proof against the target account shows the Instagram Login path cannot return required insights. It requires a linked Page and a different token/permission chain (`instagram_basic`, `instagram_manage_insights`, `pages_read_engagement`, with additional permissions in some Business Manager arrangements). The two paths must not be mixed in one credential.
 
 ## Account and access eligibility

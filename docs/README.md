@@ -16,6 +16,7 @@ Repository contributions follow the one-issue, one-dedicated-branch, one-pull-re
 - [Data model](technical/data-model.md)
 - [Current API research and assumptions](technical/api-research.md)
 - [Instagram integration](technical/instagram-integration.md)
+- [Meta contract proof](technical/meta-contract-proof.md)
 - [Video ingestion](technical/video-ingestion.md)
 - [AI analysis contract](technical/ai-analysis-contract.md)
 - [Analytics and metrics](technical/analytics-and-metrics.md)
