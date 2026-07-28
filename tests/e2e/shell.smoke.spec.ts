@@ -89,3 +89,50 @@ test("an expired session redirects before workspace content renders", async ({ c
   await expect(page.getByText(/No workspace data was shown/)).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "Operations" })).toHaveCount(0);
 });
+
+test("operations filters and safe job detail remain accessible at the active viewport", async ({
+  page,
+}) => {
+  const response = await page.goto("/operations");
+  expect(response?.ok()).toBe(true);
+  await expect(page.getByRole("heading", { level: 1, name: "Operations" })).toBeVisible();
+  const ledger = page.locator(".job-ledger");
+  const statuses = ledger.locator(".status-badge");
+  await expect(statuses.getByText("Queued", { exact: true })).toBeVisible();
+  await expect(statuses.getByText("Processing", { exact: true })).toBeVisible();
+  await expect(statuses.getByText("Retry scheduled", { exact: true })).toBeVisible();
+  await expect(statuses.getByText("Needs attention", { exact: true })).toBeVisible();
+  await expect(statuses.getByText("Completed", { exact: true })).toBeVisible();
+  await expect(statuses.getByText("Cancelled", { exact: true })).toBeVisible();
+
+  await page.getByLabel("State").selectOption("FAILED_ATTENTION");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page.getByRole("heading", { name: "Current jobs" })).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("state")).toBe("FAILED_ATTENTION");
+  await expect(page.getByRole("link", { name: "View detail" })).toHaveCount(1);
+
+  const detailLink = page.getByRole("link", { name: "View detail" });
+  await detailLink.focus();
+  await detailLink.press("Enter");
+  await expect(page).toHaveURL(/\/operations\/jobs\/019a0000-0000-7000-8000-000000000101$/u);
+  await expect(page.getByRole("heading", { level: 1, name: "Job detail" })).toBeVisible();
+  await expect(page.getByText("Needs attention", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry once" })).toBeVisible();
+  await expect(page.getByText(/Existing completed data remains safe/)).toBeVisible();
+  await expect(page.getByText(/No provider usage was recorded/)).toBeVisible();
+
+  const viewport = page.viewportSize();
+  if (viewport && viewport.width <= 390) {
+    const pageWidth = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+    expect(pageWidth.scrollWidth).toBeLessThanOrEqual(pageWidth.clientWidth);
+    const retryBox = await page.getByRole("button", { name: "Retry once" }).boundingBox();
+    expect(retryBox).not.toBeNull();
+    expect((retryBox?.x ?? 0) + (retryBox?.width ?? 0)).toBeLessThanOrEqual(viewport.width);
+  }
+
+  const accessibilityScan = await new AxeBuilder({ page }).analyze();
+  expect(accessibilityScan.violations).toEqual([]);
+});

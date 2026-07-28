@@ -5,12 +5,14 @@ import { useRef } from "react";
 export function ConfirmationDialog({
   confirmLabel,
   description,
+  disabled = false,
   onConfirm,
   title,
   triggerLabel,
 }: Readonly<{
   confirmLabel: string;
   description: string;
+  disabled?: boolean;
   onConfirm: () => void;
   title: string;
   triggerLabel: string;
@@ -25,6 +27,7 @@ export function ConfirmationDialog({
   }
 
   function openDialog() {
+    if (disabled) return;
     dialogRef.current?.showModal();
     cancelRef.current?.focus();
   }
@@ -33,6 +36,7 @@ export function ConfirmationDialog({
     <>
       <button
         className="button button--secondary"
+        disabled={disabled}
         onClick={openDialog}
         ref={triggerRef}
         type="button"
