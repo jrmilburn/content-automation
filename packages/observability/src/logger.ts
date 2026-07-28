@@ -22,13 +22,17 @@ export type LogAttributes = Readonly<{
   method?: string;
   metric?: string;
   nextAction?: string;
+  operation?: string;
+  outcome?: string;
   postId?: string;
   providerRequestId?: string;
   providerStatus?: number;
   queueName?: string;
+  reasonCode?: string;
   retryable?: boolean;
   route?: string;
   signal?: string;
+  source?: string;
   stage: string;
   statusCode?: number;
   unit?: string;
@@ -130,8 +134,12 @@ function pickAllowedAttributes(
     "jobState",
     "metric",
     "nextAction",
+    "operation",
+    "outcome",
     "queueName",
+    "reasonCode",
     "signal",
+    "source",
     "unit",
   ] as const) {
     const value = attributes[key];

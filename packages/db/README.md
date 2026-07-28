@@ -23,6 +23,13 @@ This package owns the Prisma/PostgreSQL client, committed migrations and workspa
   concurrency, records a unique leased `JobAttempt`, exposes heartbeat and safe-stage callbacks,
   applies the bounded retry taxonomy, and commits the result plus successful job/attempt state in
   one transaction. Lease reconciliation requeues abandoned work only after expiry.
+- Admin job cancellation and retry commands are workspace/session-version checked, per-actor
+  rate-limited and atomically audited with safe reason/outcome codes. Processing cancellation is
+  cooperative at allowlisted pre-provider stages; manual retry preserves the logical signature and
+  resets one delivery for one additional bounded attempt.
+- `reconcileBackgroundJobs` performs bounded, idempotent due-retry, missing-outbox, expired-lease
+  and exact-result repairs. Ambiguous result state is persisted as an operations finding, and
+  handler verticals can register exact-result inspectors and cleanup-debt hooks.
 
 ## Commands
 

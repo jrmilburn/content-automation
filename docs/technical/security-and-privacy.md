@@ -14,7 +14,7 @@ One workspace and a small user group reduce product complexity, not the need for
 - State-changing routes/actions require CSRF/origin protection as appropriate to the framework.
 - Every command/query derives actor/workspace from the server session and loads resources by `(workspace_id, id)`. Never trust a client `workspace_id` or post/account relationship.
 - Non-owned and nonexistent crafted IDs return the same non-enumerating result. Negative authorisation tests cover every resource/file/job route.
-- V1 roles are only `member` and `admin` if needed: deletion, credential connection/settings and user management are admin actions; no granular permission builder.
+- V1 roles are only `member` and `admin`: job retry/cancellation, deletion, credential connection/settings and user management are admin actions; no granular permission builder.
 - Worker/service credentials cannot establish an interactive user session and are restricted by deployment identity/network/database role.
 
 ## Meta credentials and OAuth
@@ -72,6 +72,8 @@ Use resource UUIDs, correlation/provider request IDs, stage, safe error class/st
 ## API abuse and application protections
 
 - Authenticated rate limits per user/workspace for upload intents, manual sync, analyse/reanalyse, strategy generation and retries.
+- Manual job retry and cancellation use bounded per-admin/workspace audit windows before loading the
+  target job, so crafted missing/cross-workspace IDs cannot bypass limits or reveal ownership.
 - One active logical operation per idempotency signature; cooldowns/daily budgets protect paid/provider actions.
 - Strict JSON/form body schemas, length/range limits and safe pagination caps.
 - Same-origin/CORS allowlist, security headers (CSP, HSTS, frame-ancestors, referrer policy, nosniff) and dependency-safe rendering.

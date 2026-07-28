@@ -11,6 +11,8 @@ import type { JsonLogger } from "./logger.js";
 export const metricNames = [
   "error.count",
   "health.check.count",
+  "job.operation.count",
+  "job.reconciliation.count",
   "operation.duration_ms",
   "web.request.count",
   "worker.event.count",

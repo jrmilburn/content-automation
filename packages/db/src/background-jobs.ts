@@ -283,6 +283,7 @@ async function leasePendingOutbox(
       SELECT "id"
       FROM "job_outbox"
       WHERE "dispatched_at" IS NULL
+        AND "cancelled_at" IS NULL
         AND "next_attempt_at" <= ${now}
         AND ("lease_expires_at" IS NULL OR "lease_expires_at" <= ${now})
       ORDER BY "created_at", "id"
@@ -352,6 +353,7 @@ async function dispatchOutboxRecord(
         },
         where: {
           dispatchedAt: null,
+          cancelledAt: null,
           id: record.id,
           leaseId: record.leaseId,
         },
@@ -393,6 +395,7 @@ async function markOutboxDispatched(
         },
         where: {
           dispatchedAt: null,
+          cancelledAt: null,
           id: record.id,
           leaseId: record.leaseId,
         },

@@ -22,6 +22,13 @@ enum InternalUserStatus {
   @@map("internal_user_status")
 }
 
+enum InternalUserRole {
+  MEMBER
+  ADMIN
+
+  @@map("internal_user_role")
+}
+
 enum AuditActorType {
   USER
   SERVICE
@@ -42,6 +49,7 @@ enum SettingValueType {
 enum JobDispatchStatus {
   PENDING
   DISPATCHED
+  CANCELLED
 
   @@map("job_dispatch_status")
 }
@@ -63,6 +71,7 @@ enum JobAttemptState {
   RETRY_SCHEDULED
   FAILED_ATTENTION
   LEASE_EXPIRED
+  CANCELLED
 
   @@map("job_attempt_state")
 }
@@ -87,37 +96,41 @@ model Workspace {
 }
 
 model BackgroundJob {
-  id             String             @id @db.Uuid
-  workspaceId    String             @map("workspace_id") @db.Uuid
-  queueName      String             @map("queue_name") @db.VarChar(80)
-  handlerVersion Int                @map("handler_version")
-  idempotencyKey String             @map("idempotency_key") @db.VarChar(255)
-  correlationId  String             @map("correlation_id") @db.Uuid
-  dispatchStatus JobDispatchStatus  @default(PENDING) @map("dispatch_status")
-  state          BackgroundJobState @default(QUEUED)
-  stage          String             @default("queued") @db.VarChar(64)
-  priority       Int                @default(0)
-  attemptCount   Int                @default(0) @map("attempt_count")
-  maxAttempts    Int                @default(8) @map("max_attempts")
-  version        Int                @default(1)
-  resourceType   String?            @map("resource_type") @db.VarChar(64)
-  resourceId     String?            @map("resource_id") @db.Uuid
-  inputVersion   String?            @map("input_version") @db.VarChar(128)
-  queuedAt       DateTime           @default(now()) @map("queued_at") @db.Timestamptz(3)
-  startedAt      DateTime?          @map("started_at") @db.Timestamptz(3)
-  heartbeatAt    DateTime?          @map("heartbeat_at") @db.Timestamptz(3)
-  leaseId        String?            @map("lease_id") @db.Uuid
-  leaseExpiresAt DateTime?          @map("lease_expires_at") @db.Timestamptz(3)
-  nextAttemptAt  DateTime?          @map("next_attempt_at") @db.Timestamptz(3)
-  completedAt    DateTime?          @map("completed_at") @db.Timestamptz(3)
-  lastErrorClass String?            @map("last_error_class") @db.VarChar(32)
-  lastErrorCode  String?            @map("last_error_code") @db.VarChar(64)
-  nextAction     String?            @map("next_action") @db.VarChar(32)
-  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
-  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
-  outbox         JobOutbox?
-  attempts       JobAttempt[]
+  id                       String             @id @db.Uuid
+  workspaceId              String             @map("workspace_id") @db.Uuid
+  queueName                String             @map("queue_name") @db.VarChar(80)
+  handlerVersion           Int                @map("handler_version")
+  idempotencyKey           String             @map("idempotency_key") @db.VarChar(255)
+  correlationId            String             @map("correlation_id") @db.Uuid
+  dispatchStatus           JobDispatchStatus  @default(PENDING) @map("dispatch_status")
+  state                    BackgroundJobState @default(QUEUED)
+  stage                    String             @default("queued") @db.VarChar(64)
+  priority                 Int                @default(0)
+  attemptCount             Int                @default(0) @map("attempt_count")
+  maxAttempts              Int                @default(8) @map("max_attempts")
+  version                  Int                @default(1)
+  resourceType             String?            @map("resource_type") @db.VarChar(64)
+  resourceId               String?            @map("resource_id") @db.Uuid
+  inputVersion             String?            @map("input_version") @db.VarChar(128)
+  queuedAt                 DateTime           @default(now()) @map("queued_at") @db.Timestamptz(3)
+  startedAt                DateTime?          @map("started_at") @db.Timestamptz(3)
+  heartbeatAt              DateTime?          @map("heartbeat_at") @db.Timestamptz(3)
+  leaseId                  String?            @map("lease_id") @db.Uuid
+  leaseExpiresAt           DateTime?          @map("lease_expires_at") @db.Timestamptz(3)
+  nextAttemptAt            DateTime?          @map("next_attempt_at") @db.Timestamptz(3)
+  completedAt              DateTime?          @map("completed_at") @db.Timestamptz(3)
+  lastErrorClass           String?            @map("last_error_class") @db.VarChar(32)
+  lastErrorCode            String?            @map("last_error_code") @db.VarChar(64)
+  nextAction               String?            @map("next_action") @db.VarChar(32)
+  cancellationRequestedAt  DateTime?          @map("cancellation_requested_at") @db.Timestamptz(3)
+  cancellationReasonCode   String?            @map("cancellation_reason_code") @db.VarChar(64)
+  reconciliationRequiredAt DateTime?          @map("reconciliation_required_at") @db.Timestamptz(3)
+  reconciliationCode       String?            @map("reconciliation_code") @db.VarChar(64)
+  createdAt                DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace                Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  outbox                   JobOutbox?
+  attempts                 JobAttempt[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, queueName, handlerVersion, idempotencyKey])
@@ -170,6 +183,7 @@ model JobOutbox {
   queueDeliveryId      String?       @map("queue_delivery_id") @db.Uuid
   lastErrorCode        String?       @map("last_error_code") @db.VarChar(64)
   dispatchedAt         DateTime?     @map("dispatched_at") @db.Timestamptz(3)
+  cancelledAt          DateTime?     @map("cancelled_at") @db.Timestamptz(3)
   createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
   workspace            Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
@@ -188,6 +202,7 @@ model InternalUser {
   email            String             @db.Citext
   displayName      String?            @map("display_name") @db.VarChar(160)
   status           InternalUserStatus @default(ACTIVE)
+  role             InternalUserRole   @default(MEMBER)
   sessionVersion   Int                @default(1) @map("session_version")
   lastLoginAt      DateTime?          @map("last_login_at") @db.Timestamptz(3)
   createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -212,6 +227,8 @@ model AuditEvent {
   action        String         @db.VarChar(120)
   resourceType  String         @map("resource_type") @db.VarChar(100)
   resourceId    String?        @map("resource_id") @db.VarChar(255)
+  outcome       String?        @db.VarChar(32)
+  reasonCode    String?        @map("reason_code") @db.VarChar(64)
   beforeHash    String?        @map("before_hash") @db.Char(64)
   afterHash     String?        @map("after_hash") @db.Char(64)
   correlationId String         @map("correlation_id") @db.Uuid
@@ -221,6 +238,7 @@ model AuditEvent {
 
   @@index([workspaceId, occurredAt(sort: Desc)])
   @@index([workspaceId, resourceType, resourceId])
+  @@index([workspaceId, actorUserId, action, occurredAt])
   @@map("audit_events")
 }
 

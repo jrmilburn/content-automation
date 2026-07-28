@@ -48,6 +48,7 @@ export type JobHandlerExecutionContext = Readonly<{
   leaseId: string;
   recordStage(stage: string, at?: Date): Promise<void>;
   signal: AbortSignal;
+  throwIfCancellationRequested(at?: Date): Promise<void>;
   workspaceId: string;
 }>;
 
@@ -57,6 +58,7 @@ export type TransactionalJobResult = Readonly<{
 
 export type JobHandlerRunResult =
   | Readonly<{ outcome: "ALREADY_SUCCEEDED" | "SUCCEEDED" }>
+  | Readonly<{ outcome: "CANCELLED" }>
   | Readonly<{
       nextAttemptAt: Date;
       outcome: "RETRY_SCHEDULED";
@@ -87,6 +89,15 @@ export class JobLeaseLostError extends OperationalError {
   constructor() {
     super({ code: "JOB_LEASE_LOST", errorClass: "conflict", statusCode: 409 });
     this.name = "JobLeaseLostError";
+  }
+}
+
+export class JobCancellationRequestedError extends Error {
+  readonly code = "JOB_CANCELLATION_REQUESTED";
+
+  constructor() {
+    super("JOB_CANCELLATION_REQUESTED");
+    this.name = "JobCancellationRequestedError";
   }
 }
 
@@ -268,7 +279,10 @@ export async function recoverExpiredBackgroundJobLease(
   context: WorkspaceContext,
   jobId: string,
   now: Date = new Date(),
+  audit?: Readonly<{ actorService: "job-reconciler"; correlationId: string }>,
 ): Promise<boolean> {
+  const auditCorrelationId = audit ? parseCorrelationId(audit.correlationId) : null;
+  if (audit && !auditCorrelationId) throw validationError("JOB_RECONCILIATION_CORRELATION_INVALID");
   try {
     return await database.$transaction(async (transaction) => {
       const job = await transaction.backgroundJob.findFirst({
@@ -281,21 +295,31 @@ export async function recoverExpiredBackgroundJobLease(
       });
       if (!job?.leaseId) return false;
 
+      const cancellationRequested = job.cancellationRequestedAt !== null;
       const exhausted = job.attemptCount >= job.maxAttempts;
-      const nextState = exhausted ? "FAILED_ATTENTION" : "QUEUED";
-      const nextAction = exhausted ? "CONTACT_SUPPORT" : "RETRY_AUTOMATIC";
+      const nextState = cancellationRequested
+        ? "CANCELLED"
+        : exhausted
+          ? "FAILED_ATTENTION"
+          : "QUEUED";
+      const nextAction = cancellationRequested
+        ? null
+        : exhausted
+          ? "CONTACT_SUPPORT"
+          : "RETRY_AUTOMATIC";
       assertJobTransition("PROCESSING", nextState);
 
       const updated = await transaction.backgroundJob.updateMany({
         data: {
-          completedAt: exhausted ? now : null,
-          lastErrorClass: "TRANSIENT",
-          lastErrorCode: "JOB_LEASE_EXPIRED",
+          completedAt: exhausted || cancellationRequested ? now : null,
+          dispatchStatus: cancellationRequested ? "CANCELLED" : job.dispatchStatus,
+          lastErrorClass: cancellationRequested ? null : "TRANSIENT",
+          lastErrorCode: cancellationRequested ? null : "JOB_LEASE_EXPIRED",
           leaseExpiresAt: null,
           leaseId: null,
           nextAction,
-          queuedAt: exhausted ? job.queuedAt : now,
-          stage: exhausted ? "failed_attention" : "queued",
+          queuedAt: exhausted || cancellationRequested ? job.queuedAt : now,
+          stage: cancellationRequested ? "cancelled" : exhausted ? "failed_attention" : "queued",
           state: nextState,
           version: { increment: 1 },
         },
@@ -311,22 +335,119 @@ export async function recoverExpiredBackgroundJobLease(
       if (updated.count !== 1) return false;
 
       const attempt = await transaction.jobAttempt.updateMany({
-        data: {
-          completedAt: now,
-          errorClass: "TRANSIENT",
-          errorCode: "JOB_LEASE_EXPIRED",
-          nextAction,
-          state: "LEASE_EXPIRED",
-        },
+        data: cancellationRequested
+          ? { completedAt: now, state: "CANCELLED" }
+          : {
+              completedAt: now,
+              errorClass: "TRANSIENT",
+              errorCode: "JOB_LEASE_EXPIRED",
+              nextAction,
+              state: "LEASE_EXPIRED",
+            },
         where: { leaseId: job.leaseId, state: "ACTIVE" },
       });
       if (attempt.count !== 1) throw new JobLeaseLostError();
+      if (cancellationRequested) {
+        await transaction.jobOutbox.updateMany({
+          data: { cancelledAt: now, leaseExpiresAt: null, leaseId: null },
+          where: { backgroundJobId: job.id },
+        });
+      }
+      if (audit && auditCorrelationId) {
+        await transaction.auditEvent.create({
+          data: {
+            action: "job.reconcile",
+            actorService: audit.actorService,
+            actorType: "SERVICE",
+            correlationId: auditCorrelationId,
+            id: createId(),
+            occurredAt: now,
+            outcome: "REPAIRED",
+            reasonCode: cancellationRequested
+              ? "CANCELLATION_REQUEST_RECOVERED"
+              : "EXPIRED_LEASE_RECOVERED",
+            resourceId: job.id,
+            resourceType: "background_job",
+            workspaceId: job.workspaceId,
+          },
+        });
+      }
       return true;
     });
   } catch (error) {
     if (error instanceof OperationalError) throw error;
     throw jobDatabaseError("JOB_LEASE_RECOVERY_FAILED");
   }
+}
+
+export async function throwIfBackgroundJobCancellationRequested(
+  database: JobDatabase,
+  context: WorkspaceContext,
+  jobId: string,
+  leaseId: string,
+  cancelledAt: Date = new Date(),
+): Promise<void> {
+  let cancelled: boolean;
+
+  try {
+    cancelled = await database.$transaction(async (transaction) => {
+      const job = await transaction.backgroundJob.findFirst({
+        where: { id: jobId, leaseId, state: "PROCESSING", workspaceId: context.workspaceId },
+      });
+      if (!job) throw new JobLeaseLostError();
+      if (!job.cancellationRequestedAt) return false;
+
+      assertJobTransition("PROCESSING", "CANCELLED");
+      const updated = await transaction.backgroundJob.updateMany({
+        data: {
+          completedAt: cancelledAt,
+          dispatchStatus: "CANCELLED",
+          heartbeatAt: cancelledAt,
+          lastErrorClass: null,
+          lastErrorCode: null,
+          leaseExpiresAt: null,
+          leaseId: null,
+          nextAction: null,
+          nextAttemptAt: null,
+          reconciliationCode: null,
+          reconciliationRequiredAt: null,
+          stage: "cancelled",
+          state: "CANCELLED",
+          version: { increment: 1 },
+        },
+        where: {
+          cancellationRequestedAt: { not: null },
+          id: job.id,
+          leaseId,
+          state: "PROCESSING",
+          version: job.version,
+          workspaceId: context.workspaceId,
+        },
+      });
+      if (updated.count !== 1) throw new JobLeaseLostError();
+
+      const attempt = await transaction.jobAttempt.updateMany({
+        data: {
+          completedAt: cancelledAt,
+          heartbeatAt: cancelledAt,
+          stage: "cancelled",
+          state: "CANCELLED",
+        },
+        where: { leaseId, state: "ACTIVE", workspaceId: context.workspaceId },
+      });
+      if (attempt.count !== 1) throw new JobLeaseLostError();
+      await transaction.jobOutbox.updateMany({
+        data: { cancelledAt, leaseExpiresAt: null, leaseId: null },
+        where: { backgroundJobId: job.id },
+      });
+      return true;
+    });
+  } catch (error) {
+    if (error instanceof OperationalError) throw error;
+    throw jobDatabaseError("JOB_CANCELLATION_CHECK_FAILED");
+  }
+
+  if (cancelled) throw new JobCancellationRequestedError();
 }
 
 export async function runIdempotentJobHandler(
@@ -392,18 +513,40 @@ export async function runIdempotentJobHandler(
 
     let execution: TransactionalJobResult;
     try {
+      await throwIfBackgroundJobCancellationRequested(
+        options.database,
+        options.context,
+        job.id,
+        claim.leaseId,
+        now(),
+      );
       execution = await options.execute({
         attemptNumber: claim.attemptNumber,
-        heartbeat: (at = now()) =>
-          heartbeatBackgroundJob(options.database, options.context, job.id, claim.leaseId, {
+        heartbeat: async (at = now()) => {
+          await throwIfBackgroundJobCancellationRequested(
+            options.database,
+            options.context,
+            job.id,
+            claim.leaseId,
+            at,
+          );
+          await heartbeatBackgroundJob(options.database, options.context, job.id, claim.leaseId, {
             at,
             ...(options.leaseDurationMs === undefined
               ? {}
               : { leaseDurationMs: options.leaseDurationMs }),
-          }),
+          });
+        },
         jobId: job.id,
         leaseId: claim.leaseId,
         recordStage: async (stage, at = now()) => {
+          await throwIfBackgroundJobCancellationRequested(
+            options.database,
+            options.context,
+            job.id,
+            claim.leaseId,
+            at,
+          );
           await recordBackgroundJobStage(
             options.database,
             options.context,
@@ -423,12 +566,33 @@ export async function runIdempotentJobHandler(
           });
         },
         signal: options.signal,
+        throwIfCancellationRequested: (at = now()) =>
+          throwIfBackgroundJobCancellationRequested(
+            options.database,
+            options.context,
+            job.id,
+            claim.leaseId,
+            at,
+          ),
         workspaceId: claim.workspaceId,
       });
       await options.crashInjector?.("AFTER_HANDLER");
       await options.crashInjector?.("BEFORE_RESULT_COMMIT");
     } catch (error) {
       if (error instanceof InjectedJobCrash) throw error;
+      if (error instanceof JobCancellationRequestedError) {
+        options.logger.info("job.cancelled", {
+          attempt: claim.attemptNumber,
+          correlationId,
+          handlerVersion: claim.handlerVersion,
+          jobId: job.id,
+          jobState: "CANCELLED",
+          source: "user",
+          stage: "cancelled",
+          workspaceId: claim.workspaceId,
+        });
+        return Object.freeze({ outcome: "CANCELLED" });
+      }
       if (options.signal.aborted) return Object.freeze({ outcome: "LEASE_ABANDONED" });
       return settleHandlerFailure(options, job.id, claim, classifyJobHandlerError(error), now());
     }
@@ -529,6 +693,7 @@ async function commitJobSuccess(
         },
         where: {
           id: jobId,
+          cancellationRequestedAt: null,
           leaseId,
           state: "PROCESSING",
           workspaceId: context.workspaceId,
@@ -579,6 +744,7 @@ async function commitJobFailure(
         },
         where: {
           id: jobId,
+          cancellationRequestedAt: null,
           leaseId,
           state: "PROCESSING",
           workspaceId: context.workspaceId,

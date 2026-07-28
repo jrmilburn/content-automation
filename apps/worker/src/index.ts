@@ -56,6 +56,7 @@ const reconciler = createOutboxReconciler({
   errorMonitor,
   intervalMs: config.QUEUE_RECONCILE_INTERVAL_SECONDS * 1_000,
   logger,
+  metrics,
   publisher: queue,
 });
 let shutdownPromise: Promise<void> | undefined;

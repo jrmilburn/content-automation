@@ -21,6 +21,11 @@ describe("createMetricRecorder", () => {
       stage: "response",
       workspaceId: "workspace_05",
     });
+    metrics.increment("job.operation.count", {
+      correlationId,
+      stage: "user_retry",
+      workspaceId: "workspace_05",
+    });
 
     expect(events).toEqual([
       {
@@ -32,6 +37,18 @@ describe("createMetricRecorder", () => {
         value: 42,
         unit: "milliseconds",
         stage: "response",
+        correlationId,
+        workspaceId: "workspace_05",
+      },
+      {
+        timestamp: "2026-07-28T02:03:04.000Z",
+        service: "web",
+        environment: "preview",
+        release: "git-d4e5f6",
+        metric: "job.operation.count",
+        value: 1,
+        unit: "count",
+        stage: "user_retry",
         correlationId,
         workspaceId: "workspace_05",
       },

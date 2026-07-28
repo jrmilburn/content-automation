@@ -15,6 +15,7 @@ export const jobAttemptStates = [
   "RETRY_SCHEDULED",
   "FAILED_ATTENTION",
   "LEASE_EXPIRED",
+  "CANCELLED",
 ] as const;
 
 export type JobAttemptState = (typeof jobAttemptStates)[number];
@@ -24,7 +25,7 @@ export const terminalBackgroundJobStates = ["SUCCEEDED", "FAILED_ATTENTION", "CA
 const allowedTransitions: Readonly<Record<BackgroundJobState, readonly BackgroundJobState[]>> = {
   CANCELLED: [],
   FAILED_ATTENTION: ["QUEUED"],
-  PROCESSING: ["QUEUED", "RETRY_SCHEDULED", "SUCCEEDED", "FAILED_ATTENTION"],
+  PROCESSING: ["QUEUED", "RETRY_SCHEDULED", "SUCCEEDED", "FAILED_ATTENTION", "CANCELLED"],
   QUEUED: ["PROCESSING", "CANCELLED"],
   RETRY_SCHEDULED: ["QUEUED", "CANCELLED"],
   SUCCEEDED: [],

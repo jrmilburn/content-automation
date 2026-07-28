@@ -1,10 +1,18 @@
-import { reconcileJobOutbox, type DatabaseClient } from "@studio-parallel/db";
+import {
+  reconcileBackgroundJobs,
+  reconcileJobOutbox,
+  type DatabaseClient,
+  type JobCleanupDebtHook,
+  type JobResultInspection,
+  type ReconciliationJob,
+} from "@studio-parallel/db";
 import type { QueuePublisher } from "@studio-parallel/domain";
 import {
   reportError,
   type CorrelationId,
   type ErrorMonitor,
   type JsonLogger,
+  type MetricRecorder,
 } from "@studio-parallel/observability";
 
 export type OutboxReconciler = Readonly<{
@@ -17,9 +25,15 @@ export function createOutboxReconciler(options: {
   correlationId: CorrelationId;
   database: DatabaseClient;
   errorMonitor: ErrorMonitor;
+  inspectResult?: (
+    database: DatabaseClient,
+    job: ReconciliationJob,
+  ) => Promise<JobResultInspection>;
   intervalMs: number;
   logger: JsonLogger;
+  metrics: MetricRecorder;
   publisher: QueuePublisher;
+  cleanupDebtHooks?: readonly JobCleanupDebtHook[];
 }): OutboxReconciler {
   let interval: NodeJS.Timeout | undefined;
   let active: Promise<void> | undefined;
@@ -27,18 +41,28 @@ export function createOutboxReconciler(options: {
   const tick = (): void => {
     if (active) return;
 
-    active = reconcileJobOutbox(
-      options.database,
-      options.publisher,
-      { logger: options.logger, monitor: options.errorMonitor },
-      { batchSize: options.batchSize },
-    )
-      .then((result) => {
-        if (result.claimed > 0) {
+    active = reconcileBackgroundJobs({
+      batchSize: options.batchSize,
+      correlationId: options.correlationId,
+      database: options.database,
+      inspectResult: options.inspectResult ?? (async () => "UNSUPPORTED"),
+      telemetry: { logger: options.logger, metrics: options.metrics },
+      ...(options.cleanupDebtHooks ? { cleanupDebtHooks: options.cleanupDebtHooks } : {}),
+    })
+      .then(async (logicalResult) => {
+        const dispatchResult = await reconcileJobOutbox(
+          options.database,
+          options.publisher,
+          { logger: options.logger, monitor: options.errorMonitor },
+          { batchSize: options.batchSize },
+        );
+        if (logicalResult.repaired + logicalResult.flagged + dispatchResult.claimed > 0) {
           options.logger.info("job.reconciliation_completed", {
             correlationId: options.correlationId,
+            outcome: logicalResult.flagged > 0 ? "FLAGGED" : "COMPLETED",
+            source: "reconciliation",
             stage: "reconciliation",
-            value: result.claimed,
+            value: logicalResult.repaired + logicalResult.flagged + dispatchResult.claimed,
           });
         }
       })
