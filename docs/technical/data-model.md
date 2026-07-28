@@ -49,7 +49,7 @@ erDiagram
 ### InternalUser
 
 - **Purpose/ownership:** authorised staff identity within the workspace.
-- **Fields:** `id`, `workspace_id`, `oidc_subject`, normalised `email`, `display_name`, `status`, `last_login_at`.
+- **Fields:** `id`, `workspace_id`, `oidc_subject`, normalised `email`, `display_name`, `status`, v1 `role` (`member`/`admin`), `last_login_at`.
 - **Relationships:** audit actor for user commands.
 - **Constraints/indexes:** unique `(workspace_id, oidc_subject)` and normalised email; indexes on status/email.
 - **Retention/sensitivity:** personal data; deactivate rather than erase audit references, with name/email minimisation on approved deletion.
@@ -124,16 +124,16 @@ erDiagram
 ### BackgroundJob
 
 - **Purpose/ownership:** workspace-owned logical execution record shared by every asynchronous handler; queue rows remain delivery mechanics.
-- **Fields:** queue and handler version, idempotency/correlation keys, logical state and safe stage, priority, optimistic version, attempt counters, optional resource/input version, queue/start/heartbeat/lease/retry/completion times, and allowlisted error class/code/next action.
+- **Fields:** queue and handler version, idempotency/correlation keys, logical state and safe stage, priority, optimistic version, attempt counters, optional resource/input version, queue/start/heartbeat/lease/retry/completion times, allowlisted error class/code/next action, cooperative cancellation request/reason, and reconciliation finding/time.
 - **Relationships:** owns one outbox record and ordered `JobAttempt` records; handler-specific jobs or results refer to its stable ID.
-- **Constraints/idempotency:** unique `(workspace_id, queue_name, handler_version, idempotency_key)`; reusing that key with different resource, input version, attempt cap or priority is a conflict. State, lease, timing, stage, resource and error shapes are database-checked.
+- **Constraints/idempotency:** unique `(workspace_id, queue_name, handler_version, idempotency_key)`; reusing that key with different resource, input version, attempt cap or priority is a conflict. State, lease, timing, stage, resource, cancellation, reconciliation and error shapes are database-checked.
 - **Indexes:** workspace/state/due time/priority, state/lease expiry and correlation ID.
 - **Retention/sensitivity:** identifiers and safe operational metadata only; no provider payload, prompt, transcript, media, token, URL or raw exception.
 
 ### JobAttempt
 
 - **Purpose/ownership:** immutable-numbered execution history for one claimed `BackgroundJob` lease.
-- **Fields:** attempt and handler version, state/stage, unique lease and correlation IDs, start/heartbeat/completion/next-attempt times, and allowlisted error class/code/next action.
+- **Fields:** attempt and handler version, state/stage (including cooperative cancellation), unique lease and correlation IDs, start/heartbeat/completion/next-attempt times, and allowlisted error class/code/next action.
 - **Constraints/idempotency:** unique `(background_job_id, attempt_number)` and lease ID; ownership is enforced by a composite workspace/job foreign key. Active, retry and terminal timing/error shapes are database-checked.
 - **Indexes:** workspace/state/start time and job/completion time.
 - **Retention/sensitivity:** follows the logical job; contains no handler inputs, result bodies or exception text.
@@ -203,7 +203,7 @@ erDiagram
 
 ## Additional supporting entities
 
-- `AuditEvent`: actor/service, action, resource, before/after hashes, time and correlation ID for access-sensitive mutations.
+- `AuditEvent`: actor/service, action, resource, safe outcome/reason codes, before/after hashes, time and correlation ID for access-sensitive mutations.
 - `JobOutbox` and queue-native metadata: durable dispatch intent and physical delivery remain separate from `BackgroundJob` and `JobAttempt` execution state.
 - `DeletionRequest`: scope, requested/approved/executed actor/times, dependency plan and outcome.
 - `StatisticPostMembership`: normalised list of posts/snapshots/analyses contributing to a statistic when JSON arrays would become unwieldy.

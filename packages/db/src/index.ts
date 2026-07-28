@@ -3,11 +3,13 @@ export {
   claimBackgroundJob,
   heartbeatBackgroundJob,
   InjectedJobCrash,
+  JobCancellationRequestedError,
   JobLeaseLostError,
   makeBackgroundJobRetryDue,
   recordBackgroundJobStage,
   recoverExpiredBackgroundJobLease,
   runIdempotentJobHandler,
+  throwIfBackgroundJobCancellationRequested,
   type JobClaimResult,
   type JobCrashPoint,
   type JobDatabaseExecutor,
@@ -15,6 +17,29 @@ export {
   type JobHandlerRunResult,
   type TransactionalJobResult,
 } from "./job-execution.js";
+export {
+  cancelBackgroundJob,
+  isSafeProcessingCancellationStage,
+  retryBackgroundJob,
+  safeProcessingCancellationStages,
+  type CancelJobOptions,
+  type JobOperationResult,
+  type JobOperationTelemetry,
+  type JobOperatorContext,
+  type ManualRetryJob,
+  type ManualRetryOptions,
+  type ManualRetryPrerequisiteResult,
+} from "./job-operations.js";
+export {
+  reconcileBackgroundJobs,
+  type CleanupDebtOutcome,
+  type JobCleanupDebtHook,
+  type JobReconciliationTelemetry,
+  type JobResultInspection,
+  type ReconcileBackgroundJobsOptions,
+  type ReconcileBackgroundJobsResult,
+  type ReconciliationJob,
+} from "./job-reconciliation.js";
 export {
   enqueueBackgroundJob,
   enqueueBackgroundJobInTransaction,

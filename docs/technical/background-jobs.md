@@ -124,9 +124,14 @@ External side effects record provider object/request IDs immediately. If a worke
 
 ## Cancellation and manual retry
 
-- V1 cancellation is supported only while queued/retry-scheduled or at safe pre-provider checkpoints.
+- V1 cancellation is supported immediately while queued/retry-scheduled. Processing cancellation
+  is accepted only at `starting`, `loading_inputs` or `validating_inputs`; it records a cooperative
+  request that the shared heartbeat/stage guard settles before another effect or result commit.
 - Processing cancellation is cooperative; the UI says “cancellation requested” and never promises provider work can be revoked mid-call.
-- Manual retry is allowed for terminal failed jobs after server-side permission and prerequisite checks. It preserves the logical job/evidence signature and adds an attempt; if inputs/version intentionally change, create a new job.
+- Manual retry is an admin-only, per-actor rate-limited command for `failed_attention` jobs after
+  prerequisite and existing-result checks. It preserves the logical job/evidence signature, grants
+  exactly one additional bounded attempt and resets the same outbox for delivery; if inputs/version
+  intentionally change, create a new job.
 - Retrying a sync resumes the committed cursor or starts a new explicit run depending on failure class.
 - No bulk retry/delete in v1.
 
@@ -145,7 +150,17 @@ Scheduled reconciliation checks:
 - analytics dirty account without recalculation job;
 - strategy manifest without terminal generation.
 
-Repairs are idempotent and auditable; ambiguous data is flagged rather than guessed.
+The long-lived worker runs bounded logical reconciliation before outbox dispatch on the configured
+interval. It can recreate a provably missing outbox, release a due retry, recover an expired lease
+and make a non-terminal job match an exact immutable result. A succeeded job without its exact
+result, or a result conflicting with cancellation/failure, receives a safe reconciliation flag
+rather than a guessed state. Handler-specific result inspectors and cleanup-debt hooks register as
+their verticals land.
+
+Repairs are idempotent and auditable. User commands record admin actor, stable reason and outcome;
+reconciliation records the fixed worker service identity. Structured logs and metrics distinguish
+`user_cancel`, `user_retry`, repaired reconciliation and flagged reconciliation without free-form
+content.
 
 ## Observability
 

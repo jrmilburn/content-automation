@@ -158,11 +158,14 @@ describe("transactional background job dispatch", () => {
       idempotencyKey: "concurrent-dispatch",
       queueName: "analysis.run",
     });
+    const pending = await database.jobOutbox.findUniqueOrThrow({
+      where: { backgroundJobId: job.id },
+    });
 
     const results = await Promise.all(
       Array.from({ length: 6 }, () =>
         reconcileJobOutbox(database, queue, createTelemetry(), {
-          now: new Date("2026-07-28T04:00:00.000Z"),
+          now: new Date(pending.nextAttemptAt.getTime() + 1),
         }),
       ),
     );
@@ -183,7 +186,10 @@ describe("transactional background job dispatch", () => {
         throw new Error("postgresql://queue-user:super-secret@database/token=raw-secret");
       },
     };
-    const failedAt = new Date("2026-07-28T04:10:00.000Z");
+    const pending = await database.jobOutbox.findUniqueOrThrow({
+      where: { backgroundJobId: job.id },
+    });
+    const failedAt = new Date(pending.nextAttemptAt.getTime() + 1);
 
     await expect(
       reconcileJobOutbox(database, unsafePublisher, createTelemetry(), {
@@ -198,13 +204,13 @@ describe("transactional background job dispatch", () => {
       lastErrorCode: "QUEUE_PUBLISH_FAILED",
       leaseExpiresAt: null,
       leaseId: null,
-      nextAttemptAt: new Date("2026-07-28T04:10:01.000Z"),
+      nextAttemptAt: new Date(failedAt.getTime() + 1_000),
     });
     expect(JSON.stringify(logEvents)).not.toMatch(/super-secret|raw-secret|queue-user/iu);
 
     await database.jobOutbox.update({
       data: {
-        leaseExpiresAt: new Date("2026-07-28T04:09:59.000Z"),
+        leaseExpiresAt: new Date(failedAt.getTime() - 1),
         leaseId: createId(),
         nextAttemptAt: failedAt,
       },
