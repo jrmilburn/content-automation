@@ -14,6 +14,9 @@ describe("loadRuntimeConfig", () => {
       APP_RELEASE: "development",
       PROVIDER_MODE: "fake",
       PUBLIC_ORIGIN: "http://localhost:3000",
+      QUEUE_DISPATCH_BATCH_SIZE: 20,
+      QUEUE_RECONCILE_INTERVAL_SECONDS: 5,
+      WORKER_SHUTDOWN_GRACE_SECONDS: 30,
     });
   });
 

@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@studio-parallel/config": "*",
+    "@studio-parallel/db": "*",
     "@studio-parallel/domain": "*",
-    "@studio-parallel/observability": "*"
+    "@studio-parallel/observability": "*",
+    "@studio-parallel/queue": "*"
   }
 }

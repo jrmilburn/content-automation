@@ -1,5 +1,15 @@
 export { createDatabaseClient, type DatabaseClient } from "./client.js";
 export {
+  enqueueBackgroundJob,
+  enqueueBackgroundJobInTransaction,
+  reconcileJobOutbox,
+  type DispatchTelemetry,
+  type EnqueueBackgroundJobInput,
+  type EnqueueBackgroundJobResult,
+  type ReconcileJobOutboxOptions,
+  type ReconcileJobOutboxResult,
+} from "./background-jobs.js";
+export {
   loadWorkspaceDashboardFoundation,
   type WorkspaceDashboardFoundation,
 } from "./dashboard.js";

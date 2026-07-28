@@ -29,6 +29,8 @@
     "@prisma/adapter-pg": "7.9.1",
     "@prisma/client": "7.9.1",
     "@studio-parallel/config": "*",
+    "@studio-parallel/domain": "*",
+    "@studio-parallel/observability": "*",
     "dotenv": "17.4.2",
     "pg": "8.22.0",
     "uuid": "14.0.1"

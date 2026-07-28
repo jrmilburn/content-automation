@@ -16,6 +16,9 @@ This package owns the Prisma/PostgreSQL client, committed migrations and workspa
 - Resource helpers combine ID and workspace scope and return one not-found result for malformed,
   missing and cross-workspace identifiers.
 - Production and staging Prisma commands require an explicit `DATABASE_URL`; the fallback URL is local-only.
+- Background commands create/deduplicate `BackgroundJob` and `JobOutbox` in the caller's Prisma
+  transaction. Outbox leases expire and can be reclaimed; queue payloads contain identifiers and
+  version metadata only.
 
 ## Commands
 
@@ -25,10 +28,13 @@ npm run db:generate
 npm run db:migrate:deploy
 npm run db:seed
 npm run db:drift:check
+npm run queue:migrate
 npm run test:db:integration
 ```
 
-`test:db:integration` creates a dedicated PostgreSQL 17 Docker Compose project on port 55432, applies the migrations to an empty database, explicitly seeds it, checks drift, runs integration tests serially and removes the volume.
+`test:db:integration` creates a dedicated PostgreSQL 17 Docker Compose project on port 55432,
+applies the Prisma and pg-boss migrations to an empty database, explicitly seeds it, checks both
+schema and queue behaviour, runs integration tests serially and removes the volume.
 
 Use `test:db:integration:existing` only when `DATABASE_URL` already points to a disposable migrated and seeded test database.
 

@@ -39,6 +39,13 @@ enum SettingValueType {
   @@map("setting_value_type")
 }
 
+enum JobDispatchStatus {
+  PENDING
+  DISPATCHED
+
+  @@map("job_dispatch_status")
+}
+
 model Workspace {
   id          String          @id @db.Uuid
   slug        String          @unique @db.VarChar(63)
@@ -48,11 +55,57 @@ model Workspace {
   createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
   auditEvents AuditEvent[]
+  backgroundJobs BackgroundJob[]
+  jobOutbox   JobOutbox[]
   settings    SystemSetting[]
   users       InternalUser[]
 
   @@index([status])
   @@map("workspaces")
+}
+
+model BackgroundJob {
+  id             String            @id @db.Uuid
+  workspaceId    String            @map("workspace_id") @db.Uuid
+  queueName      String            @map("queue_name") @db.VarChar(80)
+  handlerVersion Int               @map("handler_version")
+  idempotencyKey String            @map("idempotency_key") @db.VarChar(255)
+  correlationId  String            @map("correlation_id") @db.Uuid
+  dispatchStatus JobDispatchStatus @default(PENDING) @map("dispatch_status")
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  outbox         JobOutbox?
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, queueName, handlerVersion, idempotencyKey])
+  @@index([workspaceId, dispatchStatus, createdAt])
+  @@map("background_jobs")
+}
+
+model JobOutbox {
+  id                   String        @id @db.Uuid
+  workspaceId          String        @map("workspace_id") @db.Uuid
+  backgroundJobId      String        @unique @map("background_job_id") @db.Uuid
+  queueName            String        @map("queue_name") @db.VarChar(80)
+  handlerVersion       Int           @map("handler_version")
+  correlationId        String        @map("correlation_id") @db.Uuid
+  dispatchAttemptCount Int           @default(0) @map("dispatch_attempt_count")
+  nextAttemptAt        DateTime      @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  leaseId              String?       @map("lease_id") @db.Uuid
+  leaseExpiresAt       DateTime?     @map("lease_expires_at") @db.Timestamptz(3)
+  queueDeliveryId      String?       @map("queue_delivery_id") @db.Uuid
+  lastErrorCode        String?       @map("last_error_code") @db.VarChar(64)
+  dispatchedAt         DateTime?     @map("dispatched_at") @db.Timestamptz(3)
+  createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace            Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  backgroundJob        BackgroundJob @relation(fields: [workspaceId, backgroundJobId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@unique([workspaceId, backgroundJobId])
+  @@index([dispatchedAt, nextAttemptAt, leaseExpiresAt, createdAt])
+  @@index([workspaceId, createdAt])
+  @@map("job_outbox")
 }
 
 model InternalUser {

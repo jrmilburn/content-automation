@@ -26,6 +26,14 @@ Use `npm ci` on clean checkouts and in CI so installation is reproduced from `pa
 npm run dev
 ```
 
+Before starting the worker against a new database, apply both owned schema lifecycles:
+
+```powershell
+npm run db:migrate:deploy
+npm run db:seed
+npm run queue:migrate
+```
+
 This builds the shared packages, then runs:
 
 - Next.js web: <http://localhost:3000>
@@ -103,6 +111,11 @@ npm run test:db:integration
 ```
 
 The script owns its dedicated Docker Compose project and removes its test volume when finished. It never uses `DATABASE_URL` from another environment.
+
+The queue adapter and deployment lifecycle are documented in
+[`packages/queue/README.md`](packages/queue/README.md). The web process writes only the logical job
+and outbox transaction; the separately deployed worker verifies the pg-boss schema, reconciles
+committed dispatches and owns all handler leasing.
 
 ## Quality gates
 
