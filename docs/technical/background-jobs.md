@@ -2,7 +2,16 @@
 
 ## Queue model
 
-Use a PostgreSQL-backed queue (`pg-boss`, pinned stable version) consumed by a long-lived Node worker. Domain tables remain the source of user-visible state; queue rows are delivery mechanics. Web requests create/deduplicate domain work and enqueue transactionally or through an outbox reconciler.
+Use a PostgreSQL-backed queue (`pg-boss` `12.26.3`, exact-pinned) consumed by a long-lived Node
+worker. Domain tables remain the source of user-visible state; queue rows are delivery mechanics.
+Web requests create/deduplicate domain work and its outbox record inside one Prisma transaction;
+the worker publishes committed outbox records.
+
+The release lifecycle runs `npm run queue:migrate` after Prisma migrations and before either
+application process is promoted. The command applies pg-boss's dedicated `pgboss` schema,
+provisions the versioned queues and performs a drift check. Runtime processes set pg-boss migration
+off. Worker startup verifies the installed schema and queue policies before leasing; a missing or
+unsupported handler version fails compatibility rather than consuming that delivery.
 
 No Gemini or Meta call runs inside a browser request. No autonomous/persistent agent owns a post.
 
@@ -46,8 +55,11 @@ Stages refine processing (for analysis: `loading_inputs`, `uploading_file`, `wai
 1. Command transaction locks/loads the owned resource.
 2. Compute canonical idempotency key and find a matching queued/processing/succeeded logical job.
 3. Return the existing job when duplicate; otherwise insert domain job plus outbox record.
-4. Dispatcher publishes outbox to queue using domain job ID as queue singleton/dedup key, then marks dispatched.
-5. Reconciler republishes undispatched outbox entries and identifies queue deliveries without valid domain work.
+4. Dispatcher claims due outbox records with a short expiring PostgreSQL lease, publishes using the
+   domain job UUID as both pg-boss delivery ID and singleton key, then atomically marks the outbox
+   and domain dispatch state.
+5. Reconciler republishes failed, unleased or expired-lease outbox entries. A crash after publish but
+   before marking reuses the same queue delivery ID, so recovery is safe.
 
 If `pg-boss` transactional send shares the same database transaction safely, the outbox can be a thin audit layer; do not rely on an HTTP request performing two unrelated commits.
 

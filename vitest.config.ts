@@ -7,6 +7,7 @@ export default defineConfig({
     exclude: [
       ...configDefaults.exclude,
       "packages/db/tests/integration/**/*.integration.test.ts",
+      "packages/queue/tests/integration/**/*.integration.test.ts",
       "tests/e2e/**",
     ],
     setupFiles: ["./apps/web/src/test/setup.ts"],

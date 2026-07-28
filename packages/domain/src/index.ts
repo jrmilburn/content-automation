@@ -25,6 +25,20 @@ export {
   type DashboardStrategySummary,
   type DashboardSummary,
 } from "./dashboard.js";
+export {
+  isQueueName,
+  parseQueueJobEnvelope,
+  queueDefinitions,
+  queueVersionKey,
+  type QueueHandler,
+  type QueueHandlerContext,
+  type QueueHandlerRegistration,
+  type QueueJobEnvelope,
+  type QueueName,
+  type QueuePublisher,
+  type QueuePublishResult,
+  type VersionedQueue,
+} from "./background-jobs.js";
 
 export type ServiceName = (typeof serviceNames)[number];
 

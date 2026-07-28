@@ -42,6 +42,7 @@ try {
   run(process.execPath, [npmCliPath, "run", "db:generate"]);
   run(process.execPath, [npmCliPath, "run", "db:migrate:deploy"]);
   run(process.execPath, [npmCliPath, "run", "db:seed"]);
+  run(process.execPath, [npmCliPath, "run", "queue:migrate"]);
   run(process.execPath, [npmCliPath, "run", "db:drift:check"]);
   run(process.execPath, [npmCliPath, "run", "test:db:integration:existing"]);
 } finally {

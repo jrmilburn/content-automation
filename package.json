@@ -13,11 +13,12 @@
     "packages/config",
     "packages/observability",
     "packages/db",
+    "packages/queue",
     "apps/worker",
     "apps/web"
   ],
   "scripts": {
-    "build:packages": "npm run build -w @studio-parallel/domain && npm run build -w @studio-parallel/config && npm run build -w @studio-parallel/observability && npm run build -w @studio-parallel/db",
+    "build:packages": "npm run build -w @studio-parallel/domain && npm run build -w @studio-parallel/config && npm run build -w @studio-parallel/observability && npm run build -w @studio-parallel/db && npm run build -w @studio-parallel/queue",
     "build": "npm run build:packages && npm run build -w @studio-parallel/worker && npm run build -w @studio-parallel/web",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test",
     "dev": "npm run build:packages && concurrently --names web,worker --prefix-colors blue,magenta \"npm run dev -w @studio-parallel/web\" \"npm run dev -w @studio-parallel/worker\"",
@@ -32,6 +33,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",
+    "queue:migrate": "npm run build:packages && npm run migrate -w @studio-parallel/queue",
     "security:dependencies": "npm audit --audit-level=high",
     "security:secrets": "tsx scripts/security/check-secrets.ts",
     "start:web": "npm run start -w @studio-parallel/web",

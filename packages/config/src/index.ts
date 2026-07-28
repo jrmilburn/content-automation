@@ -21,7 +21,10 @@ const runtimeConfigSchema = z
     PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     PROVIDER_MODE: z.enum(["fake", "live"]).default("fake"),
     PUBLIC_ORIGIN: z.url().default("http://localhost:3000"),
+    QUEUE_DISPATCH_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(20),
+    QUEUE_RECONCILE_INTERVAL_SECONDS: z.coerce.number().int().min(1).max(300).default(5),
     WORKER_HEALTH_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
+    WORKER_SHUTDOWN_GRACE_SECONDS: z.coerce.number().int().min(1).max(300).default(30),
   })
   .superRefine((config, context) => {
     if (localEnvironments.has(config.APP_ENV) && config.PROVIDER_MODE === "live") {
