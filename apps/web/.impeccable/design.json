@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-28T01:45:00.000Z",
+  "title": "Design System: Studio Parallel Internal Workspace",
+  "extensions": {
+    "colorMeta": {
+      "navigation-ink": {
+        "role": "primary",
+        "displayName": "Navigation Ink",
+        "canonical": "#191816",
+        "tonalRamp": [
+          "#191816",
+          "#2f2d29",
+          "#4b4842",
+          "#6c675e",
+          "#918a7e",
+          "#b8b0a3",
+          "#ddd7cd",
+          "#f8f5ef"
+        ]
+      },
+      "canvas-paper": {
+        "role": "neutral",
+        "displayName": "Canvas Paper",
+        "canonical": "#f3f0e9",
+        "tonalRamp": [
+          "#292721",
+          "#47443c",
+          "#69655b",
+          "#8e887d",
+          "#b1aba0",
+          "#d2cdc4",
+          "#ebe7df",
+          "#faf8f4"
+        ]
+      },
+      "focus-blue": {
+        "role": "primary",
+        "displayName": "Focus Blue",
+        "canonical": "#2457d6",
+        "tonalRamp": [
+          "#0d1d49",
+          "#123071",
+          "#19449f",
+          "#2457d6",
+          "#527ce3",
+          "#83a1ed",
+          "#b6c7f5",
+          "#edf1fd"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Page Headline",
+        "purpose": "Names the current route once and establishes location."
+      },
+      "body": {
+        "displayName": "Operational Body",
+        "purpose": "Explains state, safety and next action at a readable measure."
+      }
+    },
+    "shadows": [
+      {
+        "name": "modal-separation",
+        "value": "0 24px 64px rgba(28, 27, 25, 0.22)",
+        "purpose": "Mobile navigation sheets and native confirmation dialogs only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-state",
+        "value": "160ms cubic-bezier(0.2, 0, 0, 1)",
+        "purpose": "Small opacity, color and border changes; removed under reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "shell-rail",
+        "value": "800px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one dominant action for a page or state.",
+      "html": "<button class=\"ds-button-primary\">Continue</button>",
+      "css": ".ds-button-primary { min-height: 44px; border: 1px solid #191816; border-radius: 8px; padding: 12px 16px; background: #191816; color: #fffdf8; font: 650 1rem/1.2 Inter, ui-sans-serif, system-ui, sans-serif; transition: background 160ms cubic-bezier(.2,0,0,1); } .ds-button-primary:hover { background: #34312d; } .ds-button-primary:focus-visible { outline: 3px solid #2457d6; outline-offset: 3px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A safe alternative action with equal target size and lower emphasis.",
+      "html": "<button class=\"ds-button-secondary\">Try again</button>",
+      "css": ".ds-button-secondary { min-height: 44px; border: 1px solid #d8d2c7; border-radius: 8px; padding: 12px 16px; background: #fffdf8; color: #1c1b19; font: 650 1rem/1.2 Inter, ui-sans-serif, system-ui, sans-serif; } .ds-button-secondary:hover { border-color: #625d54; } .ds-button-secondary:focus-visible { outline: 3px solid #2457d6; outline-offset: 3px; }"
+    },
+    {
+      "name": "Active Navigation Item",
+      "kind": "nav",
+      "description": "A large dark-frame destination with an explicit current-page state.",
+      "html": "<a class=\"ds-nav-active\" href=\"#\" aria-current=\"page\">Dashboard</a>",
+      "css": ".ds-nav-active { display: block; border-left: 3px solid #fffdf8; padding: 12px 14px; background: rgba(255,253,248,.1); color: #fffdf8; font: 650 1rem/1.2 Inter, ui-sans-serif, system-ui, sans-serif; text-decoration: none; } .ds-nav-active:focus-visible { outline: 3px solid #8bb0ff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "status-badge",
+      "description": "A symbol-and-label status that never relies on color alone.",
+      "html": "<span class=\"ds-status\"><span aria-hidden=\"true\">!</span> Needs attention</span>",
+      "css": ".ds-status { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #8b5a00; border-radius: 999px; padding: 4px 10px; background: #fff7df; color: #684300; font: 700 .75rem/1.3 Inter, ui-sans-serif, system-ui, sans-serif; letter-spacing: .04em; }"
+    },
+    {
+      "name": "State Panel",
+      "kind": "card",
+      "description": "A bounded loading, empty, partial or error explanation with one next action.",
+      "html": "<section class=\"ds-state\"><strong>Nothing here yet</strong><p>Complete the prerequisite to continue.</p></section>",
+      "css": ".ds-state { border: 1px solid #d8d2c7; border-radius: 4px; padding: 24px; background: #fffdf8; color: #1c1b19; font: 400 1rem/1.6 Inter, ui-sans-serif, system-ui, sans-serif; } .ds-state strong { display: block; margin-bottom: 8px; font-weight: 650; } .ds-state p { margin: 0; color: #625d54; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Studio Work Ledger",
+    "overview": "The incumbent warm paper, dark ink and workhorse sans-serif become a disciplined production ledger: quiet enough for long operating sessions, but precise enough that location, state and the next action never blur together. Navigation is a dark fixed frame; evidence and work states live on a flat paper canvas divided by rules, typographic weight and restrained tonal fields.",
+    "keyCharacteristics": [
+      "A dark navigation frame around a warm, highly legible work canvas.",
+      "Flat tonal hierarchy with crisp rules and very limited shadow.",
+      "Compact labels, decisive headings and sentence-case operational copy.",
+      "One visually dominant action per state, with status always carried by text and symbol."
+    ],
+    "rules": [
+      {
+        "name": "The Status Speaks Rule",
+        "body": "Semantic color never carries meaning without a symbol and explicit label.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Page Heading Rule",
+        "body": "Every route exposes one unambiguous h1; component headings descend in order and never imitate it with styling alone.",
+        "section": "typography"
+      },
+      {
+        "name": "The Structural Depth Rule",
+        "body": "If a border or tonal field can explain the hierarchy, do not add a shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do lead each route with current location, blocking context and one safe next action.",
+      "Do pair every semantic color with explicit status language and a symbol.",
+      "Do use rules, spacing and typography to make dense information scannable.",
+      "Do preserve visible focus and native control semantics before adding motion."
+    ],
+    "donts": [
+      "Don't turn the shell into a marketing surface or ornamental dashboard.",
+      "Don't create a grid of generic rounded cards when a list, region or state panel is clearer.",
+      "Don't hide primary actions, navigation or essential status at 390px.",
+      "Don't animate layout or status in a way that survives prefers-reduced-motion."
+    ]
+  }
+}
