@@ -2,6 +2,15 @@ import { loadDatabaseConfig } from "@studio-parallel/config";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createDatabaseClient, type DatabaseClient } from "../../src/client.js";
+import {
+  authoriseOidcIdentity,
+  findActiveSessionPrincipal,
+  setInternalUserStatus,
+} from "../../src/auth.js";
+import {
+  requireWorkspaceResource,
+  WorkspaceResourceNotFoundError,
+} from "../../src/authorisation.js";
 import { isUuidV7 } from "../../src/id.js";
 import { createWorkspaceRepositories, withWorkspaceTransaction } from "../../src/repositories.js";
 import { developmentWorkspace } from "../../src/seed-data.js";
@@ -123,5 +132,213 @@ describe("database foundation", () => {
         },
       }),
     ).rejects.toBeDefined();
+  });
+});
+
+describe("authentication and workspace authorisation", () => {
+  const correlationId = "01900000-0000-7000-8000-000000000120";
+
+  it("binds an approved active identity to the single seeded workspace and audits sign-in", async () => {
+    const repositories = createWorkspaceRepositories(
+      database,
+      createWorkspaceContext(developmentWorkspace.id),
+    );
+    const allowlisted = await repositories.users.create({
+      email: "approved@studio.example",
+    });
+
+    await expect(
+      authoriseOidcIdentity(
+        database,
+        {
+          displayName: "Approved Teammate",
+          email: "approved@studio.example",
+          subject: "google-subject-approved",
+        },
+        correlationId,
+        new Date("2026-07-28T01:20:00.000Z"),
+      ),
+    ).resolves.toEqual({
+      allowed: true,
+      principal: {
+        internalUserId: allowlisted.id,
+        sessionVersion: 1,
+        workspaceId: developmentWorkspace.id,
+      },
+    });
+    await expect(repositories.users.findById(allowlisted.id)).resolves.toMatchObject({
+      displayName: "Approved Teammate",
+      lastLoginAt: new Date("2026-07-28T01:20:00.000Z"),
+      oidcSubject: "google-subject-approved",
+    });
+    await expect(database.auditEvent.findMany()).resolves.toEqual([
+      expect.objectContaining({
+        action: "auth.sign_in.succeeded",
+        actorUserId: allowlisted.id,
+        correlationId,
+        resourceId: allowlisted.id,
+        workspaceId: developmentWorkspace.id,
+      }),
+    ]);
+  });
+
+  it("denies unlisted, inactive and subject-mismatched identities without returning data", async () => {
+    const repositories = createWorkspaceRepositories(
+      database,
+      createWorkspaceContext(developmentWorkspace.id),
+    );
+
+    await expect(
+      authoriseOidcIdentity(
+        database,
+        { email: "unlisted@studio.example", subject: "unlisted-subject" },
+        correlationId,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: "UNLISTED_IDENTITY" });
+
+    const inactive = await repositories.users.create({
+      email: "inactive@studio.example",
+      oidcSubject: "inactive-subject",
+    });
+    await repositories.users.setStatus(inactive.id, "DISABLED");
+    await expect(
+      authoriseOidcIdentity(
+        database,
+        { email: "inactive@studio.example", subject: "inactive-subject" },
+        correlationId,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: "INACTIVE_USER" });
+
+    const inactiveWorkspace = await database.workspace.create({
+      data: {
+        id: "01900000-0000-7000-8000-000000000026",
+        name: "Inactive Authentication Workspace",
+        slug: "inactive-authentication",
+        status: "DISABLED",
+      },
+    });
+    await database.internalUser.create({
+      data: {
+        email: "inactive-workspace@studio.example",
+        id: "01900000-0000-7000-8000-000000000027",
+        oidcSubject: "inactive-workspace-subject",
+        workspaceId: inactiveWorkspace.id,
+      },
+    });
+    await expect(
+      authoriseOidcIdentity(
+        database,
+        {
+          email: "inactive-workspace@studio.example",
+          subject: "inactive-workspace-subject",
+        },
+        correlationId,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: "INACTIVE_WORKSPACE" });
+
+    const bound = await repositories.users.create({
+      email: "bound@studio.example",
+      oidcSubject: "original-subject",
+    });
+    await expect(
+      authoriseOidcIdentity(
+        database,
+        { email: "bound@studio.example", subject: "replacement-subject" },
+        correlationId,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: "SUBJECT_MISMATCH" });
+    await expect(repositories.users.findById(bound.id)).resolves.toMatchObject({
+      oidcSubject: "original-subject",
+      lastLoginAt: null,
+    });
+  });
+
+  it("invalidates existing sessions on deactivation and does not revive them on reactivation", async () => {
+    const repositories = createWorkspaceRepositories(
+      database,
+      createWorkspaceContext(developmentWorkspace.id),
+    );
+    const actor = await repositories.users.create({
+      email: "admin@studio.example",
+      oidcSubject: "admin-subject",
+    });
+    const target = await repositories.users.create({
+      email: "target@studio.example",
+      oidcSubject: "target-subject",
+    });
+    const originalPrincipal = {
+      internalUserId: target.id,
+      sessionVersion: target.sessionVersion,
+      workspaceId: developmentWorkspace.id,
+    } as const;
+
+    await expect(findActiveSessionPrincipal(database, originalPrincipal)).resolves.toEqual(
+      originalPrincipal,
+    );
+    const disabled = await setInternalUserStatus(database, {
+      actorUserId: actor.id,
+      correlationId,
+      status: "DISABLED",
+      targetUserId: target.id,
+      workspaceId: developmentWorkspace.id,
+    });
+    expect(disabled?.sessionVersion).toBe(2);
+    await expect(findActiveSessionPrincipal(database, originalPrincipal)).resolves.toBeNull();
+
+    const reactivated = await setInternalUserStatus(database, {
+      actorUserId: actor.id,
+      correlationId,
+      status: "ACTIVE",
+      targetUserId: target.id,
+      workspaceId: developmentWorkspace.id,
+    });
+    expect(reactivated?.sessionVersion).toBe(3);
+    await expect(findActiveSessionPrincipal(database, originalPrincipal)).resolves.toBeNull();
+    await expect(findActiveSessionPrincipal(database, reactivated!)).resolves.toEqual(reactivated);
+  });
+
+  it("returns the same safe not-found result for malformed, missing and cross-workspace IDs", async () => {
+    const secondWorkspace = await database.workspace.create({
+      data: {
+        id: "01900000-0000-7000-8000-000000000022",
+        name: "Authorisation Isolation Workspace",
+        slug: "authorisation-isolation",
+      },
+    });
+    const principal = {
+      internalUserId: "01900000-0000-7000-8000-000000000023",
+      sessionVersion: 1,
+      workspaceId: developmentWorkspace.id,
+    } as const;
+    const crossWorkspaceUser = await database.internalUser.create({
+      data: {
+        email: "cross-workspace@studio.example",
+        id: "01900000-0000-7000-8000-000000000025",
+        workspaceId: secondWorkspace.id,
+      },
+    });
+    const loadInternalUser = ({ id, workspaceId }: { id: string; workspaceId: string }) =>
+      database.internalUser.findFirst({ where: { id, workspaceId } });
+
+    const failures = [
+      () => requireWorkspaceResource(principal, "not-a-uuid", loadInternalUser),
+      () =>
+        requireWorkspaceResource(
+          principal,
+          "01900000-0000-7000-8000-000000000024",
+          loadInternalUser,
+        ),
+      () => requireWorkspaceResource(principal, crossWorkspaceUser.id, loadInternalUser),
+    ];
+
+    for (const failure of failures) {
+      await expect(failure()).rejects.toEqual(
+        expect.objectContaining({
+          code: "RESOURCE_NOT_FOUND",
+          message: "Resource not found",
+          name: WorkspaceResourceNotFoundError.name,
+        }),
+      );
+    }
   });
 });

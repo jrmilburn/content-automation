@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfigurationError, loadDatabaseConfig, loadRuntimeConfig } from "./index.js";
+import {
+  ConfigurationError,
+  loadAuthConfig,
+  loadDatabaseConfig,
+  loadRuntimeConfig,
+} from "./index.js";
 
 describe("loadRuntimeConfig", () => {
   it("uses safe local fake-provider defaults", () => {
@@ -101,5 +106,58 @@ describe("loadDatabaseConfig", () => {
     expect(() => loadDatabaseConfig({ DATABASE_URL: "https://database.example" })).toThrow(
       /DATABASE_URL must use the postgres or postgresql protocol/,
     );
+  });
+});
+
+describe("loadAuthConfig", () => {
+  it("uses fake local OIDC values with a bounded rotating session policy", () => {
+    expect(loadAuthConfig({})).toMatchObject({
+      APP_ENV: "local",
+      AUTH_GOOGLE_ID: "local-google-client.invalid",
+      AUTH_SESSION_MAX_AGE_SECONDS: 28_800,
+      GOOGLE_WORKSPACE_DOMAIN: "example.invalid",
+    });
+  });
+
+  it("rejects deployment placeholders without echoing supplied secrets", () => {
+    const privateValue = "private-auth-secret-redaction-canary-000000";
+
+    expect(() =>
+      loadAuthConfig({
+        APP_ENV: "production",
+        AUTH_GOOGLE_ID: "production-client",
+        AUTH_GOOGLE_SECRET: privateValue,
+        AUTH_SECRET: privateValue,
+        GOOGLE_WORKSPACE_DOMAIN: "studio.example",
+        PUBLIC_ORIGIN: "https://content.studio.example",
+      }),
+    ).not.toThrow();
+
+    try {
+      loadAuthConfig({ APP_ENV: "production" });
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigurationError);
+      expect((error as Error).message).not.toContain(privateValue);
+      expect((error as ConfigurationError).fields).toEqual(
+        expect.arrayContaining(["AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET", "AUTH_SECRET"]),
+      );
+    }
+  });
+
+  it("requires a deployment-safe origin with no path or credentials", () => {
+    const deployment = {
+      APP_ENV: "production",
+      AUTH_GOOGLE_ID: "production-client",
+      AUTH_GOOGLE_SECRET: "production-client-secret",
+      AUTH_SECRET: "production-auth-secret-that-is-long-enough",
+      GOOGLE_WORKSPACE_DOMAIN: "studio.example",
+    } as const;
+
+    expect(() =>
+      loadAuthConfig({ ...deployment, PUBLIC_ORIGIN: "http://content.studio.example" }),
+    ).toThrow(/PUBLIC_ORIGIN must use HTTPS/);
+    expect(() =>
+      loadAuthConfig({ ...deployment, PUBLIC_ORIGIN: "https://content.studio.example/auth" }),
+    ).toThrow(/PUBLIC_ORIGIN must contain only/);
   });
 });

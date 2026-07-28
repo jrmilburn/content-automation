@@ -58,10 +58,11 @@ model Workspace {
 model InternalUser {
   id              String             @id @db.Uuid
   workspaceId     String             @map("workspace_id") @db.Uuid
-  oidcSubject     String             @map("oidc_subject") @db.VarChar(255)
+  oidcSubject     String?            @map("oidc_subject") @db.VarChar(255)
   email           String             @db.Citext
   displayName     String?            @map("display_name") @db.VarChar(160)
   status          InternalUserStatus @default(ACTIVE)
+  sessionVersion  Int                @default(1) @map("session_version")
   lastLoginAt     DateTime?          @map("last_login_at") @db.Timestamptz(3)
   createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)

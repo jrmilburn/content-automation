@@ -1,4 +1,16 @@
 export { createDatabaseClient, type DatabaseClient } from "./client.js";
+export {
+  authoriseOidcIdentity,
+  findActiveSessionPrincipal,
+  parseSessionPrincipal,
+  setInternalUserStatus,
+  signInDenialReasons,
+  type SessionPrincipal,
+  type SignInDecision,
+  type SignInDenialReason,
+  type VerifiedOidcIdentity,
+} from "./auth.js";
+export { requireWorkspaceResource, WorkspaceResourceNotFoundError } from "./authorisation.js";
 export { createId, isUuidV7 } from "./id.js";
 export {
   createWorkspaceRepositories,

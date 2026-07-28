@@ -1,6 +1,7 @@
 import type {
   AuditActorType,
   InternalUser,
+  InternalUserStatus,
   Prisma,
   PrismaClient,
   SettingValueType,
@@ -88,7 +89,7 @@ export function createWorkspaceRepositories(database: DatabaseExecutor, context:
       create: (input: {
         displayName?: string;
         email: string;
-        oidcSubject: string;
+        oidcSubject?: string;
       }): Promise<InternalUser> =>
         database.internalUser.create({
           data: {
@@ -96,7 +97,7 @@ export function createWorkspaceRepositories(database: DatabaseExecutor, context:
             workspaceId: context.workspaceId,
             displayName: input.displayName ?? null,
             email: input.email.trim().toLowerCase(),
-            oidcSubject: input.oidcSubject,
+            oidcSubject: input.oidcSubject ?? null,
           },
         }),
       findById: (id: string): Promise<InternalUser | null> =>
@@ -112,6 +113,28 @@ export function createWorkspaceRepositories(database: DatabaseExecutor, context:
             },
           },
         }),
+      findByEmail: (email: string): Promise<InternalUser | null> =>
+        database.internalUser.findUnique({
+          where: {
+            workspaceId_email: {
+              workspaceId: context.workspaceId,
+              email: email.trim().toLowerCase(),
+            },
+          },
+        }),
+      setStatus: async (id: string, status: InternalUserStatus): Promise<InternalUser | null> => {
+        const result = await database.internalUser.updateMany({
+          data: {
+            status,
+            sessionVersion: { increment: 1 },
+          },
+          where: { ...workspaceWhere, id },
+        });
+
+        return result.count === 1
+          ? database.internalUser.findFirst({ where: { ...workspaceWhere, id } })
+          : null;
+      },
     },
   };
 }

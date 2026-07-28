@@ -1,5 +1,15 @@
 export const serviceNames = ["web", "worker"] as const;
 
+export {
+  evaluateGoogleOidcProfile,
+  isAllowedRequestOrigin,
+  oidcDenialReasons,
+  resolveSafeReturnUrl,
+  type GoogleOidcDecision,
+  type GoogleOidcIdentity,
+  type OidcDenialReason,
+} from "./auth.js";
+
 export type ServiceName = (typeof serviceNames)[number];
 
 export const healthKinds = ["live", "ready"] as const;
