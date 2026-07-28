@@ -4,6 +4,7 @@ import {
   ConfigurationError,
   loadAuthConfig,
   loadDatabaseConfig,
+  loadMetaWebhookConfig,
   loadRuntimeConfig,
 } from "./index.js";
 
@@ -162,5 +163,32 @@ describe("loadAuthConfig", () => {
     expect(() =>
       loadAuthConfig({ ...deployment, PUBLIC_ORIGIN: "https://content.studio.example/auth" }),
     ).toThrow(/PUBLIC_ORIGIN must contain only/);
+  });
+});
+
+describe("loadMetaWebhookConfig", () => {
+  it("loads only a bounded URL-safe verification secret", () => {
+    const verifyToken = "test-only-webhook-verifier-not-a-live-credential";
+
+    expect(
+      loadMetaWebhookConfig({
+        META_WEBHOOK_VERIFY_TOKEN: verifyToken,
+        META_ACCESS_TOKEN: "must-not-enter-webhook-config",
+      }),
+    ).toEqual({ META_WEBHOOK_VERIFY_TOKEN: verifyToken });
+  });
+
+  it("fails closed without echoing missing or malformed secret values", () => {
+    const malformedToken = "private webhook token redaction canary";
+
+    expect(() => loadMetaWebhookConfig({})).toThrow(ConfigurationError);
+
+    try {
+      loadMetaWebhookConfig({ META_WEBHOOK_VERIFY_TOKEN: malformedToken });
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigurationError);
+      expect((error as ConfigurationError).fields).toEqual(["META_WEBHOOK_VERIFY_TOKEN"]);
+      expect((error as Error).message).not.toContain(malformedToken);
+    }
   });
 });
