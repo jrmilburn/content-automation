@@ -175,6 +175,10 @@ export function createAuthOptions(
         });
       },
     },
+    pages: {
+      error: "/unauthorised",
+      signIn: "/login",
+    },
     providers: [
       Google({
         authorization: {

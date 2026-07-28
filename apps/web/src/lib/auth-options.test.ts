@@ -74,6 +74,7 @@ describe("Auth.js contract", () => {
       maxAge: 28_800,
       strategy: "jwt",
     });
+    expect(options.pages).toEqual({ error: "/unauthorised", signIn: "/login" });
     expect(options.cookies?.sessionToken).toEqual({
       name: "__Secure-authjs.session-token",
       options: {
