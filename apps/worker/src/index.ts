@@ -1,39 +1,60 @@
 import { loadRuntimeConfig } from "@studio-parallel/config";
+import {
+  createCorrelationId,
+  createErrorMonitor,
+  createJsonLogger,
+  createLoggerMetricSink,
+  createMetricRecorder,
+  reportError,
+} from "@studio-parallel/observability";
 
 import { createHealthServer } from "./health.js";
 
 const config = loadRuntimeConfig();
-const server = createHealthServer(config.APP_ENV);
+const lifecycleCorrelationId = createCorrelationId();
+const logger = createJsonLogger({
+  environment: config.APP_ENV,
+  level: config.LOG_LEVEL,
+  release: config.APP_RELEASE,
+  service: "worker",
+});
+const metrics = createMetricRecorder({
+  environment: config.APP_ENV,
+  release: config.APP_RELEASE,
+  service: "worker",
+  sink: createLoggerMetricSink(logger),
+});
+const errorMonitor = createErrorMonitor({
+  environment: config.APP_ENV,
+  release: config.APP_RELEASE,
+  service: "worker",
+});
+const server = createHealthServer({ logger, metrics });
 
 server.listen(config.WORKER_HEALTH_PORT, () => {
-  process.stdout.write(
-    `${JSON.stringify({
-      environment: config.APP_ENV,
-      event: "worker.started",
-      healthPort: config.WORKER_HEALTH_PORT,
-      providerMode: config.PROVIDER_MODE,
-      service: "worker",
-    })}\n`,
-  );
+  logger.info("worker.started", {
+    correlationId: lifecycleCorrelationId,
+    stage: "startup",
+  });
 });
 
 function shutDown(signal: NodeJS.Signals): void {
-  process.stdout.write(
-    `${JSON.stringify({
-      event: "worker.stopping",
-      service: "worker",
-      signal,
-    })}\n`,
-  );
+  logger.info("worker.stopping", {
+    correlationId: lifecycleCorrelationId,
+    signal,
+    stage: "shutdown",
+  });
 
   server.close((error) => {
     if (error) {
-      process.stderr.write(
-        `${JSON.stringify({
-          error: error.name,
+      reportError(
+        error,
+        {
+          correlationId: lifecycleCorrelationId,
           event: "worker.stop_failed",
-          service: "worker",
-        })}\n`,
+          stage: "shutdown",
+        },
+        { logger, monitor: errorMonitor },
       );
       process.exitCode = 1;
     }

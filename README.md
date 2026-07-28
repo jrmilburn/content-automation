@@ -29,8 +29,13 @@ npm run dev
 This builds the shared packages, then runs:
 
 - Next.js web: <http://localhost:3000>
-- Web health: <http://localhost:3000/api/health>
-- Worker health: <http://localhost:3001/health>
+- Web liveness/readiness: <http://localhost:3000/health/live> and
+  <http://localhost:3000/health/ready>
+- Worker liveness/readiness: <http://localhost:3001/health/live> and
+  <http://localhost:3001/health/ready>
+
+The original `/api/health` and worker `/health` paths remain liveness aliases. Health responses
+contain fixed status labels only; deployment configuration and secrets are never returned.
 
 Run either process independently with `npm run dev:web` or `npm run dev:worker`.
 
@@ -54,7 +59,19 @@ npm run start:worker
 
 Configuration is parsed by `@studio-parallel/config`. Errors identify invalid field names and constraints but never echo values. Production-like environments require an HTTPS non-localhost `PUBLIC_ORIGIN`; local, test and preview environments reject `PROVIDER_MODE=live`.
 
+`APP_RELEASE` is the safe immutable release identifier included in structured diagnostics. It
+defaults to `development` locally and should be set to the deployed commit or image identifier in
+staging and production.
+
 Provider credentials, authentication, database configuration and deployment wiring belong to their dedicated backlog issues. Do not add real secrets to examples, fixtures, browser code or logs.
+
+## Observability
+
+`@studio-parallel/observability` provides correlation propagation, allowlisted JSON logging,
+safe operational errors, an environment/release-aware error-monitoring adapter and basic metric
+hooks. Web request, domain command and worker event contexts retain the same validated
+`x-correlation-id`. See [`packages/observability/README.md`](packages/observability/README.md) for
+the safe-field contract and examples.
 
 ## Database development
 

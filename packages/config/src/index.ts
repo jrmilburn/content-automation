@@ -5,6 +5,13 @@ const localEnvironments = new Set(["local", "test", "preview"]);
 const runtimeConfigSchema = z
   .object({
     APP_ENV: z.enum(["local", "test", "preview", "staging", "production"]).default("local"),
+    APP_RELEASE: z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u, "must be a safe release identifier")
+      .default("development"),
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     PROVIDER_MODE: z.enum(["fake", "live"]).default("fake"),

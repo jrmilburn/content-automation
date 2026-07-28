@@ -2,22 +2,31 @@ export const serviceNames = ["web", "worker"] as const;
 
 export type ServiceName = (typeof serviceNames)[number];
 
+export const healthKinds = ["live", "ready"] as const;
+
+export type HealthKind = (typeof healthKinds)[number];
+
 export type ServiceHealth = Readonly<{
   service: ServiceName;
   status: "ok";
-  environment: string;
+  kind: HealthKind;
+  checks: Readonly<{
+    configuration?: "ok";
+    process?: "ok";
+  }>;
   timestamp: string;
 }>;
 
 export function createServiceHealth(
   service: ServiceName,
-  environment: string,
+  kind: HealthKind,
   now: Date = new Date(),
 ): ServiceHealth {
   return {
     service,
     status: "ok",
-    environment,
+    kind,
+    checks: kind === "live" ? { process: "ok" } : { configuration: "ok" },
     timestamp: now.toISOString(),
   };
 }
