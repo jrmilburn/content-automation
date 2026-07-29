@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { LegalLinks } from "../../../components/legal-document";
 import { beginGoogleSignIn } from "../../actions";
 
 const reasonMessages = {
@@ -56,6 +57,7 @@ export default async function LoginPage({
         <p className="access-help">
           Access is limited to explicitly approved Studio Parallel users.
         </p>
+        <LegalLinks />
       </section>
       <aside className="access-aside" aria-label="Workspace principles">
         <p>One workspace</p>

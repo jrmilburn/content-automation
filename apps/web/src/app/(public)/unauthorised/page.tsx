@@ -1,3 +1,4 @@
+import { LegalLinks } from "../../../components/legal-document";
 import { beginGoogleSignIn } from "../../actions";
 
 export default function UnauthorisedPage() {
@@ -15,6 +16,7 @@ export default function UnauthorisedPage() {
             Try another Google account
           </button>
         </form>
+        <LegalLinks />
       </div>
     </main>
   );
