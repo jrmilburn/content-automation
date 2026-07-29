@@ -52,13 +52,14 @@
     {
       "availableMetricCount": 2,
       "errorClass": "unsupported",
-      "label": "missing-data",
+      "label": "error-probe",
       "metricGroupsAttempted": 3,
       "productType": "REELS",
       "unavailableMetricCount": 2
     }
   ],
   "negativeCases": {
+    "liveEmptyInsightDataObserved": true,
     "liveUnsupportedMetricErrorObserved": true,
     "rateLimitFixture": "tests/fixtures/meta/instagram-v25/rate-limit.json"
   },
@@ -74,7 +75,7 @@
     { "name": "cursor_pagination", "passed": true },
     { "name": "representative_age_order", "passed": true },
     { "name": "supported_insight", "passed": true },
-    { "name": "unavailable_insight", "passed": true },
+    { "name": "insight_availability_measured", "passed": true },
     { "name": "unsupported_insight_error", "passed": true },
     { "name": "usage_header", "passed": true },
     { "name": "provider_version_header", "passed": true },

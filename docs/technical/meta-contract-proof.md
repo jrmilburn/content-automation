@@ -45,7 +45,7 @@ Run `npm run meta:contract:live` only in an authorised engineering session. Prov
 | `META_CONTRACT_ACCOUNT_OWNERSHIP` | `owned` or `managed`, confirmed by the account owner. |
 | `META_CONTRACT_REDIRECT_URI` | Exact configured HTTPS callback URI. |
 | `META_CONTRACT_GRANTED_SCOPES` | Exactly the two comma-separated read scopes above. |
-| `META_CONTRACT_REEL_IDS` | Three owned Reel IDs ordered as recent, older, and expected-missing-data. IDs remain in memory and are never written. |
+| `META_CONTRACT_REEL_IDS` | Three distinct owned Reel IDs ordered as recent, older, and error-probe. IDs remain in memory and are never written. |
 | `META_CONTRACT_TOKEN_RESPONSE_FIELDS` | Comma-separated field names observed during exchange, including `access_token`; no values. |
 | `META_CONTRACT_TOKEN_EXPIRES_IN_SECONDS` | Positive expiry duration when the exchange returned one. |
 
@@ -54,12 +54,33 @@ The runner uses bearer authorization and versioned URLs, requests no caption, us
 Output is written with restricted file permissions to the ignored path `artifacts/meta-contract/live-proof.json`. A passing proof requires:
 
 - a returned Business/Creator account, all three selected owned Reels classified by `media_product_type=REELS`, and a recent Reel timestamp later than the older representative without retaining either timestamp;
-- at least two media pages, a supported insight, an empty/unavailable insight and a redacted unsupported-metric error;
+- at least two media pages, a supported insight, a measured availability determination for every representative, and a redacted unsupported-metric error;
 - an observed safe aggregate usage header (`x-app-usage` or `x-business-use-case-usage`);
 - exact least-privilege scopes, HTTPS redirect state and observed token response field names.
 
 The committed `tests/fixtures/meta/instagram-v25/sanitized-proof.json` is synthetic contract-test data, not a claim that the target account passed. `rate-limit.json` proves deterministic 429 classification without intentionally exhausting the live app's quota.
 
+## Observed capability map (v25.0)
+
+A live run against the authorised owned Business account probed documented media-insight metric names individually against one owned Reel. Names are recorded; no metric value, media identifier or account identifier is retained.
+
+| Result | Metric names |
+| --- | --- |
+| Returned a numeric value | `views`, `reach`, `likes`, `comments`, `shares`, `saved`, `total_interactions`, `ig_reels_video_view_total_time`, `ig_reels_avg_watch_time`, `reels_skip_rate` |
+| Returned HTTP 200 with empty data | none observed |
+| Rejected with provider error code 100 | `plays`, `replays`, `clips_replays_count`, `ig_reels_aggregated_all_plays_count`, `follows`, `profile_visits`, `profile_activity`, `navigation`, `impressions`, `video_views`, `engagement`, `taps_forward`, `taps_back`, `exits`, `peak_concurrent_viewers`, `thread_replies` |
+
+Two findings follow, and both are recorded rather than worked around:
+
+1. **The empty-data insight state is documented but not reproducible on demand.** Meta documents an unavailable insight as empty data rather than a zero, and the adapter must handle that. On this account every supported metric returned a value at every sampled age, and every unsupported name produced error code 100 instead of empty data. The live proof therefore asserts that availability was *measured* for each representative (`insight_availability_measured`) and records whether the empty-data contract was actually seen (`negativeCases.liveEmptyInsightDataObserved`). It does not require an observation the provider will not produce. The adapter's handling of empty data remains covered deterministically by `tests/fixtures/meta/instagram-v25/sanitized-proof.json`. Treat any future run that records `liveEmptyInsightDataObserved: true` as new contract information, not as a regression.
+2. **`reels_skip_rate` is available but not requested.** It is absent from `META_CONTRACT.insightGroups`, so the capability map currently under-requests one supported Reel metric. Adding it is a deliberate contract change and belongs with the insights implementation, not this proof.
+
+The pagination cap is a related constraint. `maximumMediaPages` is 25 at `mediaPageSize` 2, so the runner can reach roughly the fifty most recent media items. Selecting the account's oldest Reel as the `older` representative consumed most of that budget. Choose a clearly older but not maximally old representative, or raise the cap, before relying on this run being reproducible on an account with more media.
+
 ## Current live-evidence status
 
-No Meta credential, app/account identifier or authorised Reel selection is configured in this workspace. The harness, pinned contract and synthetic negative fixtures are complete, but the target-account proof and dashboard setup record must be supplied by the Studio Parallel/Meta app owners before this issue can be closed or the OAuth implementation can begin.
+The live production-path proof **passed** against an authorised Studio Parallel-owned Instagram Business account under Standard Access on Graph API `v25.0`. All twelve recorded checks passed, including professional-account type, least-privilege scopes, HTTPS redirect state, owned-Reel membership and `media_product_type=REELS` classification, cursor pagination across multiple pages, representative age ordering, a supported insight, a measured availability determination per representative, a redacted unsupported-metric error, a safe aggregate usage header and an `instagram-api-version:v25.0` response header.
+
+The token used was generated from the App Dashboard, which issues a long-lived sixty-day token. That proves the app's own Instagram configuration and account connection, but it does **not** exercise the redirect and code-exchange leg; `authorization.tokenResponseFields` records Meta's documented exchange field names rather than a locally observed exchange. Proving the exchange end to end is #29's responsibility, and the sanitised proof should be rerun once that flow exists.
+
+The sanitised artifact is written to the ignored path `artifacts/meta-contract/live-proof.json`. The dashboard configuration record, ownership confirmation and evidence date belong in the restricted engineering evidence store, not in Git.

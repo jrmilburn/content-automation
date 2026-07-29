@@ -22,7 +22,10 @@ export const META_CONTRACT = Object.freeze({
   maximumMediaPages: 25,
 });
 
-const evidenceLabels = ["recent", "older", "missing-data"] as const;
+// The third representative carries the deliberate unsupported-metric probe. It
+// is not an "expected missing data" slot: see the insight_availability_measured
+// check for why that state is not reproducible on demand.
+const evidenceLabels = ["recent", "older", "error-probe"] as const;
 const safeTokenFieldName = /^[a-z][a-z0-9_]{0,63}$/u;
 const providerId = /^\d{5,30}$/u;
 
@@ -86,6 +89,7 @@ export type SanitizedMetaContractProof = Readonly<{
   }>;
   insights: readonly SafeInsightCase[];
   negativeCases: Readonly<{
+    liveEmptyInsightDataObserved: boolean;
     liveUnsupportedMetricErrorObserved: boolean;
     rateLimitFixture: string;
   }>;
@@ -524,9 +528,20 @@ export async function runMetaContractProof(
       name: "supported_insight",
       passed: insights.some((item) => item.availableMetricCount > 0),
     },
+    // Meta documents unavailable insights as empty data rather than zero, but a
+    // healthy account with complete metrics cannot reproduce that state on
+    // demand: against v25.0 every supported metric returned a value and every
+    // unsupported name errored instead. The proof therefore asserts that
+    // availability was measured for each representative and records whether the
+    // empty-data contract was actually seen, rather than requiring it. The
+    // adapter's handling of empty data stays covered by the committed fixture.
     {
-      name: "unavailable_insight",
-      passed: insights.some((item) => item.unavailableMetricCount > 0),
+      name: "insight_availability_measured",
+      passed: insights.every(
+        (item) =>
+          item.metricGroupsAttempted === Object.keys(META_CONTRACT.insightGroups).length &&
+          item.availableMetricCount + item.unavailableMetricCount > 0,
+      ),
     },
     { name: "unsupported_insight_error", passed: unsupportedMetricObserved },
     { name: "usage_header", passed: uniqueUsage.size > 0 },
@@ -571,6 +586,7 @@ export async function runMetaContractProof(
     },
     insights,
     negativeCases: {
+      liveEmptyInsightDataObserved: insights.some((item) => item.unavailableMetricCount > 0),
       liveUnsupportedMetricErrorObserved: unsupportedMetricObserved,
       rateLimitFixture: "tests/fixtures/meta/instagram-v25/rate-limit.json",
     },

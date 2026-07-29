@@ -87,6 +87,8 @@ For every canonical metric record one of:
 - `provider_error` with retry class;
 - `not_requested` under the capability map.
 
+The `unavailable` state must stay implemented, but a live `v25.0` run against an authorised owned Business account did not reproduce it: every supported metric returned a value at every sampled media age and every unsupported name was rejected with provider error code 100 instead of empty data. The observed capability map, including one supported Reel metric the current groups do not request, is recorded in [Meta contract proof](meta-contract-proof.md).
+
 Account insight limits also matter: Meta states some account metrics are unavailable below 100 followers and account metric data is retained for limited periods (currently documented as up to 90 days). Media/account data and organic/ads-driven definitions must not be conflated. Store the provider’s title/description/period where returned.
 
 ## Metric snapshots and scheduling

@@ -39,7 +39,7 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-function createMetaFetch() {
+function createMetaFetch({ emptyInsightGroup = true }: { emptyInsightGroup?: boolean } = {}) {
   return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input.toString());
     expect(url.origin).toBe("https://graph.instagram.com");
@@ -86,7 +86,11 @@ function createMetaFetch() {
       if (metric === "studio_parallel_contract_probe") {
         return jsonResponse({ error: { code: 100, type: "OAuthException" } }, 400);
       }
-      if (url.pathname.includes(selectedMediaIds[2]) && metric?.includes("likes")) {
+      if (
+        emptyInsightGroup &&
+        url.pathname.includes(selectedMediaIds[2]) &&
+        metric?.includes("likes")
+      ) {
         return jsonResponse({ data: [] });
       }
       return jsonResponse({
@@ -129,6 +133,7 @@ describe("Meta contract proof", () => {
     });
     expect(proof.insights).toHaveLength(3);
     expect(proof.insights[2]?.unavailableMetricCount).toBeGreaterThan(0);
+    expect(proof.negativeCases.liveEmptyInsightDataObserved).toBe(true);
     expect(proof.negativeCases.liveUnsupportedMetricErrorObserved).toBe(true);
     expect(proof.responseMetadata.usage).toEqual([{ header: "x-app-usage", maximumPercentage: 7 }]);
 
@@ -139,6 +144,74 @@ describe("Meta contract proof", () => {
     expect(serialized).not.toContain("2026-07-01T00:00:00+0000");
     expect(serialized).not.toContain("redacted-next-page");
     expect(fetchImplementation).toHaveBeenCalledTimes(13);
+  });
+
+  it("passes and records the absence when the provider never returns empty insight data", async () => {
+    // Meta documents unavailable insights as empty data, but an account whose
+    // Reels all carry complete metrics cannot produce that state. The proof must
+    // still pass and must record the absence rather than assert an observation.
+    const configuration = loadMetaContractConfiguration(configurationEnvironment());
+    const proof = await runMetaContractProof(configuration, {
+      fetchImplementation: createMetaFetch({ emptyInsightGroup: false }),
+      now: () => new Date("2026-07-28T00:00:00.000Z"),
+    });
+
+    expect(proof.status).toBe("passed");
+    expect(proof.negativeCases.liveEmptyInsightDataObserved).toBe(false);
+    expect(proof.insights.every((insight) => insight.unavailableMetricCount === 0)).toBe(true);
+    expect(proof.insights.every((insight) => insight.metricGroupsAttempted === 3)).toBe(true);
+    expect(proof.checks).toContainEqual({ name: "insight_availability_measured", passed: true });
+    // The deliberate unsupported-metric probe still proves the error path.
+    expect(proof.negativeCases.liveUnsupportedMetricErrorObserved).toBe(true);
+  });
+
+  it("fails when a representative yields no availability determination at all", async () => {
+    const configuration = loadMetaContractConfiguration(configurationEnvironment());
+    const proof = await runMetaContractProof(configuration, {
+      // Every insight group errors, so nothing is measured for any representative.
+      fetchImplementation: vi.fn(async (input: string | URL | Request) => {
+        const url = new URL(input instanceof Request ? input.url : input.toString());
+        if (url.pathname === "/v25.0/me") {
+          return jsonResponse({
+            account_type: "BUSINESS",
+            id: "17841499999999999",
+            media_count: 3,
+          });
+        }
+        if (url.pathname.endsWith("/media")) {
+          if (!url.searchParams.has("after")) {
+            return jsonResponse({
+              data: selectedMediaIds.slice(0, 2).map((id, index) => ({
+                id,
+                media_product_type: "REELS",
+                media_type: "VIDEO",
+                timestamp: index === 0 ? "2026-07-01T00:00:00+0000" : "2026-06-15T00:00:00+0000",
+              })),
+              paging: {
+                cursors: { after: "synthetic-cursor" },
+                next: "https://graph.instagram.com/redacted-next-page",
+              },
+            });
+          }
+          return jsonResponse({
+            data: [
+              {
+                id: selectedMediaIds[2],
+                media_product_type: "REELS",
+                media_type: "VIDEO",
+                timestamp: "2026-06-01T00:00:00+0000",
+              },
+            ],
+          });
+        }
+        return jsonResponse({ error: { code: 100, type: "OAuthException" } }, 400);
+      }),
+      now: () => new Date("2026-07-28T00:00:00.000Z"),
+    });
+
+    expect(proof.status).toBe("failed");
+    expect(proof.checks).toContainEqual({ name: "insight_availability_measured", passed: false });
+    expect(proof.checks).toContainEqual({ name: "supported_insight", passed: false });
   });
 
   it("requires the exact least-privilege scopes, three distinct Reels and HTTPS redirect", () => {
