@@ -1,0 +1,60 @@
+version: 2
+
+updates:
+  # Security and version updates for the npm workspace. Grouping keeps the
+  # review load proportionate: one pull request per ecosystem slice rather than
+  # one per transitive bump.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Australia/Sydney
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    labels:
+      - dependencies
+    groups:
+      production-dependencies:
+        applies-to: version-updates
+        dependency-type: production
+      development-dependencies:
+        applies-to: version-updates
+        dependency-type: development
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    ignore:
+      # Node.js major upgrades change the pinned runtime, the base image digest
+      # and the container tool versions together, so they are handled as a
+      # deliberate change rather than an automatic bump.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+
+  # Keeps commit-pinned actions current. Dependabot rewrites the SHA and the
+  # trailing version comment together, which the workflow policy check enforces.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Australia/Sydney
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+
+  # Tracks the pinned base image digest in the runtime container.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Australia/Sydney
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies

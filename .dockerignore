@@ -1,0 +1,17 @@
+.git/
+.github/
+node_modules/
+**/node_modules/
+**/.next/
+**/dist/
+packages/db/src/generated/
+artifacts/
+coverage/
+playwright-report/
+test-results/
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+Dockerfile
+.dockerignore

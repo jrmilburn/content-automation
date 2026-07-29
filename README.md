@@ -119,7 +119,9 @@ committed dispatches and owns all handler leasing.
 
 ## Quality gates
 
-GitHub-hosted Actions are temporarily disabled to avoid runner spend during early internal development. Before opening or merging a pull request, install from the lockfile and run the complete local gate:
+Pull requests run two hosted workflows. `ci.yml` covers formatting, linting, strict type checks, unit/component tests, production builds, real PostgreSQL integration tests and built-app Playwright accessibility smoke tests. `supply-chain.yml` covers dependency auditing, secret scanning, workflow and dependency policy, CodeQL static analysis, SBOM generation and non-root container build and image scanning.
+
+Run the same core gates locally before opening a pull request:
 
 ```powershell
 npm ci
@@ -127,6 +129,8 @@ npm run test:e2e:install
 npm run validate:local
 ```
 
-`validate:local` covers formatting, linting, strict type checks, unit/component tests, dependency and secret checks, a disposable real-PostgreSQL migration/integration suite, the production build, and desktop/mobile Playwright accessibility smoke tests. Record the commands and results in the pull request. Tests run in deterministic fake mode and require no production provider credentials or content.
+`validate:local` covers formatting, linting, strict type checks, unit/component tests, dependency, secret and supply-chain policy checks, a disposable real-PostgreSQL migration/integration suite, the production build, and desktop/mobile Playwright accessibility smoke tests. Record the commands and results in the pull request.
 
-Hosted CI must be restored before internal launch or before branch protection relies on required remote checks.
+All pull-request providers run in deterministic fake mode. Workflows have no production provider credentials — a pull-request workflow may read only the scoped `GITHUB_TOKEN`, which `npm run security:workflows` enforces. Bounded artifacts contain only JUnit test names, redacted failure detail, the SBOM and image scan reports.
+
+Supply-chain policy, container hardening, media-tool patch cadence and the accepted-risk process are documented in `docs/technical/supply-chain-security.md`.

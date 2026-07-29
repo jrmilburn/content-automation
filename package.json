@@ -35,7 +35,12 @@
     "lint": "eslint . --max-warnings=0",
     "queue:migrate": "npm run build:packages && npm run migrate -w @studio-parallel/queue",
     "security:dependencies": "npm audit --audit-level=high",
+    "security:direct-dependencies": "tsx scripts/security/check-direct-dependencies.ts",
+    "security:exceptions": "tsx scripts/security/check-exceptions.ts",
+    "security:sbom": "tsx scripts/security/generate-sbom.ts",
     "security:secrets": "tsx scripts/security/check-secrets.ts",
+    "security:supply-chain": "npm run security:workflows && npm run security:direct-dependencies && npm run security:exceptions && npm run security:sbom",
+    "security:workflows": "tsx scripts/security/check-workflow-policy.ts",
     "start:web": "npm run start -w @studio-parallel/web",
     "start:worker": "npm run start -w @studio-parallel/worker",
     "test": "vitest run",
@@ -47,7 +52,7 @@
     "test:e2e:install:ci": "playwright install --with-deps chromium",
     "test:watch": "vitest",
     "typecheck": "npm run build:packages && tsc -p tsconfig.tools.json --noEmit && npm run typecheck --workspaces --if-present",
-    "validate:local": "npm run check && npm run security:dependencies && npm run security:secrets && npm run test:db:integration && npm run test:e2e"
+    "validate:local": "npm run check && npm run security:dependencies && npm run security:secrets && npm run security:supply-chain && npm run test:db:integration && npm run test:e2e"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",

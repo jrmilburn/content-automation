@@ -1,0 +1,23 @@
+{
+  "maximumExceptionDays": 180,
+  "categories": [
+    "dependency-licence",
+    "dependency-prerelease",
+    "dependency-vulnerability",
+    "image-vulnerability",
+    "workflow-policy"
+  ],
+  "exceptions": [
+    {
+      "id": "dependency-prerelease-next-auth",
+      "category": "dependency-prerelease",
+      "subject": "next-auth",
+      "reason": "Auth.js v5 is the only line that supports the Next.js App Router server-side session model this application depends on. The v4 line does not, and no stable v5 release exists yet.",
+      "owner": "Studio Parallel engineering lead",
+      "evidence": "https://github.com/nextauthjs/next-auth/releases",
+      "approvedOn": "2026-07-29",
+      "expiresOn": "2027-01-25",
+      "reviewAction": "Move to the first stable next-auth v5 release, or re-approve with a fresh expiry after confirming the beta line is still maintained and free of known advisories."
+    }
+  ]
+}

@@ -131,6 +131,8 @@ No database cascade is allowed to silently leave an object or dangling evidence.
 - CI workflows use least-privilege `GITHUB_TOKEN`, pin third-party actions by commit SHA and protect production environments.
 - No untrusted pull-request code receives production secrets.
 
+`supply-chain-security.md` records how each of these is enforced, which checks run where, the media-parser patch cadence and emergency process, and the owned, expiring accepted-risk register.
+
 ## Security launch checklist
 
 - Threat model and data-flow review complete.

@@ -1,0 +1,308 @@
+{
+  "reviewIntervalDays": 180,
+  "allowedLicences": {
+    "production": [
+      "0BSD",
+      "Apache-2.0",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "BlueOak-1.0.0",
+      "ISC",
+      "MIT"
+    ],
+    "development": [
+      "0BSD",
+      "Apache-2.0",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "BlueOak-1.0.0",
+      "ISC",
+      "MIT",
+      "MPL-2.0"
+    ]
+  },
+  "dependencies": [
+    {
+      "name": "@axe-core/playwright",
+      "scope": "development",
+      "licence": "MPL-2.0",
+      "necessity": "Runs axe accessibility assertions inside the Playwright smoke suite required by the testing strategy.",
+      "maintenance": "Maintained by Deque Labs alongside axe-core with regular releases.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead",
+      "notes": "MPL-2.0 is file-level copyleft. Accepted for development scope only because the package never ships in a runtime image."
+    },
+    {
+      "name": "@eslint/js",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Supplies the recommended ESLint rule set consumed by the flat config.",
+      "maintenance": "Published by the ESLint team in lockstep with eslint.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "@playwright/test",
+      "scope": "development",
+      "licence": "Apache-2.0",
+      "necessity": "Runs the desktop and mobile browser accessibility smoke suite against the production build.",
+      "maintenance": "Maintained by Microsoft on a predictable release train.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "@prisma/adapter-pg",
+      "scope": "production",
+      "licence": "Apache-2.0",
+      "necessity": "Drives Prisma over the node-postgres pool so the application and the queue share one connection strategy.",
+      "maintenance": "Released with the Prisma core version and pinned to the same version as @prisma/client.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "@prisma/client",
+      "scope": "production",
+      "licence": "Apache-2.0",
+      "necessity": "Provides the typed data access layer and migration-compatible client for all workspace-scoped queries.",
+      "maintenance": "Actively maintained by Prisma with frequent patch releases.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "@testing-library/jest-dom",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Adds DOM assertions used by component tests.",
+      "maintenance": "Maintained by the Testing Library organisation.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "@testing-library/react",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Renders React components under test through accessible queries.",
+      "maintenance": "Maintained by the Testing Library organisation and tracks React releases.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "@types/node",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Supplies Node.js type declarations for strict type checking.",
+      "maintenance": "DefinitelyTyped, continuously updated.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "@types/pg",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Supplies node-postgres type declarations for the database package.",
+      "maintenance": "DefinitelyTyped, continuously updated.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "@types/react",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Supplies React type declarations for strict type checking.",
+      "maintenance": "DefinitelyTyped, continuously updated.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "@types/react-dom",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Supplies React DOM type declarations for strict type checking.",
+      "maintenance": "DefinitelyTyped, continuously updated.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "@vitejs/plugin-react",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Transforms React component sources for the Vitest component environment.",
+      "maintenance": "Maintained by the Vite team.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "concurrently",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Runs the web and worker development processes from a single command.",
+      "maintenance": "Maintained by the open-cli-tools organisation.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead",
+      "notes": "Development convenience only. Remove if the development entry point is ever simplified."
+    },
+    {
+      "name": "dotenv",
+      "scope": "production",
+      "licence": "BSD-2-Clause",
+      "necessity": "Loads local database configuration for Prisma tooling; deployed environments use the platform secret manager instead.",
+      "maintenance": "Long-lived, widely used and actively released.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "eslint",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Enforces the repository lint gate.",
+      "maintenance": "Actively maintained with a published support policy.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "jsdom",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Provides the DOM environment for component tests.",
+      "maintenance": "Actively maintained.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "next",
+      "scope": "production",
+      "licence": "MIT",
+      "necessity": "The application framework for the internal web surface, including the standalone runtime output used by the container image.",
+      "maintenance": "Actively maintained by Vercel with a published security process.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "next-auth",
+      "scope": "production",
+      "licence": "ISC",
+      "necessity": "Implements the Google Workspace OIDC sign-in and server-side session handling required by the access capability.",
+      "maintenance": "Actively developed; the v5 line is still prerelease and carries an approved, expiring exception.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead",
+      "notes": "Prerelease risk is tracked as exception dependency-prerelease-next-auth."
+    },
+    {
+      "name": "pg",
+      "scope": "production",
+      "licence": "MIT",
+      "necessity": "PostgreSQL driver shared by the Prisma adapter and the queue.",
+      "maintenance": "Long-lived, actively maintained node-postgres project.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "pg-boss",
+      "scope": "production",
+      "licence": "MIT",
+      "necessity": "Provides the PostgreSQL-backed job queue that avoids operating a separate Redis service.",
+      "maintenance": "Actively maintained with a documented schema migration path.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "prettier",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Enforces the repository formatting gate.",
+      "maintenance": "Actively maintained.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "prisma",
+      "scope": "development",
+      "licence": "Apache-2.0",
+      "necessity": "Generates the client and applies, validates and drift-checks migrations. Not present in runtime images.",
+      "maintenance": "Released in lockstep with @prisma/client.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "react",
+      "scope": "production",
+      "licence": "MIT",
+      "necessity": "The rendering library required by Next.js.",
+      "maintenance": "Actively maintained by the React team.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "react-dom",
+      "scope": "production",
+      "licence": "MIT",
+      "necessity": "The DOM renderer required by Next.js.",
+      "maintenance": "Released with react.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "server-only",
+      "scope": "production",
+      "licence": "MIT",
+      "necessity": "Fails the build when server-only modules are imported into client bundles, protecting the credential and authorisation boundary.",
+      "maintenance": "Tiny, stable marker package published by the React team.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "tsx",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Executes TypeScript tooling scripts, including the security checks and the database seed.",
+      "maintenance": "Actively maintained.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "typescript",
+      "scope": "development",
+      "licence": "Apache-2.0",
+      "necessity": "Compiles every workspace and enforces the strict type gate.",
+      "maintenance": "Actively maintained by Microsoft.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "typescript-eslint",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Supplies the TypeScript parser and type-aware lint rules.",
+      "maintenance": "Actively maintained and tracks TypeScript releases.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "uuid",
+      "scope": "production",
+      "licence": "MIT",
+      "necessity": "Generates the opaque v7 identifiers used for workspace-scoped records and correlation IDs.",
+      "maintenance": "Long-lived and actively maintained.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "vitest",
+      "scope": "development",
+      "licence": "MIT",
+      "necessity": "Runs the unit, component and database integration suites.",
+      "maintenance": "Actively maintained.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    },
+    {
+      "name": "zod",
+      "scope": "production",
+      "licence": "MIT",
+      "necessity": "Defines the startup configuration schema and the immutable analysis and strategy contracts.",
+      "maintenance": "Actively maintained.",
+      "reviewedOn": "2026-07-29",
+      "reviewedBy": "Studio Parallel engineering lead"
+    }
+  ]
+}
