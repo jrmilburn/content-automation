@@ -1,5 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+
+import { expectAccessible } from "./support/accessibility";
 
 test("the authenticated shell is navigable and accessible at its active viewport", async ({
   page,
@@ -63,8 +64,7 @@ test("the authenticated shell is navigable and accessible at its active viewport
     await expect(page.getByRole("link", { name: "Posts" })).toHaveAttribute("aria-current", "page");
   }
 
-  const accessibilityScan = await new AxeBuilder({ page }).analyze();
-  expect(accessibilityScan.violations).toEqual([]);
+  await expectAccessible(page);
 });
 
 test("an expired session redirects before workspace content renders", async ({ context, page }) => {
@@ -133,6 +133,5 @@ test("operations filters and safe job detail remain accessible at the active vie
     expect((retryBox?.x ?? 0) + (retryBox?.width ?? 0)).toBeLessThanOrEqual(viewport.width);
   }
 
-  const accessibilityScan = await new AxeBuilder({ page }).analyze();
-  expect(accessibilityScan.violations).toEqual([]);
+  await expectAccessible(page);
 });
