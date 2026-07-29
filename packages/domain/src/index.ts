@@ -10,6 +10,7 @@ export {
   analysisTaxonomy,
   analysisValidationCodes,
   assertGeminiStructuredOutputSchema,
+  createGeminiStructuredOutputSchema,
   geminiPostCreativeAnalysisV1Schema,
   postCreativeAnalysisV1Schema,
   validatePostCreativeAnalysisV1,
@@ -85,6 +86,30 @@ export {
   type JobNextAction,
   type JobRetryDecision,
 } from "./job-retry.js";
+export {
+  createStrategyRecommendationFingerprint,
+  geminiStrategyV1Schema,
+  strategyContractArtifacts,
+  strategyModelRequested,
+  strategyPromptText,
+  strategyPromptVersion,
+  strategySchemaVersion,
+  strategyTaxonomy,
+  strategyV1Schema,
+  strategyValidationCodes,
+  validateStrategyV1,
+  type StrategyClaimDimension,
+  type StrategyEvidenceClass,
+  type StrategyEvidenceRole,
+  type StrategyEvidenceType,
+  type StrategyManifestEvidence,
+  type StrategyMode,
+  type StrategyV1,
+  type StrategyValidationCode,
+  type StrategyValidationContext,
+  type StrategyValidationIssue,
+  type StrategyValidationResult,
+} from "./strategy-contract.js";
 
 export type ServiceName = (typeof serviceNames)[number];
 
