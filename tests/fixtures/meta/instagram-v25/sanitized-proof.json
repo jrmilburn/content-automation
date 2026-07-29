@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "kind": "sanitized-meta-contract-proof",
+  "observedAt": "2026-07-28T00:00:00.000Z",
+  "status": "passed",
+  "contract": {
+    "accessLevel": "standard",
+    "apiVersion": "v25.0",
+    "graphHost": "graph.instagram.com",
+    "insightGroups": {
+      "distribution": ["views", "reach"],
+      "engagement": ["likes", "comments", "shares", "saved", "total_interactions"],
+      "watchTime": ["ig_reels_video_view_total_time", "ig_reels_avg_watch_time"]
+    },
+    "loginPath": "instagram_login",
+    "mediaFields": ["id", "media_type", "media_product_type", "timestamp"],
+    "requiredScopes": ["instagram_business_basic", "instagram_business_manage_insights"],
+    "usageHeaders": ["x-app-usage", "x-business-use-case-usage"]
+  },
+  "authorization": {
+    "accountIdentityReturned": true,
+    "accountOwnership": "owned",
+    "accountType": "BUSINESS",
+    "grantedScopes": ["instagram_business_basic", "instagram_business_manage_insights"],
+    "redirectUriHttps": true,
+    "tokenExpiresInObserved": true,
+    "tokenResponseFields": ["access_token", "user_id", "token_type", "expires_in"]
+  },
+  "media": {
+    "paginationObserved": true,
+    "pagesVisited": 2,
+    "recentNewerThanOlder": true,
+    "selectedReelCount": 3
+  },
+  "insights": [
+    {
+      "availableMetricCount": 5,
+      "errorClass": "none",
+      "label": "recent",
+      "metricGroupsAttempted": 3,
+      "productType": "REELS",
+      "unavailableMetricCount": 0
+    },
+    {
+      "availableMetricCount": 4,
+      "errorClass": "none",
+      "label": "older",
+      "metricGroupsAttempted": 3,
+      "productType": "REELS",
+      "unavailableMetricCount": 1
+    },
+    {
+      "availableMetricCount": 2,
+      "errorClass": "unsupported",
+      "label": "error-probe",
+      "metricGroupsAttempted": 3,
+      "productType": "REELS",
+      "unavailableMetricCount": 2
+    }
+  ],
+  "negativeCases": {
+    "liveEmptyInsightDataObserved": true,
+    "liveUnsupportedMetricErrorObserved": true,
+    "rateLimitFixture": "tests/fixtures/meta/instagram-v25/rate-limit.json"
+  },
+  "responseMetadata": {
+    "providerVersionHeaders": ["instagram-api-version:v25.0"],
+    "usage": [{ "header": "x-app-usage", "maximumPercentage": 7 }]
+  },
+  "checks": [
+    { "name": "professional_account", "passed": true },
+    { "name": "least_privilege_scopes", "passed": true },
+    { "name": "owned_reels_returned", "passed": true },
+    { "name": "reel_classification", "passed": true },
+    { "name": "cursor_pagination", "passed": true },
+    { "name": "representative_age_order", "passed": true },
+    { "name": "supported_insight", "passed": true },
+    { "name": "insight_availability_measured", "passed": true },
+    { "name": "unsupported_insight_error", "passed": true },
+    { "name": "usage_header", "passed": true },
+    { "name": "provider_version_header", "passed": true },
+    { "name": "token_response_metadata", "passed": true }
+  ]
+}

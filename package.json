@@ -33,6 +33,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",
+    "meta:contract:live": "tsx scripts/meta-contract/run-live-proof.ts",
     "queue:migrate": "npm run build:packages && npm run migrate -w @studio-parallel/queue",
     "security:dependencies": "npm audit --audit-level=high",
     "security:direct-dependencies": "tsx scripts/security/check-direct-dependencies.ts",

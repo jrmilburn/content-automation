@@ -11,6 +11,8 @@ Prefer **Instagram API with Instagram Login** (`graph.instagram.com`) because it
 
 Do not request publish, message or comment-management scopes. Meta’s [official Instagram API collection](https://www.postman.com/meta/instagram/collection/6yqw8pt/instagram-api) and [Insights guide](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api?entity=request-23987686-26e7999c-fc7e-44c8-8f71-ab2de8d35c32) are the implementation baseline.
 
+The repository pins this path to Graph API `v25.0`. The sanitised, account-specific proof procedure and current evidence status are recorded in [Meta contract proof](meta-contract-proof.md). A version change is material: update the capability map and rerun that proof before dependent implementation proceeds.
+
 Fallback: Instagram API with Facebook Login is only selected if a proof against the target account shows the Instagram Login path cannot return required insights. It requires a linked Page and a different token/permission chain (`instagram_basic`, `instagram_manage_insights`, `pages_read_engagement`, with additional permissions in some Business Manager arrangements). The two paths must not be mixed in one credential.
 
 ## Account and access eligibility
@@ -84,6 +86,8 @@ For every canonical metric record one of:
 - `permission_missing`;
 - `provider_error` with retry class;
 - `not_requested` under the capability map.
+
+The `unavailable` state must stay implemented, but a live `v25.0` run against an authorised owned Business account did not reproduce it: every supported metric returned a value at every sampled media age and every unsupported name was rejected with provider error code 100 instead of empty data. The observed capability map, including one supported Reel metric the current groups do not request, is recorded in [Meta contract proof](meta-contract-proof.md).
 
 Account insight limits also matter: Meta states some account metrics are unavailable below 100 followers and account metric data is retained for limited periods (currently documented as up to 90 days). Media/account data and organic/ads-driven definitions must not be conflated. Store the provider’s title/description/period where returned.
 

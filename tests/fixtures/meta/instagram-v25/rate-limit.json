@@ -1,0 +1,9 @@
+{
+  "errorClass": "rate_limit",
+  "httpStatus": 429,
+  "retryable": true,
+  "safeUsage": {
+    "header": "x-app-usage",
+    "maximumPercentage": 100
+  }
+}
