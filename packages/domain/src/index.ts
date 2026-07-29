@@ -1,6 +1,29 @@
 export const serviceNames = ["web", "worker"] as const;
 
 export {
+  analysisContractArtifacts,
+  analysisArtifactLifecycles,
+  analysisModelRequested,
+  analysisPromptText,
+  analysisPromptVersion,
+  analysisSchemaVersion,
+  analysisTaxonomy,
+  analysisValidationCodes,
+  assertGeminiStructuredOutputSchema,
+  geminiPostCreativeAnalysisV1Schema,
+  postCreativeAnalysisV1Schema,
+  validatePostCreativeAnalysisV1,
+  type AnalysisObservation,
+  type AnalysisArtifactLifecycle,
+  type AnalysisValidationCode,
+  type AnalysisValidationContext,
+  type AnalysisValidationIssue,
+  type AnalysisValidationResult,
+  type PostCreativeAnalysisV1,
+  type ProviderSchemaAcceptance,
+} from "./analysis-contract.js";
+
+export {
   evaluateGoogleOidcProfile,
   isAllowedRequestOrigin,
   oidcDenialReasons,

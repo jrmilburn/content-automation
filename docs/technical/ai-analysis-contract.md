@@ -138,7 +138,7 @@ Controlled enums are versioned in the schema. Initial examples:
 
 - `HookCategory`: question, bold_claim, problem, outcome, curiosity_gap, contrarian_opinion, story_open, direct_address, visual_pattern_interrupt, social_proof, list_promise, none, other, unknown.
 - `ContentFormat`: educational, opinion, story, case_study, entertainment, behind_the_scenes, promotional, announcement, interview, mixed, other, unknown.
-- `ContentPillar`: configured Studio Parallel taxonomy plus `other` and `unknown`; taxonomy changes create a schema or mapping version.
+- `ContentPillar`: `education_and_insight`, `work_and_case_studies`, `process_and_craft`, `studio_and_team`, `offer_and_conversion`, `other` or `unknown`; taxonomy changes create a schema or mapping version.
 - `presenterMode`: founder-led, team-member-led, guest/client-led, brand/narrator, no presenter or unknown. The model must use `unknown` unless identity is observable or supplied in trusted context; it must not guess that a face is a founder.
 - `CtaType`: follow, comment, share, save, direct_message, visit_profile, visit_link, buy_or_book, watch_next, soft_engagement, none, other, unknown.
 - `OrdinalRating`: very_low, low, medium, high, very_high, unknown.
@@ -210,3 +210,5 @@ Use a billing-enabled paid project. Google states paid-service prompts/files/res
 ## Evaluation
 
 Before activation, evaluate each schema/prompt/model bundle against a versioned gold set containing talking head, B-roll, rapid cuts, quiet/no speech, heavy captions, multiple CTAs, low-quality audio, very short clips and intentionally mismatched transcripts. Score schema compliance, timestamp tolerance, taxonomy agreement, hallucination/unknown use, repeatability and qualitative usefulness. Human acceptance and regression thresholds are recorded on the prompt/schema version.
+
+The v1 fixture catalogue, scoring rubric and activation thresholds are defined in `analysis-contract-evaluation.md`.
