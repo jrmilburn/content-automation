@@ -78,6 +78,16 @@ export {
   type VerifiedOidcIdentity,
 } from "./auth.js";
 export { requireWorkspaceResource, WorkspaceResourceNotFoundError } from "./authorisation.js";
+export {
+  CredentialEncryptionError,
+  decodeMasterKey,
+  decryptCredential,
+  encryptCredential,
+  hashGrantedScopes,
+  scopeHashesMatch,
+  type CredentialEncryptionContext,
+  type SealedCredential,
+} from "./credential-encryption.js";
 export { createId, isUuidV7 } from "./id.js";
 export {
   createWorkspaceRepositories,

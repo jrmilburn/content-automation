@@ -190,6 +190,53 @@ const metaWebhookConfigSchema = z.object({
 
 export type MetaWebhookConfig = Readonly<z.infer<typeof metaWebhookConfigSchema>>;
 
+// Instagram Login credentials are the Instagram app values from the Business
+// login settings panel, not the Facebook app values from App settings > Basic.
+// Sending the Facebook app id to the token endpoint fails as "Invalid platform
+// app", so the id is constrained to the numeric form Meta issues.
+const instagramOAuthConfigSchema = z.object({
+  INSTAGRAM_APP_ID: z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .regex(/^[0-9]+$/u, "must be the numeric Instagram app id"),
+  INSTAGRAM_APP_SECRET: z
+    .string()
+    .trim()
+    .min(32)
+    .max(128)
+    .regex(/^[A-Za-z0-9]+$/u, "must be the Instagram app secret"),
+});
+
+export type InstagramOAuthConfig = Readonly<z.infer<typeof instagramOAuthConfigSchema>>;
+
+// Envelope encryption master key. Database administrators and backups must not
+// hold this value, so it is supplied only through the deployment secret manager
+// and never given a usable default.
+const credentialEncryptionConfigSchema = z
+  .object({
+    CREDENTIAL_ENCRYPTION_KEY: z
+      .string()
+      .trim()
+      .min(1)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/u, "must be base64"),
+    CREDENTIAL_ENCRYPTION_KEY_VERSION: z.coerce.number().int().min(1).max(1_000_000).default(1),
+  })
+  .superRefine((config, context) => {
+    // Buffer.from silently drops invalid base64 characters rather than
+    // throwing, so the decoded length is the only reliable check.
+    if (Buffer.from(config.CREDENTIAL_ENCRYPTION_KEY, "base64").length !== 32) {
+      context.addIssue({
+        code: "custom",
+        path: ["CREDENTIAL_ENCRYPTION_KEY"],
+        message: "must decode to exactly 32 bytes",
+      });
+    }
+  });
+
+export type CredentialEncryptionConfig = Readonly<z.infer<typeof credentialEncryptionConfigSchema>>;
+
 export class ConfigurationError extends Error {
   readonly fields: readonly string[];
 
@@ -248,6 +295,30 @@ export function loadMetaWebhookConfig(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): MetaWebhookConfig {
   const result = metaWebhookConfigSchema.safeParse(environment);
+
+  if (!result.success) {
+    throw new ConfigurationError(result.error.issues);
+  }
+
+  return Object.freeze(result.data);
+}
+
+export function loadInstagramOAuthConfig(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): InstagramOAuthConfig {
+  const result = instagramOAuthConfigSchema.safeParse(environment);
+
+  if (!result.success) {
+    throw new ConfigurationError(result.error.issues);
+  }
+
+  return Object.freeze(result.data);
+}
+
+export function loadCredentialEncryptionConfig(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): CredentialEncryptionConfig {
+  const result = credentialEncryptionConfigSchema.safeParse(environment);
 
   if (!result.success) {
     throw new ConfigurationError(result.error.issues);
