@@ -87,10 +87,15 @@ jobs:
           node-version-file: .node-version
       - name: Install from lockfile
         run: npm ci
+      # Mirrors packages/db/scripts/run-integration-tests.mjs, which is the local
+      # equivalent. The queue migration also builds the workspace packages that
+      # the integration suites import.
       - name: Validate and generate database client
         run: npm run db:validate && npm run db:generate
       - name: Apply migrations and deterministic seed
         run: npm run db:migrate:deploy && npm run db:seed
+      - name: Apply the queue schema and build workspace packages
+        run: npm run queue:migrate
       - name: Check schema drift
         run: npm run db:drift:check
       - name: Run real PostgreSQL integration tests

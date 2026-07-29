@@ -39,10 +39,13 @@ RUN npm ci --omit=dev
 # Runtime base: no build toolchain, no package manager work, non-root by default.
 # ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime-base
-ENV NODE_ENV=production \
-    NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV NODE_ENV=production
 WORKDIR /app
-RUN chown node:node /app
+# A runtime container never installs a package, so the bundled package manager
+# is pure attack surface. Removing it also removes its own vendored dependency
+# tree, which is otherwise the largest source of image scan findings.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+  && chown node:node /app
 USER node
 
 # ---------------------------------------------------------------------------

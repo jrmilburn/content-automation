@@ -54,6 +54,7 @@ Policy:
 - The base image is pinned by immutable digest, not by tag. The tag is retained in the `ARG` for readability; the digest is what is resolved.
 - Both images run as the unprivileged `node` user (uid 1000). `verify-image.sh` fails the build if a configured user is absent, is root, or if the running uid is 0.
 - Neither image contains a build toolchain, development dependencies or the Prisma CLI.
+- Neither image contains npm. A runtime container never installs a package, so the bundled package manager is pure attack surface, and its own vendored dependency tree was the only source of fixable critical/high findings in the first scanned build. Removing it is why the image scan gate passes on its merits rather than through a suppression.
 - Each image writes `/app/build-info.json` recording the exact Node.js, OpenSSL and, for the worker, `ffmpeg`/`ffprobe` versions it shipped with. A scan finding can therefore be matched to a running container without guessing.
 - `verify-image.sh` asserts the recorded Node.js version equals `.node-version`, so an image can never silently drift from the pinned toolchain.
 - Both images declare a `HEALTHCHECK` against their liveness endpoint.

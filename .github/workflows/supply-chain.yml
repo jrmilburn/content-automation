@@ -129,6 +129,9 @@ jobs:
           image-ref: content-automation-${{ matrix.target }}:${{ github.sha }}
           scanners: vuln,secret
           severity: CRITICAL,HIGH
+      - name: Prepare the report directory
+        if: ${{ always() }}
+        run: mkdir -p artifacts/image-scan
       - name: Record the full image report, including findings with no fix
         if: ${{ always() }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
