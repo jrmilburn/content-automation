@@ -97,6 +97,7 @@ type StrategyV1 = {
     rationale: string;
     evidence: EvidenceRef[];
     classification: EvidenceClass;
+    experimental: boolean;
   }>;
   recommendations: RecommendationDraft[];
   limitations: Array<{ text: string; evidence: EvidenceRef[] }>;
@@ -128,6 +129,7 @@ type RecommendationDraft = {
   classification: EvidenceClass;
   evidence: EvidenceRef[];
   creativeLeap: string | null;
+  iterationReason: string | null;
   experiment: Experiment;
 };
 
@@ -195,3 +197,5 @@ Transitions are explicit, actor/time audited and server-authorised. Linking veri
 Strategy uses text/structured evidence only, so it is much cheaper than video analysis. Use the pinned stable model chosen by evaluation; a lower-cost stable model may be separately selected if it meets evidence-reference and factuality fixtures. No function calling, context cache, File Search or Batch API is required.
 
 Record input/output/thinking usage and estimated cost, but never include full prompts/evidence text in normal logs.
+
+The immutable v1 artifact versions, synthetic fixture matrix and activation thresholds are defined in `strategy-contract-evaluation.md`.

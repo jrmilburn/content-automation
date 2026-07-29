@@ -323,12 +323,20 @@ function projectProviderSchema(value: unknown): unknown {
   return result;
 }
 
-export const geminiPostCreativeAnalysisV1Schema = deepFreeze(
-  projectProviderSchema(
-    z.toJSONSchema(postCreativeAnalysisV1Schema, {
-      reused: "inline",
-    }),
-  ) as JsonObject,
+export function createGeminiStructuredOutputSchema(
+  schema: z.ZodType,
+): Readonly<Record<string, unknown>> {
+  return deepFreeze(
+    projectProviderSchema(
+      z.toJSONSchema(schema, {
+        reused: "inline",
+      }),
+    ) as JsonObject,
+  );
+}
+
+export const geminiPostCreativeAnalysisV1Schema = createGeminiStructuredOutputSchema(
+  postCreativeAnalysisV1Schema,
 );
 
 export type ProviderSchemaAcceptance = Readonly<{
