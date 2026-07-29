@@ -1,0 +1,126 @@
+name: Continuous integration
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ENV: test
+  PROVIDER_MODE: fake
+  PUBLIC_ORIGIN: http://127.0.0.1:3000
+
+jobs:
+  quality:
+    name: Quality and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version-file: .node-version
+      - name: Install from lockfile
+        run: npm ci
+      - name: Check formatting
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Type-check
+        run: npm run typecheck
+      - name: Run unit and component tests
+        run: npm run test:ci
+      - name: Build production applications
+        run: npm run build
+      - name: Upload concise unit results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: ignore
+          name: unit-results-${{ github.run_id }}
+          path: artifacts/unit/results.xml
+          retention-days: 7
+
+  database:
+    name: PostgreSQL integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: studio_parallel_test
+          POSTGRES_PASSWORD: studio_parallel_test
+          POSTGRES_USER: studio_parallel_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U studio_parallel_test -d studio_parallel_test"
+          --health-interval 1s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://studio_parallel_test:studio_parallel_test@127.0.0.1:5432/studio_parallel_test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version-file: .node-version
+      - name: Install from lockfile
+        run: npm ci
+      - name: Validate and generate database client
+        run: npm run db:validate && npm run db:generate
+      - name: Apply migrations and deterministic seed
+        run: npm run db:migrate:deploy && npm run db:seed
+      - name: Check schema drift
+        run: npm run db:drift:check
+      - name: Run real PostgreSQL integration tests
+        run: npm run test:db:integration:existing
+
+  browser:
+    name: Browser and accessibility smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version-file: .node-version
+      - name: Install from lockfile
+        run: npm ci
+      - name: Install Chromium and system dependencies
+        run: npm run test:e2e:install:ci
+      - name: Run built-app smoke tests
+        run: npm run test:e2e
+      - name: Upload concise browser results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: ignore
+          name: browser-results-${{ github.run_id }}
+          path: artifacts/playwright/results.xml
+          retention-days: 7

@@ -1,0 +1,149 @@
+name: Supply chain
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    # Catch newly published advisories against unchanged code.
+    - cron: "17 19 * * 1"
+  workflow_dispatch:
+
+# Least privilege by default. Jobs that need more raise it for themselves only.
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    name: Dependency, secret and workflow policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version-file: .node-version
+      - name: Install from lockfile
+        run: npm ci
+      - name: Audit dependencies
+        run: npm run security:dependencies
+      - name: Scan tracked files for high-confidence secrets
+        run: npm run security:secrets
+      - name: Check action pins, workflow permissions and secret exposure
+        run: npm run security:workflows
+      - name: Check direct dependency necessity, licence and maintenance review
+        run: npm run security:direct-dependencies
+      - name: Check accepted-risk register owners, evidence and expiry
+        run: npm run security:exceptions
+      - name: Generate production SBOM
+        run: npm run security:sbom
+      - name: Upload SBOM
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: ignore
+          name: sbom-${{ github.run_id }}
+          path: artifacts/sbom/cyclonedx.json
+          retention-days: 30
+
+  dependency-review:
+    name: Dependency review
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Review newly introduced dependencies and licences
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          comment-summary-in-pr: false
+          fail-on-severity: high
+          # Mirrors the production allowlist in security/direct-dependencies.json.
+          # A licence outside this set needs a reviewed entry and, where it is not
+          # allowed for its scope, an owned and expiring exception.
+          allow-licenses: 0BSD, Apache-2.0, BSD-2-Clause, BSD-3-Clause, BlueOak-1.0.0, CC0-1.0, ISC, MIT, MPL-2.0, Python-2.0, Unlicense
+
+  code-scanning:
+    name: CodeQL static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@c54b30b7df092240050e69945842bc67aee0f0f4 # v4.37.3
+        with:
+          build-mode: none
+          languages: javascript-typescript
+          queries: security-extended
+      - name: Analyse
+        uses: github/codeql-action/analyze@c54b30b7df092240050e69945842bc67aee0f0f4 # v4.37.3
+        with:
+          category: /language:javascript-typescript
+
+  container:
+    name: Container build and image scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - web
+          - worker
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build ${{ matrix.target }} image from the pinned base digest
+        run: docker build --target "${{ matrix.target }}" --tag "content-automation-${{ matrix.target }}:${{ github.sha }}" .
+      - name: Verify non-root user, recorded tool versions and health command
+        env:
+          IMAGE: content-automation-${{ matrix.target }}:${{ github.sha }}
+        run: bash scripts/container/verify-image.sh "$IMAGE" "${{ matrix.target }}"
+      - name: Scan image for fixable critical and high findings
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          exit-code: "1"
+          format: table
+          ignore-unfixed: true
+          image-ref: content-automation-${{ matrix.target }}:${{ github.sha }}
+          scanners: vuln,secret
+          severity: CRITICAL,HIGH
+      - name: Record the full image report, including findings with no fix
+        if: ${{ always() }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          exit-code: "0"
+          format: json
+          ignore-unfixed: false
+          image-ref: content-automation-${{ matrix.target }}:${{ github.sha }}
+          output: artifacts/image-scan/${{ matrix.target }}.json
+          scanners: vuln
+      - name: Upload image report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: ignore
+          name: image-scan-${{ matrix.target }}-${{ github.run_id }}
+          path: artifacts/image-scan/${{ matrix.target }}.json
+          retention-days: 30

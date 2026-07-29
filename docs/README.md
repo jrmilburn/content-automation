@@ -22,6 +22,7 @@ Repository contributions follow the one-issue, one-dedicated-branch, one-pull-re
 - [Strategy generation](technical/strategy-generation.md)
 - [Background jobs](technical/background-jobs.md)
 - [Security and privacy](technical/security-and-privacy.md)
+- [Supply-chain security](technical/supply-chain-security.md)
 - [Testing strategy](technical/testing-strategy.md)
 - [Deployment and operations](technical/deployment-and-operations.md)
 

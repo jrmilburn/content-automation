@@ -55,11 +55,9 @@ Capability and project issues are tracking containers. Their child implementatio
 - Update affected documentation in the same pull request when it is necessary to keep that issue's behaviour and contracts accurate.
 - Never commit credentials, access tokens, private source videos, transcripts, provider payloads or unredacted production logs.
 
-### Temporary local-only quality gate
+### Quality gate
 
-GitHub-hosted Actions are disabled during early internal development to avoid runner spend. This removes remote enforcement, not the testing requirement.
-
-For every implementation pull request:
+Hosted CI enforces the gates remotely, and local validation is still expected before you open a pull request. Run:
 
 ```text
 npm ci
@@ -67,9 +65,18 @@ npm run test:e2e:install  # once per pinned Playwright browser version
 npm run validate:local
 ```
 
-`validate:local` runs the repository quality checks, dependency audit, redacting secret scan, disposable PostgreSQL suite, production build and desktop/mobile Playwright accessibility smoke. Documentation-only changes may mark database/browser checks not applicable when the pull request explains why; formatting, secret scanning and directly affected checks still run.
+`validate:local` runs the repository quality checks, dependency audit, redacting secret scan, supply-chain policy checks, disposable PostgreSQL suite, production build and desktop/mobile Playwright accessibility smoke. Documentation-only changes may mark database/browser checks not applicable when the pull request explains why; formatting, secret scanning and directly affected checks still run.
 
-Copy the executed commands and concise results into the pull request's Validation evidence section. Do not merge on an unverified verbal assertion. Hosted CI and required branch checks must be restored before internal launch.
+Copy the executed commands and concise results into the pull request's Validation evidence section. Do not merge on an unverified verbal assertion.
+
+### Supply-chain rules
+
+- Pin every GitHub Action to a full commit SHA with a trailing `# <version>` comment. Declare least-privilege `permissions` on every workflow.
+- Never give a pull-request-triggered workflow anything beyond `secrets.GITHUB_TOKEN`.
+- Adding a direct dependency also means adding its necessity, maintenance and licence review to `security/direct-dependencies.json`. Prefer not adding one.
+- Accepted risk goes in `security/exceptions.json` with an owner, evidence and an expiry. Expired exceptions fail the build.
+
+`docs/technical/supply-chain-security.md` explains each rule and the media-tool emergency process.
 
 ## Completion
 

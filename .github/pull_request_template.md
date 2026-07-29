@@ -21,7 +21,7 @@ Primary issue: #
 
 Validation evidence:
 
-<!-- Record `npm ci` and `npm run validate:local`, or explain precisely why a gate is not applicable. Add screenshots or provider-contract evidence where relevant. GitHub-hosted Actions are temporarily disabled. -->
+<!-- Record `npm ci` and `npm run validate:local`, or explain precisely why a gate is not applicable. Add screenshots or provider-contract evidence where relevant. Hosted CI and supply-chain workflows must also be green. -->
 
 ## Scope and safety
 
