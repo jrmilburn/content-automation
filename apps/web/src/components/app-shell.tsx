@@ -24,16 +24,34 @@ const primaryNavigation = [
 ] as const;
 
 const secondaryNavigation = [
-  { href: "/accounts", label: "Instagram accounts" },
+  { href: "/settings/integrations", label: "Instagram accounts" },
   { href: "/settings", label: "Settings" },
 ] as const;
 
-function isActiveRoute(pathname: string, href: string): boolean {
+function matchesRoute(pathname: string, href: string): boolean {
   return href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * Resolves the one destination to mark as current.
+ *
+ * Nested destinations overlap — `/settings/integrations` also matches
+ * `/settings` — so the longest match wins and exactly one link is announced as
+ * the current page.
+ */
+export function activeNavigationHref(pathname: string): string | null {
+  return [...primaryNavigation, ...secondaryNavigation]
+    .map((item) => item.href)
+    .filter((href) => matchesRoute(pathname, href))
+    .reduce<string | null>(
+      (best, href) => (best === null || href.length > best.length ? href : best),
+      null,
+    );
 }
 
 function NavigationLinks({ onNavigate }: Readonly<{ onNavigate?: () => void }>) {
   const pathname = usePathname();
+  const activeHref = activeNavigationHref(pathname);
 
   function navigationList(
     items: ReadonlyArray<Readonly<{ href: string; label: string }>>,
@@ -43,7 +61,7 @@ function NavigationLinks({ onNavigate }: Readonly<{ onNavigate?: () => void }>) 
       <nav aria-label={label}>
         <ul className="navigation-list">
           {items.map((item) => {
-            const active = isActiveRoute(pathname, item.href);
+            const active = item.href === activeHref;
             return (
               <li key={item.href}>
                 <Link

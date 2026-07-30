@@ -204,6 +204,42 @@ export async function exchangeForLongLivedInstagramToken(input: {
 }
 
 /**
+ * Asks the provider to drop the granted permissions for an account.
+ *
+ * Disconnect must not depend on this succeeding: the local purge is what
+ * actually stops this product using the token, and a provider outage cannot be
+ * allowed to strand a credential the operator asked us to destroy. The caller
+ * therefore records the outcome and continues either way, so this returns a
+ * boolean rather than throwing.
+ */
+export async function revokeInstagramAccess(input: {
+  accessToken: string;
+  fetchImplementation?: FetchLike | undefined;
+  providerAccountId: string;
+}): Promise<boolean> {
+  const { accessToken, fetchImplementation = fetch, providerAccountId } = input;
+
+  const url = new URL(
+    `https://${instagramGraphHost}/${instagramApiVersion}/${encodeURIComponent(providerAccountId)}/permissions`,
+  );
+
+  try {
+    const response = await fetchImplementation(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      method: "DELETE",
+    });
+
+    // An already-revoked or already-expired grant answers 400/401 rather than
+    // 200. That is the desired end state, not a failure to report, but it is
+    // not distinguishable from a genuine refusal without parsing provider text
+    // this module deliberately never surfaces. Treat only 2xx as confirmed.
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Reads the authorised account identity. The token is sent as a bearer header
  * rather than a query parameter so it cannot be captured from a URL.
  */

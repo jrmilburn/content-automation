@@ -91,6 +91,16 @@ export {
 } from "./credential-encryption.js";
 export { createId, isUuidV7 } from "./id.js";
 export {
+  commitInstagramDisconnect,
+  instagramAccountResourceType,
+  instagramDisconnectedAction,
+  instagramRevocationOutcomes,
+  listInstagramAccountSummaries,
+  type InstagramAccountSummary,
+  type InstagramDisconnectResult,
+  type InstagramRevocationOutcome,
+} from "./instagram-account.js";
+export {
   listInstagramCredentialsDueForMaintenance,
   loadInstagramConnectionHealth,
   loadInstagramCredentialForMaintenance,
