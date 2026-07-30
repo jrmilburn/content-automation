@@ -25,15 +25,33 @@ Fallback: Instagram API with Facebook Login is only selected if a proof against 
 
 ## OAuth and credential lifecycle
 
-The deployed web application exposes
-`GET /api/integrations/instagram/callback` so Meta can verify the exact HTTPS Business Login
-redirect during development setup. Until issue #29 is delivered, this is a verification-only,
-non-cacheable readiness endpoint: it ignores all query parameters and does not validate state,
-exchange an authorisation code or persist credentials. Do not complete a real account
-authorisation against the placeholder endpoint because any returned code will be discarded.
+The deployed web application exposes two endpoints:
+
+- `POST /api/integrations/instagram/connect` starts Business Login. It is POST-only so the provider
+  redirect cannot be triggered by a cross-site link or image, is restricted to an admin whose role is
+  re-read from the database, and is bounded to five attempts per admin per five minutes. The limit is
+  derived from the audit trail rather than a separate counter, because every attempt is audited
+  before the redirect. It responds `303` to the provider with the pending state in an httpOnly,
+  `SameSite=Lax`, host-locked cookie, and `429` with `Retry-After` once the limit is reached.
+- `GET /api/integrations/instagram/callback` completes the connection.
+
+The state cookie carries an HMAC over the state value, the initiating user and the expiry, so a state
+issued to one admin cannot be completed by another session and a tampered cookie is rejected rather
+than trusted. The `__Host-` prefix and `Secure` attribute apply only when `PUBLIC_ORIGIN` is HTTPS,
+because browsers refuse that prefix over plain HTTP. The callback clears the cookie on every path,
+including authorisation failure and unexpected errors, which is what makes a captured state
+single-use.
+
+The callback never reflects a provider-supplied value. It redirects to a fixed internal location
+carrying only a coarse `connected` or `failed` outcome; the specific denial reason is audited but
+never returned, so a crafted callback cannot probe which check failed.
+
+Because the redirect URI must be an exact HTTPS value, the connection flow cannot run against
+`http://localhost`. Exercise it through an approved HTTPS development host or a tunnel whose exact
+callback URI is registered in Business login settings.
 
 1. An authenticated internal user starts the connection.
-2. The server creates high-entropy `state`, PKCE verifier/challenge where supported, nonce, requested-scope hash and a short expiry; values are bound to user/workspace/session.
+2. The server creates a high-entropy `state`, requested-scope hash and a short expiry; values are bound to the initiating user. No PKCE challenge is sent: Meta's Business Login documentation does not describe PKCE support for the Instagram Login path, and advertising a challenge the provider ignores would imply a protection that is not in force. Revisit only against official documentation, never by assumption.
 3. The callback validates state, issuer/host, expiry and one-time use before code exchange.
 4. The server exchanges the code using the selected documented flow, retrieves account identity and granted scopes, and verifies Business/Creator eligibility.
 5. Exchange for the longest supported token form and store the returned `expires_in`/debug metadata rather than assuming permanence.
