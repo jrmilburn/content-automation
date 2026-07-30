@@ -16,5 +16,9 @@ services:
       retries: 20
     ports:
       - "55432:5432"
-    tmpfs:
-      - /var/lib/postgresql/data
+    # Deliberately not tmpfs. A memory-backed data directory commits fast enough
+    # to hide concurrency defects that a disk-backed database exposes: the
+    # concurrent-enqueue deduplication race passed 12/12 locally on tmpfs while
+    # failing 4/5 on disk and failing every hosted run. Hosted CI uses a
+    # disk-backed service container, so the local database matches it. The
+    # container is still removed after every run, so nothing persists.

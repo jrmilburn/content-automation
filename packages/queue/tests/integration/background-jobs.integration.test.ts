@@ -104,6 +104,49 @@ describe("transactional background job dispatch", () => {
     await expect(database.jobOutbox.count()).resolves.toBe(1);
   });
 
+  it("deduplicates concurrent callers that own their transactions", async () => {
+    // The caller-owned path cannot recover by retrying, because a unique
+    // violation would abort the transaction the caller is still using. The
+    // conflict therefore has to be avoided rather than caught.
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        database.$transaction((transaction) =>
+          enqueueBackgroundJobInTransaction(transaction, workspaceContext, {
+            correlationId,
+            handlerVersion: 1,
+            idempotencyKey: "concurrent-owned-transaction",
+            queueName: "analysis.run",
+          }),
+        ),
+      ),
+    );
+
+    expect(new Set(results.map(({ job }) => job.id)).size).toBe(1);
+    expect(results.filter(({ created }) => created)).toHaveLength(1);
+    await expect(database.backgroundJob.count()).resolves.toBe(1);
+    await expect(database.jobOutbox.count()).resolves.toBe(1);
+  });
+
+  it("still rejects a reused idempotency key with different inputs", async () => {
+    const first = await enqueueBackgroundJob(database, workspaceContext, {
+      correlationId,
+      handlerVersion: 1,
+      idempotencyKey: "conflicting-inputs",
+      queueName: "analysis.run",
+    });
+    expect(first.created).toBe(true);
+
+    await expect(
+      enqueueBackgroundJob(database, workspaceContext, {
+        correlationId,
+        handlerVersion: 1,
+        idempotencyKey: "conflicting-inputs",
+        priority: 5,
+        queueName: "analysis.run",
+      }),
+    ).rejects.toThrowError(expect.objectContaining({ code: "JOB_IDEMPOTENCY_CONFLICT" }));
+  });
+
   it("recovers a crash between commit and dispatch, with one queue delivery", async () => {
     const { job } = await enqueueBackgroundJob(database, workspaceContext, {
       correlationId,
