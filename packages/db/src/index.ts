@@ -91,6 +91,18 @@ export {
 } from "./credential-encryption.js";
 export { createId, isUuidV7 } from "./id.js";
 export {
+  listInstagramCredentialsDueForMaintenance,
+  loadInstagramConnectionHealth,
+  loadInstagramCredentialForMaintenance,
+  purgedCredentialCiphertext,
+  recordInstagramCredentialValidation,
+  requireInstagramReauthorisation,
+  rotateInstagramCredential,
+  type InstagramConnectionHealth,
+  type InstagramCredentialDue,
+  type InstagramCredentialMaintenanceRecord,
+} from "./instagram-token.js";
+export {
   commitInstagramMediaPage,
   completeInstagramSyncRun,
   failInstagramSyncRun,

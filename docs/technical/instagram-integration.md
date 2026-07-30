@@ -62,6 +62,58 @@ callback URI is registered in Business login settings.
 
 Meta has historically issued short-lived then approximately 60-day long-lived user tokens, but v1 treats the response and token-debug endpoint as authoritative. A launch contract test must verify exchange, refresh eligibility, revocation and expiry for the chosen current API flow; token rules are not hard-coded into product claims.
 
+### Implemented token maintenance
+
+Refresh uses Meta's documented unversioned endpoint for the Instagram Login
+path, verified against the official reference on 2026-07-31:
+
+```
+GET https://graph.instagram.com/refresh_access_token
+    ?grant_type=ig_refresh_token
+    &access_token=<long-lived token>
+```
+
+Meta requires the token as a query parameter here — this endpoint does not
+accept a bearer header — so it is the one call in the integration where a
+credential appears in a URL. The URL is constructed in the adapter, never
+logged, and `redirect: "error"` stops it being replayed to another host.
+Validation of a token too young to refresh uses `/{version}/me` instead, which
+does accept a bearer header.
+
+Eligibility is Meta's, not ours: a token must be **long-lived, at least
+twenty-four hours old and unexpired**. The health evaluator encodes that, so a
+freshly connected account is probed rather than spending a refresh attempt to be
+told it is too new. A refreshed token is documented as lasting sixty days, but
+the `expires_in` actually returned is what gets persisted.
+
+**A null expiry is never treated as a permanent token.** It resolves to
+`EXPIRY_UNKNOWN`, which is due for probing. Maintenance becomes due with fifteen
+days of runway and escalates to `EXPIRING` inside five, so a run of transient
+provider failures cannot strand a credential that could have been refreshed
+earlier.
+
+Rotation replaces material **in place** under a compare-and-swap on
+`refreshed_at`. Two workers that both obtain a new token cannot both write: the
+loser is told it lost and records a validation instead of overwriting a newer
+credential with an older one. Rotating in place also means no decryptable copy
+of the previous token is left behind.
+
+A superseded, revoked or reauthorisation-required credential keeps its row for
+audit but has its ciphertext purged, and a check constraint enforces that only
+an `ACTIVE` row holds material. This limits what a database or backup disclosure
+can expose, and makes application code that forgets to purge fail loudly.
+
+An invalid, revoked or permission-denied result is **not** a job failure. The
+maintenance job succeeded: it determined the connection needs a human. It marks
+the credential and account `REAUTHORISATION_REQUIRED`, which removes the row
+from the one-active-credential index so sync refuses to run, and writes an audit
+event recording whether the cause was a withdrawn permission or an unusable
+token. Retrying could not change that outcome, so the job is not left in
+`failed_attention` demanding a manual retry that cannot help.
+
+The refresh leg has **never run against the real provider**; every test injects
+`fetch`. Proving it end to end belongs with the live connection acceptance.
+
 ## Media retrieval
 
 Use the authorised account’s owned-media edge with cursor pagination. Request only supported fields, initially:
