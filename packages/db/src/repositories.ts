@@ -1,5 +1,10 @@
 import type {
   AuditActorType,
+  InstagramAccount,
+  InstagramAccountType,
+  InstagramConnectionStatus,
+  IntegrationCredential,
+  IntegrationType,
   InternalUser,
   InternalUserStatus,
   Prisma,
@@ -84,6 +89,115 @@ export function createWorkspaceRepositories(database: DatabaseExecutor, context:
           orderBy: [{ version: "desc" }, { effectiveAt: "desc" }],
           where: { ...workspaceWhere, key },
         }),
+    },
+    instagramAccounts: {
+      findByProviderAccountId: (providerAccountId: string): Promise<InstagramAccount | null> =>
+        database.instagramAccount.findUnique({
+          where: {
+            workspaceId_providerAccountId: {
+              workspaceId: context.workspaceId,
+              providerAccountId,
+            },
+          },
+        }),
+      /**
+       * Reconnecting the same provider account updates the existing row rather
+       * than creating a second one, so the connection is idempotent and the
+       * unique `(workspace_id, provider_account_id)` constraint is never hit.
+       */
+      upsertConnected: (input: {
+        accountType: InstagramAccountType;
+        apiVersion: string;
+        grantedScopes: readonly string[];
+        mediaCount?: number | null;
+        providerAccountId: string;
+        tokenExpiresAt?: Date | null;
+        username?: string | null;
+      }): Promise<InstagramAccount> => {
+        const shared = {
+          accountType: input.accountType,
+          apiVersion: input.apiVersion,
+          connectionStatus: "ACTIVE" as InstagramConnectionStatus,
+          grantedScopes: [...input.grantedScopes],
+          mediaCount: input.mediaCount ?? null,
+          tokenExpiresAt: input.tokenExpiresAt ?? null,
+          username: input.username ?? null,
+        };
+
+        return database.instagramAccount.upsert({
+          create: {
+            ...shared,
+            id: createId(),
+            workspaceId: context.workspaceId,
+            providerAccountId: input.providerAccountId,
+          },
+          update: shared,
+          where: {
+            workspaceId_providerAccountId: {
+              workspaceId: context.workspaceId,
+              providerAccountId: input.providerAccountId,
+            },
+          },
+        });
+      },
+    },
+    credentials: {
+      findActive: (input: {
+        accountId: string;
+        integrationType: IntegrationType;
+      }): Promise<IntegrationCredential | null> =>
+        database.integrationCredential.findFirst({
+          where: {
+            ...workspaceWhere,
+            accountId: input.accountId,
+            integrationType: input.integrationType,
+            status: "ACTIVE",
+          },
+        }),
+      /**
+       * Supersedes any active credential before activating the replacement, so a
+       * reconnect never leaves two usable tokens. The filtered unique index on
+       * `(integration_type, account_id) WHERE status = 'ACTIVE'` makes concurrent
+       * callers collide here rather than both activating.
+       *
+       * Ciphertext is written but is never used as an idempotency input.
+       */
+      activate: async (input: {
+        accountId: string;
+        ciphertext: string;
+        expiresAt?: Date | null;
+        integrationType: IntegrationType;
+        issuedAt: Date;
+        keyVersion: number;
+        scopeHash: string;
+        tokenType: string;
+      }): Promise<IntegrationCredential> => {
+        await database.integrationCredential.updateMany({
+          data: { status: "REVOKED" },
+          where: {
+            ...workspaceWhere,
+            accountId: input.accountId,
+            integrationType: input.integrationType,
+            status: "ACTIVE",
+          },
+        });
+
+        return database.integrationCredential.create({
+          data: {
+            id: createId(),
+            workspaceId: context.workspaceId,
+            accountId: input.accountId,
+            ciphertext: input.ciphertext,
+            expiresAt: input.expiresAt ?? null,
+            integrationType: input.integrationType,
+            issuedAt: input.issuedAt,
+            keyVersion: input.keyVersion,
+            scopeHash: input.scopeHash,
+            status: "ACTIVE",
+            tokenType: input.tokenType,
+          },
+        });
+      },
     },
     users: {
       create: (input: {

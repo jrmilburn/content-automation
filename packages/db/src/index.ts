@@ -68,6 +68,7 @@ export {
 } from "./dashboard.js";
 export {
   authoriseOidcIdentity,
+  findActiveAdminPrincipal,
   findActiveSessionPrincipal,
   parseSessionPrincipal,
   setInternalUserStatus,
