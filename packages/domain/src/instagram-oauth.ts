@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
  * Pure Instagram Business Login contract and connection-state logic.
@@ -140,11 +140,11 @@ function statesMatch(left: string, right: string): boolean {
  * can tell a human decision from a fault.
  */
 export function evaluateInstagramCallback(input: {
-  code?: string | null;
-  now?: Date;
-  providerError?: string | null;
-  receivedState?: string | null;
-  storedState?: InstagramStateRecord | null;
+  code?: string | null | undefined;
+  now?: Date | undefined;
+  providerError?: string | null | undefined;
+  receivedState?: string | null | undefined;
+  storedState?: InstagramStateRecord | null | undefined;
 }): InstagramCallbackDecision {
   const { code, now = new Date(), providerError, receivedState, storedState } = input;
 
@@ -196,6 +196,94 @@ export function evaluateInstagramGrantedScopes(granted: readonly string[]): Read
     .sort();
 
   return Object.freeze({ extra, missing, satisfied: missing.length === 0 });
+}
+
+const instagramStateCookieBaseName = "ig_connect_state";
+
+/**
+ * The `__Host-` prefix requires Secure and is refused by browsers over plain
+ * HTTP, so local development uses the unprefixed name. Deployments always get
+ * the host-locked cookie.
+ */
+export function instagramStateCookieName(secure: boolean): string {
+  return secure ? `__Host-${instagramStateCookieBaseName}` : instagramStateCookieBaseName;
+}
+
+export type InstagramSealedState = Readonly<{
+  expiresAt: Date;
+  internalUserId: string;
+  state: string;
+}>;
+
+/**
+ * Seals the pending connection state for transport in a cookie.
+ *
+ * The payload is bound to the initiating user, so a state captured from one
+ * admin cannot be completed by another session, and it carries an HMAC so a
+ * tampered cookie is rejected rather than trusted. Single use is achieved by
+ * clearing the cookie when the callback consumes it.
+ */
+export function sealInstagramState(input: {
+  expiresAt: Date;
+  internalUserId: string;
+  secret: string;
+  state: string;
+}): string {
+  const payload = JSON.stringify({
+    expiresAt: input.expiresAt.toISOString(),
+    internalUserId: input.internalUserId,
+    state: input.state,
+  });
+  const encoded = Buffer.from(payload, "utf8").toString("base64url");
+  const signature = createHmac("sha256", input.secret).update(encoded, "utf8").digest("base64url");
+
+  return `${encoded}.${signature}`;
+}
+
+export function openInstagramState(
+  sealed: string | null | undefined,
+  secret: string,
+): InstagramSealedState | null {
+  if (!sealed) return null;
+
+  const separator = sealed.lastIndexOf(".");
+  if (separator <= 0) return null;
+
+  const encoded = sealed.slice(0, separator);
+  const signature = sealed.slice(separator + 1);
+  const expected = createHmac("sha256", secret).update(encoded, "utf8").digest("base64url");
+
+  // Digest the signatures so a length difference cannot throw or leak timing.
+  const providedDigest = createHash("sha256").update(signature, "utf8").digest();
+  const expectedDigest = createHash("sha256").update(expected, "utf8").digest();
+  if (!timingSafeEqual(providedDigest, expectedDigest)) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+
+  if (!parsed || typeof parsed !== "object") return null;
+  const candidate = parsed as Record<string, unknown>;
+
+  if (
+    typeof candidate.state !== "string" ||
+    typeof candidate.internalUserId !== "string" ||
+    typeof candidate.expiresAt !== "string"
+  ) {
+    return null;
+  }
+
+  const expiresAt = new Date(candidate.expiresAt);
+  if (Number.isNaN(expiresAt.getTime())) return null;
+
+  return Object.freeze({
+    expiresAt,
+    internalUserId: candidate.internalUserId,
+    state: candidate.state,
+  });
 }
 
 /** Meta returns a duration; the absolute instant is what gets persisted. */

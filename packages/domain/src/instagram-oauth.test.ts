@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,7 +10,9 @@ import {
   instagramStateLifetimeSeconds,
   isEligibleInstagramAccountType,
   isValidInstagramRedirectUri,
+  openInstagramState,
   resolveTokenExpiry,
+  sealInstagramState,
   type InstagramStateRecord,
 } from "./instagram-oauth.js";
 
@@ -229,6 +232,73 @@ describe("account eligibility and granted scopes", () => {
         "",
       ]).satisfied,
     ).toBe(true);
+  });
+});
+
+describe("sealed connection state", () => {
+  const secret = "test-only-auth-secret-not-for-deployment-000000";
+  const internalUserId = "0192f2a0-0000-7000-8000-000000000001";
+  const expiresAt = new Date("2026-07-30T00:10:00.000Z");
+
+  function seal(overrides: Partial<Parameters<typeof sealInstagramState>[0]> = {}) {
+    return sealInstagramState({
+      expiresAt,
+      internalUserId,
+      secret,
+      state: "pending-state-value",
+      ...overrides,
+    });
+  }
+
+  it("round-trips the state, initiating user and expiry", () => {
+    expect(openInstagramState(seal(), secret)).toEqual({
+      expiresAt,
+      internalUserId,
+      state: "pending-state-value",
+    });
+  });
+
+  it("rejects a tampered payload or signature", () => {
+    const sealed = seal();
+    const [encoded, signature] = sealed.split(".");
+
+    const forgedPayload = Buffer.from(
+      JSON.stringify({
+        expiresAt: expiresAt.toISOString(),
+        internalUserId: "0192f2a0-0000-7000-8000-0000000000ff",
+        state: "pending-state-value",
+      }),
+      "utf8",
+    ).toString("base64url");
+
+    // Swapping the payload while keeping a valid-looking signature must fail.
+    expect(openInstagramState(`${forgedPayload}.${signature}`, secret)).toBeNull();
+    expect(openInstagramState(`${encoded}.${signature}tampered`, secret)).toBeNull();
+    expect(openInstagramState(sealed, "a-different-secret-entirely-000000000000000")).toBeNull();
+  });
+
+  it("rejects malformed, empty and unsigned values", () => {
+    for (const candidate of [null, undefined, "", "no-separator", ".", "only."]) {
+      expect(openInstagramState(candidate, secret)).toBeNull();
+    }
+  });
+
+  it("rejects a payload whose fields are missing or the wrong type", () => {
+    for (const payload of [
+      { expiresAt: expiresAt.toISOString(), internalUserId },
+      { expiresAt: "not-a-date", internalUserId, state: "s" },
+      { expiresAt: expiresAt.toISOString(), internalUserId: 42, state: "s" },
+    ]) {
+      const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+      const signature = createHmac("sha256", secret).update(encoded, "utf8").digest("base64url");
+      expect(openInstagramState(`${encoded}.${signature}`, secret)).toBeNull();
+    }
+  });
+
+  it("does not expose the state value in the sealed representation", () => {
+    // The payload is encoded rather than encrypted, so this documents that the
+    // cookie must stay httpOnly; it is integrity-protected, not confidential.
+    expect(seal()).not.toContain("pending-state-value");
   });
 });
 

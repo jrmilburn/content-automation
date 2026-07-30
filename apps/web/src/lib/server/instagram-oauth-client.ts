@@ -84,8 +84,8 @@ export async function exchangeInstagramAuthorizationCode(input: {
   appId: string;
   appSecret: string;
   code: string;
-  fetchImplementation?: FetchLike;
-  now?: Date;
+  fetchImplementation?: FetchLike | undefined;
+  now?: Date | undefined;
   redirectUri: string;
 }): Promise<InstagramTokenGrant> {
   const {
@@ -163,8 +163,8 @@ export async function exchangeInstagramAuthorizationCode(input: {
  */
 export async function exchangeForLongLivedInstagramToken(input: {
   appSecret: string;
-  fetchImplementation?: FetchLike;
-  now?: Date;
+  fetchImplementation?: FetchLike | undefined;
+  now?: Date | undefined;
   shortLivedToken: string;
 }): Promise<InstagramTokenGrant> {
   const { appSecret, fetchImplementation = fetch, now = new Date(), shortLivedToken } = input;
@@ -209,7 +209,7 @@ export async function exchangeForLongLivedInstagramToken(input: {
  */
 export async function fetchInstagramIdentity(input: {
   accessToken: string;
-  fetchImplementation?: FetchLike;
+  fetchImplementation?: FetchLike | undefined;
 }): Promise<InstagramIdentity> {
   const { accessToken, fetchImplementation = fetch } = input;
 

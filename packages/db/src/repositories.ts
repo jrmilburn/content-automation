@@ -35,6 +35,8 @@ export function createWorkspaceRepositories(database: DatabaseExecutor, context:
         afterHash?: string;
         beforeHash?: string;
         correlationId: string;
+        outcome?: string;
+        reasonCode?: string;
         resourceId?: string;
         resourceType: string;
       }) => {
@@ -51,11 +53,32 @@ export function createWorkspaceRepositories(database: DatabaseExecutor, context:
             afterHash: input.afterHash ?? null,
             beforeHash: input.beforeHash ?? null,
             correlationId: input.correlationId,
+            outcome: input.outcome ?? null,
+            reasonCode: input.reasonCode ?? null,
             resourceId: input.resourceId ?? null,
             resourceType: input.resourceType,
           },
         });
       },
+      /**
+       * Counts an actor's recent attempts at one action. Connection initiation is
+       * audited on every attempt, so the audit trail is itself the rate-limit
+       * source and no separate counter table is needed. This matches the existing
+       * `(workspace_id, actor_user_id, action, occurred_at)` index.
+       */
+      countRecentByActor: (input: {
+        action: string;
+        actorUserId: string;
+        since: Date;
+      }): Promise<number> =>
+        database.auditEvent.count({
+          where: {
+            ...workspaceWhere,
+            action: input.action,
+            actorUserId: input.actorUserId,
+            occurredAt: { gte: input.since },
+          },
+        }),
     },
     settings: {
       createVersion: async (input: {
