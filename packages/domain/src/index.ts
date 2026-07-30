@@ -91,6 +91,22 @@ export {
   type NormalisedInstagramMedia,
 } from "./instagram-media.js";
 export {
+  classifyInstagramTokenResponse,
+  evaluateInstagramTokenHealth,
+  instagramConnectionBlocked,
+  instagramRefreshTokenUrl,
+  instagramTokenExpiryWarningDays,
+  instagramTokenFailures,
+  instagramTokenHealthStates,
+  instagramTokenLifetimeDays,
+  instagramTokenRefreshDueDays,
+  instagramTokenRefreshGrantType,
+  instagramTokenRefreshMinimumAgeSeconds,
+  type InstagramTokenFailure,
+  type InstagramTokenHealth,
+  type InstagramTokenHealthState,
+} from "./instagram-token.js";
+export {
   createAvailableDashboardSection,
   dashboardAttentionPriorities,
   orderDashboardAttentionItems,

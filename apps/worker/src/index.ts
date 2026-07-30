@@ -25,6 +25,11 @@ import {
   createInstagramSyncAccountHandler,
   instagramSyncQueue,
 } from "./instagram/sync-account-handler.js";
+import {
+  createInstagramTokenMaintainHandler,
+  instagramTokenQueue,
+} from "./instagram/token-maintain-handler.js";
+import { createInstagramTokenMaintenanceScheduler } from "./instagram/token-maintenance-scheduler.js";
 import { createOutboxReconciler } from "./outbox-reconciler.js";
 
 const config = loadRuntimeConfig();
@@ -68,32 +73,57 @@ const providerConcurrency = createProviderConcurrencyGate({
   globalLimit: 4,
   providerLimits: { instagram: 1 },
 });
-let credentialMasterKeys: ReadonlyMap<number, Buffer> | undefined;
+// Loaded on first use so a deployment that has not yet configured Instagram
+// still starts, and so the key is read once rather than per job. The version is
+// the one new ciphertext is sealed under; the map is what existing ciphertext is
+// opened with, so a rotation can add an old version without changing writes.
+let credentialEncryption:
+  Readonly<{ keyVersion: number; masterKeys: ReadonlyMap<number, Buffer> }> | undefined;
+const loadEncryption = (): Readonly<{
+  keyVersion: number;
+  masterKeys: ReadonlyMap<number, Buffer>;
+}> => {
+  if (!credentialEncryption) {
+    const encryption = loadCredentialEncryptionConfig();
+    credentialEncryption = Object.freeze({
+      keyVersion: encryption.CREDENTIAL_ENCRYPTION_KEY_VERSION,
+      masterKeys: new Map([
+        [
+          encryption.CREDENTIAL_ENCRYPTION_KEY_VERSION,
+          decodeMasterKey(encryption.CREDENTIAL_ENCRYPTION_KEY),
+        ],
+      ]),
+    });
+  }
+  return credentialEncryption;
+};
 const registry = createQueueHandlerRegistry([
   createInstagramSyncAccountHandler({
     acquireConcurrency: (signal) => providerConcurrency.acquire("instagram", signal),
     database,
-    // Loaded on first use so a deployment that has not yet configured Instagram
-    // still starts, and so the key is read once rather than per job.
-    loadMasterKeys: () => {
-      if (!credentialMasterKeys) {
-        const encryption = loadCredentialEncryptionConfig();
-        credentialMasterKeys = new Map([
-          [
-            encryption.CREDENTIAL_ENCRYPTION_KEY_VERSION,
-            decodeMasterKey(encryption.CREDENTIAL_ENCRYPTION_KEY),
-          ],
-        ]);
-      }
-      return credentialMasterKeys;
-    },
+    loadMasterKeys: () => loadEncryption().masterKeys,
+    logger,
+  }),
+  createInstagramTokenMaintainHandler({
+    acquireConcurrency: (signal) => providerConcurrency.acquire("instagram", signal),
+    database,
+    loadEncryption,
     logger,
   }),
 ]);
 const workerRuntime = createQueueWorkerRuntime({
   client: queue,
   registry,
-  requiredQueues: [instagramSyncQueue],
+  requiredQueues: [instagramSyncQueue, instagramTokenQueue],
+});
+const tokenMaintenance = createInstagramTokenMaintenanceScheduler({
+  batchSize: config.QUEUE_DISPATCH_BATCH_SIZE,
+  database,
+  errorMonitor,
+  // Expiry moves in days, so this sweep is deliberately far less frequent than
+  // outbox dispatch; the daily idempotency key makes the exact interval safe.
+  intervalMs: config.QUEUE_RECONCILE_INTERVAL_SECONDS * 1_000 * 60,
+  logger,
 });
 const reconciler = createOutboxReconciler({
   batchSize: config.QUEUE_DISPATCH_BATCH_SIZE,
@@ -117,6 +147,7 @@ async function start(): Promise<void> {
     await workerRuntime.start();
     await queue.verifyQueues(queueDefinitions);
     reconciler.start();
+    tokenMaintenance.start();
     server.listen(config.WORKER_HEALTH_PORT, () => {
       logger.info("worker.started", {
         correlationId: lifecycleCorrelationId,
@@ -149,6 +180,7 @@ function shutDown(signal: NodeJS.Signals): Promise<void> {
 
   shutdownPromise = (async () => {
     try {
+      await tokenMaintenance.stop();
       await reconciler.stop();
       await workerRuntime.stop({
         graceful: true,

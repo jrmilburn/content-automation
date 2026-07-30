@@ -13,6 +13,7 @@ import type {
   SystemSetting,
 } from "./generated/prisma/client.js";
 import { createId } from "./id.js";
+import { purgedCredentialCiphertext } from "./instagram-token.js";
 import type { WorkspaceContext } from "./workspace-context.js";
 
 type DatabaseExecutor = PrismaClient | Prisma.TransactionClient;
@@ -183,6 +184,12 @@ export function createWorkspaceRepositories(database: DatabaseExecutor, context:
        * `(integration_type, account_id) WHERE status = 'ACTIVE'` makes concurrent
        * callers collide here rather than both activating.
        *
+       * The superseded row is retained for audit but its ciphertext is purged in
+       * the same statement: a replaced token has no further legitimate use, and
+       * keeping a decryptable copy would only widen what a database or backup
+       * disclosure exposes. A database check constraint enforces that only an
+       * `ACTIVE` row holds material.
+       *
        * Ciphertext is written but is never used as an idempotency input.
        */
       activate: async (input: {
@@ -196,7 +203,7 @@ export function createWorkspaceRepositories(database: DatabaseExecutor, context:
         tokenType: string;
       }): Promise<IntegrationCredential> => {
         await database.integrationCredential.updateMany({
-          data: { status: "REVOKED" },
+          data: { ciphertext: purgedCredentialCiphertext, status: "REVOKED" },
           where: {
             ...workspaceWhere,
             accountId: input.accountId,
