@@ -1,12 +1,10 @@
-import { SectionPlaceholder } from "../../../components/section-placeholder";
+import { redirect } from "next/navigation";
 
+/**
+ * The account configuration screen lives under settings, which is where the
+ * Instagram connection callback has always redirected. This route is kept so
+ * existing links and bookmarks land on it rather than a dead end.
+ */
 export default function AccountsPage() {
-  return (
-    <SectionPlaceholder
-      description="Configure authorised professional accounts and review connection health."
-      emptyDescription="Account connection and token-health controls will appear here when the Instagram integration is available."
-      emptyTitle="No Instagram accounts configured"
-      title="Instagram accounts"
-    />
-  );
+  redirect("/settings/integrations");
 }

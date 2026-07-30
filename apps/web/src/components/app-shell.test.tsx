@@ -48,9 +48,28 @@ describe("AppShell", () => {
     );
     expect(screen.getAllByRole("link", { name: "Instagram accounts" })[0]).toHaveAttribute(
       "href",
-      "/accounts",
+      "/settings/integrations",
     );
     expect(screen.getByRole("main")).toHaveAttribute("id", "main-content");
+  });
+
+  it("marks only the most specific destination current when routes nest", () => {
+    navigation.pathname = "/settings/integrations";
+    render(
+      <AppShell>
+        <h1>Instagram integration</h1>
+      </AppShell>,
+    );
+
+    expect(screen.getAllByRole("link", { name: "Instagram accounts" })[0]).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    // "/settings" also prefix-matches this path; announcing two current pages
+    // would leave a screen-reader user with no unambiguous location.
+    expect(screen.getAllByRole("link", { name: "Settings" })[0]).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 
   it("opens the mobile sheet, focuses its first destination and restores the menu trigger", () => {
