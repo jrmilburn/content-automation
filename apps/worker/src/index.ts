@@ -1,5 +1,9 @@
-import { loadDatabaseConfig, loadRuntimeConfig } from "@studio-parallel/config";
-import { createDatabaseClient } from "@studio-parallel/db";
+import {
+  loadCredentialEncryptionConfig,
+  loadDatabaseConfig,
+  loadRuntimeConfig,
+} from "@studio-parallel/config";
+import { createDatabaseClient, decodeMasterKey } from "@studio-parallel/db";
 import { queueDefinitions } from "@studio-parallel/domain";
 import {
   createCorrelationId,
@@ -9,9 +13,18 @@ import {
   createMetricRecorder,
   reportError,
 } from "@studio-parallel/observability";
-import { createPgBossWorkerQueue } from "@studio-parallel/queue/worker";
+import {
+  createPgBossWorkerQueue,
+  createProviderConcurrencyGate,
+  createQueueHandlerRegistry,
+  createQueueWorkerRuntime,
+} from "@studio-parallel/queue/worker";
 
 import { createHealthServer } from "./health.js";
+import {
+  createInstagramSyncAccountHandler,
+  instagramSyncQueue,
+} from "./instagram/sync-account-handler.js";
 import { createOutboxReconciler } from "./outbox-reconciler.js";
 
 const config = loadRuntimeConfig();
@@ -49,6 +62,39 @@ const queue = createPgBossWorkerQueue({
       { logger, monitor: errorMonitor },
     ),
 });
+// Meta limits by app and by account, so provider work is serialised rather than
+// scaled with the worker's own concurrency.
+const providerConcurrency = createProviderConcurrencyGate({
+  globalLimit: 4,
+  providerLimits: { instagram: 1 },
+});
+let credentialMasterKeys: ReadonlyMap<number, Buffer> | undefined;
+const registry = createQueueHandlerRegistry([
+  createInstagramSyncAccountHandler({
+    acquireConcurrency: (signal) => providerConcurrency.acquire("instagram", signal),
+    database,
+    // Loaded on first use so a deployment that has not yet configured Instagram
+    // still starts, and so the key is read once rather than per job.
+    loadMasterKeys: () => {
+      if (!credentialMasterKeys) {
+        const encryption = loadCredentialEncryptionConfig();
+        credentialMasterKeys = new Map([
+          [
+            encryption.CREDENTIAL_ENCRYPTION_KEY_VERSION,
+            decodeMasterKey(encryption.CREDENTIAL_ENCRYPTION_KEY),
+          ],
+        ]);
+      }
+      return credentialMasterKeys;
+    },
+    logger,
+  }),
+]);
+const workerRuntime = createQueueWorkerRuntime({
+  client: queue,
+  registry,
+  requiredQueues: [instagramSyncQueue],
+});
 const reconciler = createOutboxReconciler({
   batchSize: config.QUEUE_DISPATCH_BATCH_SIZE,
   correlationId: lifecycleCorrelationId,
@@ -65,7 +111,10 @@ void start();
 
 async function start(): Promise<void> {
   try {
-    await queue.start();
+    // The runtime starts the client and subscribes the registered handlers;
+    // every remaining definition is still verified so publishing to a queue
+    // this worker does not consume cannot silently create a mismatched queue.
+    await workerRuntime.start();
     await queue.verifyQueues(queueDefinitions);
     reconciler.start();
     server.listen(config.WORKER_HEALTH_PORT, () => {
@@ -101,7 +150,7 @@ function shutDown(signal: NodeJS.Signals): Promise<void> {
   shutdownPromise = (async () => {
     try {
       await reconciler.stop();
-      await queue.stop({
+      await workerRuntime.stop({
         graceful: true,
         timeoutMs: config.WORKER_SHUTDOWN_GRACE_SECONDS * 1_000,
       });
