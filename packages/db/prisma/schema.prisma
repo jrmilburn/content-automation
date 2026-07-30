@@ -76,6 +76,35 @@ enum JobAttemptState {
   @@map("job_attempt_state")
 }
 
+enum IntegrationType {
+  INSTAGRAM
+
+  @@map("integration_type")
+}
+
+enum InstagramAccountType {
+  BUSINESS
+  CREATOR
+
+  @@map("instagram_account_type")
+}
+
+enum InstagramConnectionStatus {
+  ACTIVE
+  REAUTHORISATION_REQUIRED
+  DISCONNECTED
+
+  @@map("instagram_connection_status")
+}
+
+enum IntegrationCredentialStatus {
+  ACTIVE
+  REAUTHORISATION_REQUIRED
+  REVOKED
+
+  @@map("integration_credential_status")
+}
+
 model Workspace {
   id             String          @id @db.Uuid
   slug           String          @unique @db.VarChar(63)
@@ -86,6 +115,8 @@ model Workspace {
   updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
   auditEvents    AuditEvent[]
   backgroundJobs BackgroundJob[]
+  credentials    IntegrationCredential[]
+  igAccounts     InstagramAccount[]
   jobAttempts    JobAttempt[]
   jobOutbox      JobOutbox[]
   settings       SystemSetting[]
@@ -240,6 +271,64 @@ model AuditEvent {
   @@index([workspaceId, resourceType, resourceId])
   @@index([workspaceId, actorUserId, action, occurredAt])
   @@map("audit_events")
+}
+
+model InstagramAccount {
+  id                      String                    @id @db.Uuid
+  workspaceId             String                    @map("workspace_id") @db.Uuid
+  providerAccountId       String                    @map("provider_account_id") @db.VarChar(64)
+  username                String?                   @db.VarChar(120)
+  accountType             InstagramAccountType      @map("account_type")
+  mediaCount              Int?                      @map("media_count")
+  followerCount           Int?                      @map("follower_count")
+  followerCountObservedAt DateTime?                 @map("follower_count_observed_at") @db.Timestamptz(3)
+  connectionStatus        InstagramConnectionStatus @default(ACTIVE) @map("connection_status")
+  tokenExpiresAt          DateTime?                 @map("token_expires_at") @db.Timestamptz(3)
+  grantedScopes           String[]                  @map("granted_scopes")
+  lastSuccessfulSyncAt    DateTime?                 @map("last_successful_sync_at") @db.Timestamptz(3)
+  apiVersion              String                    @map("api_version") @db.VarChar(16)
+  createdAt               DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace               Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  credentials             IntegrationCredential[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, providerAccountId])
+  @@index([workspaceId, connectionStatus])
+  @@index([workspaceId, tokenExpiresAt])
+  @@index([workspaceId, lastSuccessfulSyncAt])
+  @@map("instagram_accounts")
+}
+
+// Ciphertext is envelope-encrypted by packages/db/src/credential-encryption.ts
+// and is never selected into product responses, logs or idempotency inputs. A
+// partial unique index in the migration enforces one ACTIVE credential per
+// (integration_type, account_id) while retaining superseded rows; Prisma cannot
+// express a filtered unique index, so it lives in SQL only.
+model IntegrationCredential {
+  id                       String                      @id @db.Uuid
+  workspaceId              String                      @map("workspace_id") @db.Uuid
+  integrationType          IntegrationType             @map("integration_type")
+  accountId                String                      @map("account_id") @db.Uuid
+  ciphertext               String
+  keyVersion               Int                         @map("key_version")
+  tokenType                String                      @map("token_type") @db.VarChar(32)
+  scopeHash                String                      @map("scope_hash") @db.Char(64)
+  status                   IntegrationCredentialStatus @default(ACTIVE)
+  issuedAt                 DateTime                    @map("issued_at") @db.Timestamptz(3)
+  expiresAt                DateTime?                   @map("expires_at") @db.Timestamptz(3)
+  refreshedAt              DateTime?                   @map("refreshed_at") @db.Timestamptz(3)
+  lastValidatedAt          DateTime?                   @map("last_validated_at") @db.Timestamptz(3)
+  lastValidationErrorClass String?                     @map("last_validation_error_class") @db.VarChar(64)
+  createdAt                DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace                Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  account                  InstagramAccount            @relation(fields: [workspaceId, accountId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, status, expiresAt])
+  @@index([workspaceId, accountId, status])
+  @@map("integration_credentials")
 }
 
 model SystemSetting {

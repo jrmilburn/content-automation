@@ -154,6 +154,36 @@ export async function findActiveSessionPrincipal(
     : null;
 }
 
+/**
+ * Credential connection is an admin action, so the role is re-read from the
+ * database on every use rather than trusted from the session. The same active
+ * user and active workspace conditions apply as for any authenticated request.
+ */
+export async function findActiveAdminPrincipal(
+  database: PrismaClient,
+  principal: SessionPrincipal,
+): Promise<SessionPrincipal | null> {
+  const user = await database.internalUser.findFirst({
+    select: { id: true, sessionVersion: true, workspaceId: true },
+    where: {
+      id: principal.internalUserId,
+      role: "ADMIN",
+      sessionVersion: principal.sessionVersion,
+      status: "ACTIVE",
+      workspace: { status: "ACTIVE" },
+      workspaceId: principal.workspaceId,
+    },
+  });
+
+  return user
+    ? {
+        internalUserId: user.id,
+        sessionVersion: user.sessionVersion,
+        workspaceId: user.workspaceId,
+      }
+    : null;
+}
+
 export function parseSessionPrincipal(value: unknown): SessionPrincipal | null {
   if (!value || typeof value !== "object") return null;
 

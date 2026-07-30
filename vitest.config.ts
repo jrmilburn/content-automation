@@ -3,6 +3,12 @@ import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react({})],
+  resolve: {
+    alias: {
+      // See apps/web/src/test/server-only-stub.ts.
+      "server-only": "/apps/web/src/test/server-only-stub.ts",
+    },
+  },
   test: {
     exclude: [
       ...configDefaults.exclude,
