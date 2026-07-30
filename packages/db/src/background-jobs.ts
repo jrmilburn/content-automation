@@ -163,21 +163,36 @@ export async function enqueueBackgroundJobInTransaction(
   }
 
   try {
-    const job = await transaction.backgroundJob.upsert({
-      create: {
-        correlationId: input.correlationId,
-        handlerVersion: input.handlerVersion,
-        id: generatedIds.jobId,
-        idempotencyKey,
-        inputVersion: inputVersion ?? null,
-        maxAttempts,
-        priority,
-        queueName: input.queueName,
-        resourceId: input.resourceId ?? null,
-        resourceType: resourceType ?? null,
-        workspaceId: context.workspaceId,
-      },
-      update: {},
+    // Deduplication must survive concurrent callers on the same key. An upsert
+    // with an empty `update` cannot compile to `ON CONFLICT DO UPDATE`, so it
+    // degrades to read-then-write: every caller reads "not found", every caller
+    // inserts, one wins and the losers take a unique violation that also aborts
+    // their transaction, leaving nothing to recover with.
+    //
+    // `createMany` with `skipDuplicates` emits `ON CONFLICT DO NOTHING`, which
+    // waits for the winner and then succeeds without raising. The row is then
+    // read back, so the loser returns the winning job rather than failing. This
+    // works inside a transaction the caller owns, which a retry could not.
+    await transaction.backgroundJob.createMany({
+      data: [
+        {
+          correlationId: input.correlationId,
+          handlerVersion: input.handlerVersion,
+          id: generatedIds.jobId,
+          idempotencyKey,
+          inputVersion: inputVersion ?? null,
+          maxAttempts,
+          priority,
+          queueName: input.queueName,
+          resourceId: input.resourceId ?? null,
+          resourceType: resourceType ?? null,
+          workspaceId: context.workspaceId,
+        },
+      ],
+      skipDuplicates: true,
+    });
+
+    const job = await transaction.backgroundJob.findUniqueOrThrow({
       where: {
         workspaceId_queueName_handlerVersion_idempotencyKey: {
           handlerVersion: input.handlerVersion,
@@ -203,17 +218,20 @@ export async function enqueueBackgroundJobInTransaction(
       });
     }
 
-    await transaction.jobOutbox.upsert({
-      create: {
-        backgroundJobId: job.id,
-        correlationId: job.correlationId,
-        handlerVersion: job.handlerVersion,
-        id: generatedIds.outboxId,
-        queueName: job.queueName,
-        workspaceId: job.workspaceId,
-      },
-      update: {},
-      where: { backgroundJobId: job.id },
+    // Same race, same remedy: two callers that both resolved to the winning job
+    // would otherwise both try to insert its one outbox record.
+    await transaction.jobOutbox.createMany({
+      data: [
+        {
+          backgroundJobId: job.id,
+          correlationId: job.correlationId,
+          handlerVersion: job.handlerVersion,
+          id: generatedIds.outboxId,
+          queueName: job.queueName,
+          workspaceId: job.workspaceId,
+        },
+      ],
+      skipDuplicates: true,
     });
 
     return Object.freeze({
