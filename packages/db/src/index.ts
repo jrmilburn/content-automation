@@ -91,6 +91,21 @@ export {
 } from "./credential-encryption.js";
 export { createId, isUuidV7 } from "./id.js";
 export {
+  commitInstagramMediaPage,
+  completeInstagramSyncRun,
+  failInstagramSyncRun,
+  findInstagramPostByProviderMediaId,
+  findInstagramSyncRun,
+  instagramPostSafeSelect,
+  instagramSyncRunSucceededForJob,
+  listInstagramPosts,
+  startInstagramSyncRun,
+  type CommitInstagramMediaPageInput,
+  type InstagramMediaPageCommit,
+  type InstagramPostSummary,
+  type StartInstagramSyncRunInput,
+} from "./instagram-media.js";
+export {
   createWorkspaceRepositories,
   withWorkspaceTransaction,
   type AuditActor,

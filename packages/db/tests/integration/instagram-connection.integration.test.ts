@@ -24,6 +24,10 @@ const extraWorkspaceSlugPrefix = "ig-conn-test-";
 
 async function clearConnections(): Promise<void> {
   await database.integrationCredential.deleteMany();
+  // Posts and runs restrict account deletion, so they are cleared first even
+  // though this suite never creates them.
+  await database.instagramPost.deleteMany();
+  await database.syncRun.deleteMany();
   await database.instagramAccount.deleteMany();
   // Workspaces this suite creates are removed by slug, so it never has to delete
   // the shared workspaces whose full dependency chain other suites own.

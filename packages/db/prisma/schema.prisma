@@ -105,21 +105,52 @@ enum IntegrationCredentialStatus {
   @@map("integration_credential_status")
 }
 
+// UNSUPPORTED retains media whose provider type is not one this product
+// understands, so an unknown value stays inspectable instead of being dropped.
+enum InstagramMediaKind {
+  REEL
+  VIDEO
+  IMAGE
+  CAROUSEL_ALBUM
+  UNSUPPORTED
+
+  @@map("instagram_media_kind")
+}
+
+enum SyncRunTrigger {
+  BOOTSTRAP
+  MANUAL
+  SCHEDULED
+  RECONCILE
+
+  @@map("sync_run_trigger")
+}
+
+enum SyncRunState {
+  RUNNING
+  SUCCEEDED
+  FAILED
+
+  @@map("sync_run_state")
+}
+
 model Workspace {
-  id             String          @id @db.Uuid
-  slug           String          @unique @db.VarChar(63)
-  name           String          @db.VarChar(120)
-  timezone       String          @default("Australia/Sydney") @db.VarChar(64)
-  status         WorkspaceStatus @default(ACTIVE)
-  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id             String                  @id @db.Uuid
+  slug           String                  @unique @db.VarChar(63)
+  name           String                  @db.VarChar(120)
+  timezone       String                  @default("Australia/Sydney") @db.VarChar(64)
+  status         WorkspaceStatus         @default(ACTIVE)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
   auditEvents    AuditEvent[]
   backgroundJobs BackgroundJob[]
   credentials    IntegrationCredential[]
   igAccounts     InstagramAccount[]
+  igPosts        InstagramPost[]
   jobAttempts    JobAttempt[]
   jobOutbox      JobOutbox[]
   settings       SystemSetting[]
+  syncRuns       SyncRun[]
   users          InternalUser[]
 
   @@index([status])
@@ -291,6 +322,8 @@ model InstagramAccount {
   updatedAt               DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
   workspace               Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   credentials             IntegrationCredential[]
+  posts                   InstagramPost[]
+  syncRuns                SyncRun[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, providerAccountId])
@@ -329,6 +362,90 @@ model IntegrationCredential {
   @@index([workspaceId, status, expiresAt])
   @@index([workspaceId, accountId, status])
   @@map("integration_credentials")
+}
+
+// One normalised owned-media record. `rawPayload` is restricted provenance and
+// is never selected into product responses or logs; the safe projection in
+// packages/db/src/instagram-media.ts is the only supported read path.
+//
+// The provider's signed CDN URLs are deliberately not durable storage:
+// `providerThumbnailUrl` is display metadata that expires, and `media_url` is
+// never given a column at all. Neither is a source asset — that is a separate
+// uploaded, validated object introduced by the video upload work.
+model InstagramPost {
+  id                   String             @id @db.Uuid
+  workspaceId          String             @map("workspace_id") @db.Uuid
+  instagramAccountId   String             @map("instagram_account_id") @db.Uuid
+  providerMediaId      String             @map("provider_media_id") @db.VarChar(64)
+  mediaKind            InstagramMediaKind @map("media_kind")
+  mediaType            String             @map("media_type") @db.VarChar(32)
+  mediaProductType     String?            @map("media_product_type") @db.VarChar(32)
+  caption              String?
+  permalink            String?
+  publishedAt          DateTime           @map("published_at") @db.Timestamptz(3)
+  providerThumbnailUrl String?            @map("provider_thumbnail_url")
+  firstImportedAt      DateTime           @map("first_imported_at") @db.Timestamptz(3)
+  lastImportedAt       DateTime           @map("last_imported_at") @db.Timestamptz(3)
+  lastSyncRunId        String?            @map("last_sync_run_id") @db.Uuid
+  rawPayload           Json               @map("raw_payload")
+  rawPayloadHash       String             @map("raw_payload_hash") @db.Char(64)
+  rawApiVersion        String             @map("raw_api_version") @db.VarChar(16)
+  rawRetrievedAt       DateTime           @map("raw_retrieved_at") @db.Timestamptz(3)
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace            Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  account              InstagramAccount   @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@unique([workspaceId, id])
+  @@unique([instagramAccountId, providerMediaId])
+  @@index([workspaceId, instagramAccountId, publishedAt(sort: Desc)])
+  @@index([workspaceId, instagramAccountId, mediaKind])
+  @@index([workspaceId, instagramAccountId, lastImportedAt])
+  @@map("instagram_posts")
+}
+
+// One auditable import run. The cursor is opaque provider state and is advanced
+// only in the same transaction that commits a page's posts, so a resumed run
+// can never skip records. A partial unique index in the migration enforces one
+// RUNNING run per account and trigger; Prisma cannot express a filtered unique
+// index, so it lives in SQL only.
+model SyncRun {
+  id                 String           @id @db.Uuid
+  workspaceId        String           @map("workspace_id") @db.Uuid
+  instagramAccountId String           @map("instagram_account_id") @db.Uuid
+  trigger            SyncRunTrigger
+  idempotencyKey     String           @map("idempotency_key") @db.VarChar(255)
+  backgroundJobId    String?          @map("background_job_id") @db.Uuid
+  state              SyncRunState     @default(RUNNING)
+  stage              String           @default("starting") @db.VarChar(64)
+  horizonStart       DateTime?        @map("horizon_start") @db.Timestamptz(3)
+  cursor             String?          @db.VarChar(512)
+  pagesCompleted     Int              @default(0) @map("pages_completed")
+  itemsSeen          Int              @default(0) @map("items_seen")
+  itemsImported      Int              @default(0) @map("items_imported")
+  itemsUpdated       Int              @default(0) @map("items_updated")
+  itemsSkipped       Int              @default(0) @map("items_skipped")
+  itemsInvalid       Int              @default(0) @map("items_invalid")
+  apiVersion         String           @map("api_version") @db.VarChar(16)
+  usageSummary       Json?            @map("usage_summary")
+  correlationId      String           @map("correlation_id") @db.Uuid
+  startedAt          DateTime         @map("started_at") @db.Timestamptz(3)
+  checkpointAt       DateTime?        @map("checkpoint_at") @db.Timestamptz(3)
+  completedAt        DateTime?        @map("completed_at") @db.Timestamptz(3)
+  failureClass       String?          @map("failure_class") @db.VarChar(32)
+  failureCode        String?          @map("failure_code") @db.VarChar(64)
+  requestedByUserId  String?          @map("requested_by_user_id") @db.Uuid
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  account            InstagramAccount @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, instagramAccountId, trigger, idempotencyKey])
+  @@index([workspaceId, instagramAccountId, startedAt(sort: Desc)])
+  @@index([workspaceId, state, startedAt])
+  @@index([correlationId])
+  @@map("sync_runs")
 }
 
 model SystemSetting {

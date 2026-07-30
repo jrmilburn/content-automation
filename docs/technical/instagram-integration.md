@@ -81,6 +81,24 @@ A published Reel may report `media_type=VIDEO`; use `media_product_type=REELS` t
 
 Store raw response, response hash, provider API version, retrieval time and normalised fields. Do not download or retain Instagram CDN media as the original source; URLs can expire and are not the user-supplied durable asset.
 
+As implemented, `instagram_posts` holds the normalised fields plus the raw item
+in a restricted `raw_payload` column that no ordinary read projects. Two
+consequences of the expiring URLs are worth stating explicitly:
+
+- `media_url` is given **no column at all**. It survives only inside the raw
+  payload, so there is no field a later feature could mistake for a stored
+  source asset. `provider_thumbnail_url` exists for display and is documented as
+  non-durable.
+- `raw_payload_hash` is computed over a key-ordered copy of the item with
+  `media_url` and `thumbnail_url` removed. Meta re-signs those URLs on every
+  request, so hashing them would report every unchanged post as modified on
+  every sync and make change detection useless.
+
+An item that cannot be trusted — a non-numeric media id, a missing media type,
+an unparseable timestamp, or a payload beyond 64 KiB — is counted against the
+run and dropped. The rest of the page still commits, so one malformed record
+cannot stall an import.
+
 ## Insights capability map
 
 The adapter owns a versioned capability map by media product/type. It requests small compatible metric groups so one unsupported metric does not discard all returned data. Current official media-insight examples list metrics including:
@@ -132,6 +150,21 @@ The first internal release may guarantee manual sync plus daily scheduling and o
 - Sync runs persist the opaque cursor/checkpoint after committed pages.
 - Provider-deleted/unavailable media is tombstoned only after repeated confirmation; historical evidence is not silently erased.
 - Manual and scheduled runs share the same idempotency path and one active run lock per account/purpose window.
+
+The `instagram.sync.account` handler implements this as follows. A `sync_runs`
+row is keyed by `(workspace, account, trigger, idempotency key)`; a repeated
+delivery returns the existing run and a failed run is reopened with its cursor
+and counters intact, so a retry resumes rather than re-imports. A partial unique
+index permits one `RUNNING` run per account and trigger, so a manual and a
+scheduled import may overlap but two of the same purpose cannot.
+
+Each page's posts and the cursor that follows them are written in **one**
+transaction. That ordering is the resume guarantee: an interrupted run either
+loses the whole page and replays it, or keeps it and continues after it, and can
+never advance past records it did not store. Because the media edge is returned
+newest first, the first item older than the horizon ends the walk. A run is
+bounded to 200 pages per attempt and reports `SYNC_PAGE_LIMIT_REACHED` rather
+than claiming a complete import it did not finish.
 
 ## Polling and webhooks
 
