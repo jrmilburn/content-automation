@@ -151,8 +151,20 @@ class PgBossQueue implements WorkerQueueClient {
     }
 
     try {
+      // The delivery id is deliberately left to pg-boss rather than pinned to
+      // the domain job id. The `job` primary key is `(name, id)` with no state
+      // predicate, and completed rows are retained for the deletion window, so
+      // reusing the domain id makes a second delivery of the same job collide
+      // with its own completed row — silently returning null and making every
+      // retry, manual or automatic, impossible until retention expires.
+      //
+      // `singletonKey` still carries the guarantee that matters: its index is
+      // `(name, singleton_key) WHERE state <= 'active'` under the exclusive
+      // policy, so concurrent publishes collapse to one in-flight delivery and
+      // stop constraining the job once it finishes. Exactly-once remains the
+      // domain job's identity, enforced by claimBackgroundJob, not the
+      // transport's.
       const deliveryId = await this.#boss.send(envelopeQueueKey(parsed), parsed, {
-        id: parsed.domainJobId,
         singletonKey: parsed.domainJobId,
       });
 

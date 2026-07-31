@@ -155,18 +155,20 @@ describe("transactional background job dispatch", () => {
       queueName: "analysis.run",
     });
 
-    await expect(queue.findDelivery(analysisQueue, job.id)).resolves.toBeUndefined();
     const result = await reconcileJobOutbox(database, queue, createTelemetry());
 
     expect(result).toEqual({ claimed: 1, dispatched: 1, failed: 0 });
-    await expect(queue.findDelivery(analysisQueue, job.id)).resolves.toMatchObject({ id: job.id });
-    await expect(
-      database.jobOutbox.findUnique({ where: { backgroundJobId: job.id } }),
-    ).resolves.toMatchObject({
+    const outbox = await database.jobOutbox.findUnique({ where: { backgroundJobId: job.id } });
+    expect(outbox).toMatchObject({
       dispatchAttemptCount: 1,
       dispatchedAt: expect.any(Date),
-      queueDeliveryId: job.id,
+      queueDeliveryId: expect.any(String),
     });
+    // The delivery id is the queue's, not the domain job's, so it is read back
+    // from the outbox rather than assumed to equal the job id.
+    await expect(
+      queue.findDelivery(analysisQueue, outbox?.queueDeliveryId ?? ""),
+    ).resolves.toMatchObject({ id: outbox?.queueDeliveryId });
   });
 
   it("deduplicates a replay after publish succeeds but before the outbox is marked", async () => {
@@ -178,20 +180,85 @@ describe("transactional background job dispatch", () => {
     });
     const envelope = toEnvelope(job);
 
-    await expect(queue.publish(envelope)).resolves.toEqual({
-      created: true,
-      deliveryId: job.id,
-    });
+    const published = await queue.publish(envelope);
+    expect(published).toMatchObject({ created: true, deliveryId: expect.any(String) });
+
     await expect(reconcileJobOutbox(database, queue, createTelemetry())).resolves.toEqual({
       claimed: 1,
       dispatched: 1,
       failed: 0,
     });
 
+    // The singleton key still collapses the replay onto the in-flight delivery.
     expect(logEvents).toContainEqual(
       expect.objectContaining({ event: "job.dispatch_deduplicated", jobId: job.id }),
     );
-    await expect(queue.findDelivery(analysisQueue, job.id)).resolves.toMatchObject({ id: job.id });
+    await expect(queue.findDelivery(analysisQueue, published.deliveryId)).resolves.toMatchObject({
+      id: published.deliveryId,
+    });
+  });
+
+  it("delivers a job again after its previous delivery completed", async () => {
+    const { job } = await enqueueBackgroundJob(database, workspaceContext, {
+      correlationId,
+      handlerVersion: 1,
+      idempotencyKey: "redelivery-after-completion",
+      queueName: "analysis.run",
+    });
+    const envelope = toEnvelope(job);
+
+    const first = await queue.publish(envelope);
+    expect(first.created).toBe(true);
+
+    // Finish the delivery the way a worker would. The completed row is retained
+    // for the deletion window, which is exactly the condition that used to make
+    // every retry impossible: the publish collided with the job's own corpse.
+    await database.$executeRaw`
+      UPDATE pgboss.job SET state = 'completed', completed_on = now()
+      WHERE name = ${"analysis.run.v1"} AND id = ${first.deliveryId}::uuid`;
+
+    const second = await queue.publish(envelope);
+
+    expect(second.created).toBe(true);
+    expect(second.deliveryId).not.toBe(first.deliveryId);
+    await expect(queue.findDelivery(analysisQueue, second.deliveryId)).resolves.toMatchObject({
+      id: second.deliveryId,
+    });
+  });
+
+  it("still collapses a second publish while a delivery is in flight", async () => {
+    const { job } = await enqueueBackgroundJob(database, workspaceContext, {
+      correlationId,
+      handlerVersion: 1,
+      idempotencyKey: "redelivery-while-in-flight",
+      queueName: "analysis.run",
+    });
+    const envelope = toEnvelope(job);
+
+    const first = await queue.publish(envelope);
+    expect(first.created).toBe(true);
+
+    // Nothing completed the first delivery, so the exclusive singleton index
+    // must still refuse a second one.
+    await expect(queue.publish(envelope)).resolves.toMatchObject({ created: false });
+  });
+
+  it("keeps the domain job id as the idempotency identity, not the delivery id", async () => {
+    const { job } = await enqueueBackgroundJob(database, workspaceContext, {
+      correlationId,
+      handlerVersion: 1,
+      idempotencyKey: "redelivery-domain-identity",
+      queueName: "analysis.run",
+    });
+
+    const published = await queue.publish(toEnvelope(job));
+    const [delivered] = await database.$queryRaw<Array<{ data: { domainJobId: string } }>>`
+      SELECT data FROM pgboss.job
+      WHERE name = ${"analysis.run.v1"} AND id = ${published.deliveryId}::uuid`;
+
+    // Transport addressing changed; the envelope the handler reads did not.
+    expect(published.deliveryId).not.toBe(job.id);
+    expect(delivered?.data.domainJobId).toBe(job.id);
   });
 
   it("allows only one concurrent dispatcher to claim a pending outbox record", async () => {
@@ -214,7 +281,12 @@ describe("transactional background job dispatch", () => {
     );
 
     expect(results.reduce((sum, result) => sum + result.claimed, 0)).toBe(1);
-    await expect(queue.findDelivery(analysisQueue, job.id)).resolves.toMatchObject({ id: job.id });
+    const dispatched = await database.jobOutbox.findUniqueOrThrow({
+      where: { backgroundJobId: job.id },
+    });
+    await expect(
+      queue.findDelivery(analysisQueue, dispatched.queueDeliveryId ?? ""),
+    ).resolves.toMatchObject({ id: dispatched.queueDeliveryId });
   });
 
   it("reconciles failed and expired dispatches with only secret-safe diagnostics", async () => {
