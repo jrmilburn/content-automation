@@ -1,7 +1,11 @@
 import { instagramInsightGroups, instagramApiVersion } from "@studio-parallel/domain";
 import { describe, expect, it, vi } from "vitest";
 
-import { fetchInstagramInsightGroup, type InstagramInsightsError } from "./insights-client.js";
+import {
+  fetchInstagramInsightGroup,
+  type FetchLike,
+  type InstagramInsightsError,
+} from "./insights-client.js";
 
 const groups = instagramInsightGroups({ apiVersion: instagramApiVersion, mediaKind: "REEL" });
 const distribution = groups[0]!;
@@ -18,8 +22,13 @@ function jsonResponse(
   });
 }
 
+/**
+ * Types the mock as `FetchLike` rather than inferring it from the
+ * implementation. An inferred zero-argument mock gets an empty call tuple, so
+ * asserting on the request URL or its init does not compile.
+ */
 function fetchOnce(response: Response | Promise<Response>) {
-  return vi.fn(async () => response);
+  return vi.fn<FetchLike>(async () => response);
 }
 
 describe("fetchInstagramInsightGroup request", () => {
