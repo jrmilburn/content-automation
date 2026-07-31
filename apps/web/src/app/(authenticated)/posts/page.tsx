@@ -1,14 +1,30 @@
-import { SectionPlaceholder } from "../../../components/section-placeholder";
+import { createWebRequestContext, reportError } from "@studio-parallel/observability";
+import { headers } from "next/headers";
 
-export default function PostsPage() {
-  return (
-    <SectionPlaceholder
-      actionHref="/accounts"
-      actionLabel="Review Instagram accounts"
-      description="Find imported posts and triage source, analysis and attention state."
-      emptyDescription="Posts will appear after an Instagram account is connected and its first sync completes."
-      emptyTitle="No posts imported"
-      title="Posts"
-    />
-  );
+import { PostsError, PostsList } from "../../../components/posts-list";
+import { parsePostsFilters, type PostsSearchParams } from "../../../lib/posts-list";
+import { webErrorMonitor, webLogger } from "../../../lib/server/observability";
+import { loadPostsSnapshot } from "../../../lib/server/posts-data";
+
+export default async function PostsPage({
+  searchParams,
+}: Readonly<{ searchParams: Promise<PostsSearchParams> }>) {
+  const parsed = parsePostsFilters(await searchParams);
+
+  try {
+    const snapshot = await loadPostsSnapshot(parsed.filters, parsed.cursor);
+    return <PostsList snapshot={snapshot} values={parsed.values} />;
+  } catch (error) {
+    const requestContext = createWebRequestContext(await headers());
+    reportError(
+      error,
+      {
+        correlationId: requestContext.correlationId,
+        event: "posts.list.failed",
+        stage: "triage",
+      },
+      { logger: webLogger, monitor: webErrorMonitor },
+    );
+    return <PostsError reference={requestContext.correlationId} />;
+  }
 }

@@ -101,6 +101,15 @@ export {
   type InstagramRevocationOutcome,
 } from "./instagram-account.js";
 export {
+  instagramPostPageSize,
+  instagramPostSearchLimit,
+  isInstagramMediaKind,
+  loadInstagramPostList,
+  type InstagramPostList,
+  type InstagramPostListFilters,
+  type InstagramPostListItem,
+} from "./instagram-post-list.js";
+export {
   listInstagramCredentialsDueForMaintenance,
   loadInstagramConnectionHealth,
   loadInstagramCredentialForMaintenance,
