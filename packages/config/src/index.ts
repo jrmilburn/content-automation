@@ -237,6 +237,106 @@ const credentialEncryptionConfigSchema = z
 
 export type CredentialEncryptionConfig = Readonly<z.infer<typeof credentialEncryptionConfigSchema>>;
 
+const localStorageBucket = "local-source-video-not-live";
+
+// Coercion is spelled out because z.coerce.boolean() treats the string "false"
+// as true, which would silently enable path-style addressing against a real
+// provider.
+const storageBooleanSchema = z
+  .enum(["true", "false"])
+  .default("false")
+  .transform((value) => value === "true");
+
+// Bucket, region and endpoint identify a private S3-compatible store; they are
+// safe deploy config rather than secrets. Credentials load separately so a
+// process that only needs to know the bucket never touches key material.
+const objectStorageConfigSchema = z
+  .object({
+    APP_ENV: z.enum(["local", "test", "preview", "staging", "production"]).default("local"),
+    STORAGE_BUCKET: z
+      .string()
+      .trim()
+      .min(3)
+      .max(63)
+      .regex(/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/u, "must be a valid bucket name")
+      .default(localStorageBucket),
+    // R2 issues "auto"; AWS issues a named region. Both are opaque here.
+    STORAGE_REGION: z.string().trim().min(1).max(64).default("auto"),
+    // Absent means AWS S3's own endpoint. R2, MinIO and other compatible
+    // providers supply one.
+    STORAGE_ENDPOINT: z.url().optional(),
+    // MinIO and some compatible providers cannot serve virtual-host addressing.
+    STORAGE_FORCE_PATH_STYLE: storageBooleanSchema,
+    // 1 GiB product cap from docs/technical/video-ingestion.md.
+    UPLOAD_MAX_BYTES: z.coerce.number().int().min(1).max(5_497_558_138_880).default(1_073_741_824),
+    // S3 requires every part except the last to be at least 5 MiB and allows at
+    // most 10,000 parts.
+    UPLOAD_PART_SIZE_BYTES: z.coerce
+      .number()
+      .int()
+      .min(5_242_880)
+      .max(5_368_709_120)
+      .default(8_388_608),
+    // 15-minute signed operations from docs/technical/video-ingestion.md.
+    UPLOAD_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().min(60).max(3_600).default(900),
+    // Abandoned multipart uploads are swept after 24 hours.
+    UPLOAD_ABANDON_AFTER_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+  })
+  .superRefine((config, context) => {
+    const partsRequired = Math.ceil(config.UPLOAD_MAX_BYTES / config.UPLOAD_PART_SIZE_BYTES);
+
+    if (partsRequired > 10_000) {
+      context.addIssue({
+        code: "custom",
+        path: ["UPLOAD_PART_SIZE_BYTES"],
+        message: "must allow UPLOAD_MAX_BYTES to be uploaded in at most 10000 parts",
+      });
+    }
+
+    if (config.APP_ENV !== "staging" && config.APP_ENV !== "production") {
+      return;
+    }
+
+    if (config.STORAGE_BUCKET === localStorageBucket) {
+      context.addIssue({
+        code: "custom",
+        path: ["STORAGE_BUCKET"],
+        message: "must be the deployed private bucket",
+      });
+    }
+
+    if (config.STORAGE_ENDPOINT === undefined) {
+      return;
+    }
+
+    let endpoint: URL;
+
+    try {
+      endpoint = new URL(config.STORAGE_ENDPOINT);
+    } catch {
+      return;
+    }
+
+    if (endpoint.protocol !== "https:") {
+      context.addIssue({
+        code: "custom",
+        path: ["STORAGE_ENDPOINT"],
+        message: "must use HTTPS in staging and production",
+      });
+    }
+  });
+
+export type ObjectStorageConfig = Readonly<z.infer<typeof objectStorageConfigSchema>>;
+
+// Storage keys are never given a usable default: a misconfigured deployment
+// must fail closed rather than sign requests against an unintended account.
+const objectStorageCredentialsSchema = z.object({
+  STORAGE_ACCESS_KEY_ID: z.string().trim().min(1).max(128),
+  STORAGE_SECRET_ACCESS_KEY: z.string().trim().min(1).max(256),
+});
+
+export type ObjectStorageCredentials = Readonly<z.infer<typeof objectStorageCredentialsSchema>>;
+
 export class ConfigurationError extends Error {
   readonly fields: readonly string[];
 
@@ -319,6 +419,30 @@ export function loadCredentialEncryptionConfig(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): CredentialEncryptionConfig {
   const result = credentialEncryptionConfigSchema.safeParse(environment);
+
+  if (!result.success) {
+    throw new ConfigurationError(result.error.issues);
+  }
+
+  return Object.freeze(result.data);
+}
+
+export function loadObjectStorageConfig(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): ObjectStorageConfig {
+  const result = objectStorageConfigSchema.safeParse(environment);
+
+  if (!result.success) {
+    throw new ConfigurationError(result.error.issues);
+  }
+
+  return Object.freeze(result.data);
+}
+
+export function loadObjectStorageCredentials(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): ObjectStorageCredentials {
+  const result = objectStorageCredentialsSchema.safeParse(environment);
 
   if (!result.success) {
     throw new ConfigurationError(result.error.issues);

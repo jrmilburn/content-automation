@@ -7,6 +7,8 @@ import {
   loadDatabaseConfig,
   loadInstagramOAuthConfig,
   loadMetaWebhookConfig,
+  loadObjectStorageConfig,
+  loadObjectStorageCredentials,
   loadRuntimeConfig,
 } from "./index.js";
 
@@ -281,6 +283,113 @@ describe("loadCredentialEncryptionConfig", () => {
       expect.unreachable("expected a ConfigurationError");
     } catch (error) {
       expect((error as Error).message).not.toContain(malformedKey);
+    }
+  });
+});
+
+describe("loadObjectStorageConfig", () => {
+  it("uses safe local defaults matching the documented upload policy", () => {
+    expect(loadObjectStorageConfig({})).toMatchObject({
+      STORAGE_BUCKET: "local-source-video-not-live",
+      STORAGE_FORCE_PATH_STYLE: false,
+      STORAGE_REGION: "auto",
+      UPLOAD_ABANDON_AFTER_HOURS: 24,
+      UPLOAD_MAX_BYTES: 1_073_741_824,
+      UPLOAD_PART_SIZE_BYTES: 8_388_608,
+      UPLOAD_SIGNED_URL_TTL_SECONDS: 900,
+    });
+  });
+
+  it("treats the string false as false rather than a truthy string", () => {
+    expect(
+      loadObjectStorageConfig({ STORAGE_FORCE_PATH_STYLE: "false" }).STORAGE_FORCE_PATH_STYLE,
+    ).toBe(false);
+    expect(
+      loadObjectStorageConfig({ STORAGE_FORCE_PATH_STYLE: "true" }).STORAGE_FORCE_PATH_STYLE,
+    ).toBe(true);
+  });
+
+  it("rejects a part size that would exceed the 10000 part limit", () => {
+    try {
+      loadObjectStorageConfig({
+        UPLOAD_MAX_BYTES: String(5_242_880 * 10_001),
+        UPLOAD_PART_SIZE_BYTES: String(5_242_880),
+      });
+      expect.unreachable("expected a ConfigurationError");
+    } catch (error) {
+      expect((error as ConfigurationError).fields).toContain("UPLOAD_PART_SIZE_BYTES");
+    }
+  });
+
+  it("accepts the 1 GiB cap at the default part size", () => {
+    expect(
+      loadObjectStorageConfig({
+        UPLOAD_MAX_BYTES: String(1_073_741_824),
+        UPLOAD_PART_SIZE_BYTES: String(8_388_608),
+      }).UPLOAD_MAX_BYTES,
+    ).toBe(1_073_741_824);
+  });
+
+  it("rejects a part size below the 5 MiB S3 minimum", () => {
+    try {
+      loadObjectStorageConfig({ UPLOAD_PART_SIZE_BYTES: "1024" });
+      expect.unreachable("expected a ConfigurationError");
+    } catch (error) {
+      expect((error as ConfigurationError).fields).toContain("UPLOAD_PART_SIZE_BYTES");
+    }
+  });
+
+  it("requires a real bucket and an HTTPS endpoint in production", () => {
+    try {
+      loadObjectStorageConfig({
+        APP_ENV: "production",
+        STORAGE_ENDPOINT: "http://storage.internal",
+      });
+      expect.unreachable("expected a ConfigurationError");
+    } catch (error) {
+      const { fields } = error as ConfigurationError;
+      expect(fields).toContain("STORAGE_BUCKET");
+      expect(fields).toContain("STORAGE_ENDPOINT");
+    }
+  });
+
+  it("accepts a path-style loopback endpoint outside deployed environments", () => {
+    expect(
+      loadObjectStorageConfig({
+        STORAGE_ENDPOINT: "http://127.0.0.1:9000",
+        STORAGE_FORCE_PATH_STYLE: "true",
+      }),
+    ).toMatchObject({
+      STORAGE_ENDPOINT: "http://127.0.0.1:9000",
+      STORAGE_FORCE_PATH_STYLE: true,
+    });
+  });
+});
+
+describe("loadObjectStorageCredentials", () => {
+  it("loads supplied storage keys", () => {
+    expect(
+      loadObjectStorageCredentials({
+        STORAGE_ACCESS_KEY_ID: "access-key",
+        STORAGE_SECRET_ACCESS_KEY: "secret-key",
+      }),
+    ).toEqual({
+      STORAGE_ACCESS_KEY_ID: "access-key",
+      STORAGE_SECRET_ACCESS_KEY: "secret-key",
+    });
+  });
+
+  it("fails closed with no default and without echoing the secret", () => {
+    const secretCanary = "storage secret redaction canary";
+
+    expect(() => loadObjectStorageCredentials({})).toThrow(ConfigurationError);
+
+    try {
+      loadObjectStorageCredentials({ STORAGE_SECRET_ACCESS_KEY: secretCanary });
+      expect.unreachable("expected a ConfigurationError");
+    } catch (error) {
+      expect((error as Error).message).not.toContain(secretCanary);
+      expect((error as ConfigurationError).fields).toContain("STORAGE_ACCESS_KEY_ID");
     }
   });
 });

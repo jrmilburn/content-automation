@@ -12,13 +12,14 @@
     "packages/domain",
     "packages/config",
     "packages/observability",
+    "packages/integrations",
     "packages/db",
     "packages/queue",
     "apps/worker",
     "apps/web"
   ],
   "scripts": {
-    "build:packages": "npm run build -w @studio-parallel/domain && npm run build -w @studio-parallel/config && npm run build -w @studio-parallel/observability && npm run build -w @studio-parallel/db && npm run build -w @studio-parallel/queue",
+    "build:packages": "npm run build -w @studio-parallel/domain && npm run build -w @studio-parallel/config && npm run build -w @studio-parallel/observability && npm run build -w @studio-parallel/integrations && npm run build -w @studio-parallel/db && npm run build -w @studio-parallel/queue",
     "build": "npm run build:packages && npm run build -w @studio-parallel/worker && npm run build -w @studio-parallel/web",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test",
     "dev": "npm run build:packages && concurrently --names web,worker --prefix-colors blue,magenta \"npm run dev -w @studio-parallel/web\" \"npm run dev -w @studio-parallel/worker\"",
@@ -51,9 +52,11 @@
     "test:e2e": "npm run build && playwright test",
     "test:e2e:install": "playwright install chromium",
     "test:e2e:install:ci": "playwright install --with-deps chromium",
+    "test:storage:integration": "node packages/integrations/scripts/run-storage-integration-tests.mjs",
+    "test:storage:integration:existing": "vitest run --config packages/integrations/vitest.integration.config.ts",
     "test:watch": "vitest",
     "typecheck": "npm run build:packages && tsc -p tsconfig.tools.json --noEmit && npm run typecheck --workspaces --if-present",
-    "validate:local": "npm run check && npm run security:dependencies && npm run security:secrets && npm run security:supply-chain && npm run test:db:integration && npm run test:e2e"
+    "validate:local": "npm run check && npm run security:dependencies && npm run security:secrets && npm run security:supply-chain && npm run test:db:integration && npm run test:storage:integration && npm run test:e2e"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",

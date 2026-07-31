@@ -23,6 +23,26 @@
   },
   "dependencies": [
     {
+      "name": "@aws-sdk/client-s3",
+      "scope": "production",
+      "licence": "Apache-2.0",
+      "necessity": "Issues the multipart initiate, complete, abort, head and list operations against the private S3-compatible source-video bucket. The S3 protocol is what keeps Cloudflare R2, AWS S3 and MinIO interchangeable behind the storage adapter.",
+      "maintenance": "Maintained by AWS as part of the modular v3 SDK with frequent releases and a published security policy.",
+      "reviewedOn": "2026-08-01",
+      "reviewedBy": "Studio Parallel engineering lead",
+      "notes": "Modular client only. The monolithic aws-sdk package and the credential-provider chain packages are deliberately not added, so no ambient instance or profile credentials can be picked up: keys are supplied explicitly from configuration."
+    },
+    {
+      "name": "@aws-sdk/s3-request-presigner",
+      "scope": "production",
+      "licence": "Apache-2.0",
+      "necessity": "Signs the short-lived, exact-key and method-scoped upload URLs the browser uses, so video bytes reach storage directly and storage credentials never leave the server.",
+      "maintenance": "Maintained by AWS alongside @aws-sdk/client-s3 and released on the same cadence.",
+      "reviewedOn": "2026-08-01",
+      "reviewedBy": "Studio Parallel engineering lead",
+      "notes": "Version is pinned to match @aws-sdk/client-s3; the two share signing internals and are upgraded together."
+    },
+    {
       "name": "@axe-core/playwright",
       "scope": "development",
       "licence": "MPL-2.0",
