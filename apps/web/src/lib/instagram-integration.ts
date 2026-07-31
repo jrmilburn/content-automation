@@ -1,6 +1,7 @@
 import {
   instagramConnectionBlocked,
   instagramRequiredScopes,
+  type DashboardIntegrationSummary,
   type InstagramTokenHealthState,
 } from "@studio-parallel/domain";
 
@@ -161,6 +162,76 @@ export function formatDateTime(value: Date | null): string {
 
 export function formatUsername(username: string | null): string {
   return username ? `@${username}` : "Username unavailable";
+}
+
+export const integrationsPath = "/settings/integrations";
+
+/**
+ * Summarises the workspace's connection for the dashboard tile.
+ *
+ * It reuses `presentConnection` and `presentRequiredScopes` rather than
+ * re-deriving state, so the dashboard and the integration screen cannot
+ * disagree about whether an account needs attention — the defect this replaced
+ * was a hardcoded "not connected" that no data could ever change.
+ *
+ * A disconnected account does not count as connected: once every account is
+ * disconnected the workspace is back to needing a connection, not an action.
+ */
+export function presentDashboardIntegration(
+  accounts: readonly Readonly<{
+    connectionStatus: string;
+    grantedScopes: readonly string[];
+    healthState: InstagramTokenHealthState;
+    username: string | null;
+  }>[],
+): DashboardIntegrationSummary {
+  const live = accounts.filter((account) => account.connectionStatus !== "DISCONNECTED");
+
+  if (live.length === 0) {
+    return Object.freeze({
+      action: { href: integrationsPath, label: "Connect Instagram account" },
+      description:
+        "Connect an approved professional account before posts, trends and strategy can populate.",
+      status: "not_connected" as const,
+      statusLabel: "Not connected",
+    });
+  }
+
+  const needsAction = live.filter((account) => {
+    const connection = presentConnection(account);
+    const scopesMissing = presentRequiredScopes(account.grantedScopes).some(
+      (scope) => !scope.granted,
+    );
+    return connection.action !== null || scopesMissing;
+  });
+
+  const name = (account: (typeof live)[number]) => formatUsername(account.username);
+
+  if (needsAction.length > 0) {
+    const worst = needsAction[0];
+    return Object.freeze({
+      ...(live.length === 1 && worst ? { accountName: name(worst) } : {}),
+      action: { href: integrationsPath, label: "Reconnect account" },
+      description: worst
+        ? presentConnection(worst).description
+        : "This connection needs attention before syncing can continue.",
+      status: "action_required" as const,
+      statusLabel:
+        needsAction.length === live.length ? "Action needed" : "Attention on one account",
+    });
+  }
+
+  const first = live[0];
+  return Object.freeze({
+    ...(live.length === 1 && first ? { accountName: name(first) } : {}),
+    action: { href: integrationsPath, label: "Review connection" },
+    description:
+      live.length === 1
+        ? "Connected and syncing. Imported posts and insights stay current."
+        : `${live.length} accounts are connected and syncing.`,
+    status: "healthy" as const,
+    statusLabel: "Connected",
+  });
 }
 
 /** Copy for the coarse outcome the provider callback redirects back with. */

@@ -12,8 +12,28 @@ import {
   parseCallbackOutcome,
   presentCallbackOutcome,
   presentConnection,
+  presentDashboardIntegration,
   presentRequiredScopes,
 } from "./instagram-integration";
+
+const allScopes = ["instagram_business_basic", "instagram_business_manage_insights"];
+
+function dashboardAccount(
+  overrides: Partial<{
+    connectionStatus: string;
+    grantedScopes: readonly string[];
+    healthState: InstagramTokenHealthState;
+    username: string | null;
+  }> = {},
+) {
+  return {
+    connectionStatus: "ACTIVE",
+    grantedScopes: allScopes,
+    healthState: "HEALTHY" as InstagramTokenHealthState,
+    username: "studioparallel",
+    ...overrides,
+  };
+}
 
 function connection(
   connectionStatus: string,
@@ -163,6 +183,116 @@ describe("presentCallbackOutcome", () => {
 
   it("confirms a success and says importing starts on its own", () => {
     expect(presentCallbackOutcome("connected")).toMatchObject({ tone: "success" });
+  });
+});
+
+describe("presentDashboardIntegration", () => {
+  it("reports not connected when the workspace has no account", () => {
+    expect(presentDashboardIntegration([])).toMatchObject({
+      action: { href: "/settings/integrations", label: "Connect Instagram account" },
+      status: "not_connected",
+    });
+  });
+
+  it("reports a healthy connection and names the account", () => {
+    // The defect this replaced was a hardcoded not_connected that no data
+    // could ever change, so this is the assertion that actually mattered.
+    expect(presentDashboardIntegration([dashboardAccount()])).toMatchObject({
+      accountName: "@studioparallel",
+      status: "healthy",
+      statusLabel: "Connected",
+    });
+  });
+
+  it.each(["EXPIRED", "REAUTHORISATION_REQUIRED", "REVOKED"] as const)(
+    "requires action when the credential is %s",
+    (healthState) => {
+      expect(presentDashboardIntegration([dashboardAccount({ healthState })])).toMatchObject({
+        action: { href: "/settings/integrations", label: "Reconnect account" },
+        status: "action_required",
+      });
+    },
+  );
+
+  it("requires action when the account itself is flagged", () => {
+    expect(
+      presentDashboardIntegration([
+        dashboardAccount({ connectionStatus: "REAUTHORISATION_REQUIRED" }),
+      ]),
+    ).toMatchObject({ status: "action_required" });
+  });
+
+  it("requires action on a degraded connection", () => {
+    expect(
+      presentDashboardIntegration([dashboardAccount({ healthState: "EXPIRING" })]),
+    ).toMatchObject({ status: "action_required" });
+  });
+
+  it("requires action when a required scope was downgraded", () => {
+    expect(
+      presentDashboardIntegration([
+        dashboardAccount({ grantedScopes: ["instagram_business_basic"] }),
+      ]),
+    ).toMatchObject({ status: "action_required" });
+  });
+
+  it("treats an all-disconnected workspace as not connected, not as an action", () => {
+    expect(
+      presentDashboardIntegration([
+        dashboardAccount({ connectionStatus: "DISCONNECTED", healthState: "REVOKED" }),
+      ]),
+    ).toMatchObject({ status: "not_connected" });
+  });
+
+  it("ignores a disconnected account beside a healthy one", () => {
+    expect(
+      presentDashboardIntegration([
+        dashboardAccount({ connectionStatus: "DISCONNECTED", healthState: "REVOKED" }),
+        dashboardAccount({ username: "second" }),
+      ]),
+    ).toMatchObject({ accountName: "@second", status: "healthy" });
+  });
+
+  it("summarises several healthy accounts without naming one", () => {
+    const presented = presentDashboardIntegration([
+      dashboardAccount(),
+      dashboardAccount({ username: "second" }),
+    ]);
+
+    expect(presented).toMatchObject({ status: "healthy" });
+    expect(presented.accountName).toBeUndefined();
+    expect(presented.description).toContain("2 accounts");
+  });
+
+  it("distinguishes one failing account from all of them failing", () => {
+    expect(
+      presentDashboardIntegration([
+        dashboardAccount(),
+        dashboardAccount({ healthState: "REVOKED", username: "second" }),
+      ]).statusLabel,
+    ).toBe("Attention on one account");
+
+    expect(
+      presentDashboardIntegration([
+        dashboardAccount({ healthState: "REVOKED" }),
+        dashboardAccount({ healthState: "EXPIRED", username: "second" }),
+      ]).statusLabel,
+    ).toBe("Action needed");
+  });
+
+  it("never links to the retired /accounts route", () => {
+    for (const accounts of [
+      [],
+      [dashboardAccount()],
+      [dashboardAccount({ healthState: "REVOKED" })],
+    ]) {
+      expect(presentDashboardIntegration(accounts).action.href).toBe("/settings/integrations");
+    }
+  });
+
+  it("renders no credential material in its copy", () => {
+    const presented = presentDashboardIntegration([dashboardAccount({ healthState: "REVOKED" })]);
+    expect(JSON.stringify(presented)).not.toMatch(/token|ciphertext|bearer/iu);
   });
 });
 
