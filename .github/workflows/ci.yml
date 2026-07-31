@@ -105,34 +105,6 @@ jobs:
     name: Object storage integration
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    services:
-      minio:
-        image: minio/minio:RELEASE.2025-04-22T22-12-26Z
-        env:
-          # The adapter always requests server-side encryption because the
-          # storage policy requires it, and MinIO refuses SSE-S3 without a key
-          # source. Configuring one here keeps the suite on the same encrypted
-          # write path production uses. The value decodes to
-          # "test-only-minio-kms-key-32bytes!" and protects nothing.
-          MINIO_KMS_SECRET_KEY: studio-parallel-test-key:dGVzdC1vbmx5LW1pbmlvLWttcy1rZXktMzJieXRlcyE=
-          MINIO_ROOT_PASSWORD: studio_parallel_test_secret
-          MINIO_ROOT_USER: studio_parallel_test
-        ports:
-          - 59000:9000
-        options: >-
-          --health-cmd "mc ready local"
-          --health-interval 1s
-          --health-timeout 5s
-          --health-retries 30
-    env:
-      APP_ENV: test
-      PROVIDER_MODE: fake
-      STORAGE_ACCESS_KEY_ID: studio_parallel_test
-      STORAGE_BUCKET: studio-parallel-source-test
-      STORAGE_ENDPOINT: http://127.0.0.1:59000
-      STORAGE_FORCE_PATH_STYLE: "true"
-      STORAGE_REGION: us-east-1
-      STORAGE_SECRET_ACCESS_KEY: studio_parallel_test_secret
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -145,14 +117,18 @@ jobs:
           node-version-file: .node-version
       - name: Install from lockfile
         run: npm ci
-      # Mirrors packages/integrations/scripts/run-storage-integration-tests.mjs,
-      # which is the local equivalent. Only this job exercises the real signing,
-      # multipart, abort and encryption paths; the unit suite uses an in-memory
-      # fake that cannot disagree with the adapter.
       - name: Build workspace packages
         run: npm run build:packages
+      # This job runs the same compose-based runner as a developer does, rather
+      # than a service container, because MinIO needs a `server /data` command
+      # and a GitHub service container cannot supply one. Keeping the harness
+      # identical also means a local pass and a hosted pass mean the same thing.
+      #
+      # Only this job exercises the real signing, multipart, abort and
+      # server-side-encryption paths; the unit suite uses an in-memory fake that
+      # cannot disagree with the adapter.
       - name: Run real object storage integration tests
-        run: npm run test:storage:integration:existing
+        run: npm run test:storage:integration
 
   browser:
     name: Browser and accessibility smoke
