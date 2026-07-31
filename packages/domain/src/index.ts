@@ -91,6 +91,18 @@ export {
   type NormalisedInstagramMedia,
 } from "./instagram-media.js";
 export {
+  instagramAccountSyncIntervalHours,
+  instagramIncrementalOverlapDays,
+  instagramManualSyncKey,
+  instagramScheduledSyncKey,
+  instagramSnapshotDueFor,
+  instagramSnapshotKey,
+  instagramSyncPriority,
+  instagramSyncTriggerFromKey,
+  isSafeSchedulingKey,
+  type InstagramSnapshotDue,
+} from "./instagram-scheduling.js";
+export {
   hashInstagramInsightObservations,
   instagramCanonicalMetrics,
   instagramFailedGroupObservations,

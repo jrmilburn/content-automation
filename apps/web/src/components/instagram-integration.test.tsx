@@ -6,10 +6,19 @@ import type { IntegrationAccountView } from "../lib/instagram-integration";
 import type { IntegrationsSnapshot } from "../lib/server/integrations-data";
 import { InstagramIntegrations } from "./instagram-integration";
 
+// Both controls are client components whose server actions reach the auth
+// stack. This test is about the card, not that chain.
 vi.mock("./instagram-disconnect-control", () => ({
   InstagramDisconnectControl: ({ accountId }: Readonly<{ accountId: string }>) => (
     <button data-account={accountId} type="button">
       Disconnect account
+    </button>
+  ),
+}));
+vi.mock("./instagram-sync-control", () => ({
+  InstagramSyncControl: ({ accountId }: Readonly<{ accountId: string }>) => (
+    <button data-account={accountId} type="button">
+      Sync now
     </button>
   ),
 }));

@@ -1,10 +1,12 @@
 import "server-only";
 
 import { isQueueName, type QueueName } from "@studio-parallel/domain";
-import type {
-  JobDatabaseExecutor,
-  ManualRetryJob,
-  ManualRetryPrerequisiteResult,
+import {
+  createWorkspaceContext,
+  instagramSyncRunSucceededForJob,
+  type JobDatabaseExecutor,
+  type ManualRetryJob,
+  type ManualRetryPrerequisiteResult,
 } from "@studio-parallel/db";
 
 type RetryPolicy = Readonly<{
@@ -26,13 +28,26 @@ const foundationPolicy: RetryPolicy = Object.freeze({
   resultExists: async () => false,
 });
 
+// The sync vertical now has a persisted immutable result, so a retry can be
+// refused on the evidence rather than on job state alone: a run that already
+// succeeded for this job must never be re-imported.
+const syncPolicy: RetryPolicy = Object.freeze({
+  checkPrerequisites: foundationPolicy.checkPrerequisites,
+  resultExists: (database, job) =>
+    instagramSyncRunSucceededForJob(database, createWorkspaceContext(job.workspaceId), job.id),
+});
+
 const policies = {
   "analysis.run": foundationPolicy,
   "analytics.recalculate": foundationPolicy,
   "asset.cleanup": foundationPolicy,
   "asset.validate": foundationPolicy,
+  // Snapshots stay on the foundation policy deliberately: a snapshot is
+  // content-addressed, so re-running either collapses onto the existing row or
+  // records a genuinely changed observation. Refusing on a prior result would
+  // suppress the second, legitimate case.
   "instagram.snapshot.post": foundationPolicy,
-  "instagram.sync.account": foundationPolicy,
+  "instagram.sync.account": syncPolicy,
   "instagram.token.maintain": foundationPolicy,
   "strategy.generate": foundationPolicy,
   "system.reconcile": foundationPolicy,

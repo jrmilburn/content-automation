@@ -33,6 +33,7 @@ import {
   createInstagramTokenMaintainHandler,
   instagramTokenQueue,
 } from "./instagram/token-maintain-handler.js";
+import { createInstagramSyncScheduler } from "./instagram/sync-scheduler.js";
 import { createInstagramTokenMaintenanceScheduler } from "./instagram/token-maintenance-scheduler.js";
 import { createOutboxReconciler } from "./outbox-reconciler.js";
 
@@ -137,6 +138,15 @@ const tokenMaintenance = createInstagramTokenMaintenanceScheduler({
   intervalMs: config.QUEUE_RECONCILE_INTERVAL_SECONDS * 1_000 * 60,
   logger,
 });
+const syncScheduler = createInstagramSyncScheduler({
+  batchSize: config.QUEUE_DISPATCH_BATCH_SIZE,
+  database,
+  errorMonitor,
+  // Finer than token maintenance because the shortest snapshot bucket closes in
+  // two hours; the bucketed idempotency keys make the exact interval safe.
+  intervalMs: config.QUEUE_RECONCILE_INTERVAL_SECONDS * 1_000 * 12,
+  logger,
+});
 const reconciler = createOutboxReconciler({
   batchSize: config.QUEUE_DISPATCH_BATCH_SIZE,
   correlationId: lifecycleCorrelationId,
@@ -160,6 +170,7 @@ async function start(): Promise<void> {
     await queue.verifyQueues(queueDefinitions);
     reconciler.start();
     tokenMaintenance.start();
+    syncScheduler.start();
     server.listen(config.WORKER_HEALTH_PORT, () => {
       logger.info("worker.started", {
         correlationId: lifecycleCorrelationId,
@@ -192,6 +203,7 @@ function shutDown(signal: NodeJS.Signals): Promise<void> {
 
   shutdownPromise = (async () => {
     try {
+      await syncScheduler.stop();
       await tokenMaintenance.stop();
       await reconciler.stop();
       await workerRuntime.stop({

@@ -8,6 +8,10 @@ import {
   disconnectInstagramAccount,
   type DisconnectResult,
 } from "../../../../lib/server/instagram-disconnection";
+import {
+  requestInstagramSync,
+  type SyncRequestResult,
+} from "../../../../lib/server/instagram-sync-request";
 import { webErrorMonitor, webLogger } from "../../../../lib/server/observability";
 import { requireShellActor } from "../../../../lib/server/shell-session";
 
@@ -61,6 +65,79 @@ export async function disconnectAccountAction(
       status: "error" as const,
     });
   }
+}
+
+/**
+ * Requests an immediate import for one account.
+ *
+ * The action only enqueues; the worker owns the import, so the reply says what
+ * was scheduled rather than claiming anything has been fetched.
+ */
+export async function syncAccountAction(
+  _previous: DisconnectActionState,
+  formData: FormData,
+): Promise<DisconnectActionState> {
+  const requestContext = createWebRequestContext(await headers());
+  const rawAccountId = formData.get("accountId");
+  const accountId = typeof rawAccountId === "string" ? rawAccountId : "";
+
+  try {
+    const actor = await requireShellActor();
+    const result = await requestInstagramSync({
+      accountId,
+      actor,
+      correlationId: requestContext.correlationId,
+    });
+
+    revalidatePath("/settings/integrations");
+    return syncActionResult(result);
+  } catch (error) {
+    reportError(
+      error,
+      {
+        correlationId: requestContext.correlationId,
+        event: "instagram.sync.request_failed",
+        stage: "manual_sync",
+      },
+      { logger: webLogger, monitor: webErrorMonitor },
+    );
+
+    return Object.freeze({
+      message:
+        "The sync could not be started. Nothing was changed. Try again, and contact an administrator if it keeps failing.",
+      reference: requestContext.correlationId,
+      status: "error" as const,
+    });
+  }
+}
+
+function syncActionResult(result: SyncRequestResult): DisconnectActionState {
+  if (!result.queued) {
+    const messages: Readonly<Record<string, string>> = {
+      ACCOUNT_NOT_CONNECTED:
+        "This account is not connected, so there is nothing to sync. Reconnect it first.",
+      ACCOUNT_NOT_FOUND: "This account is unavailable in the current workspace.",
+      ADMIN_REQUIRED: "Administrator access is required to start a sync.",
+      RATE_LIMITED: "Too many recent sync requests. Try again shortly.",
+    };
+    return Object.freeze({
+      message: messages[result.reason] ?? "This action could not be completed.",
+      status: "error" as const,
+    });
+  }
+
+  if (result.alreadyRunning) {
+    return Object.freeze({
+      message:
+        "A sync is already running for this account. Its results will appear when it finishes.",
+      status: "success" as const,
+    });
+  }
+
+  return Object.freeze({
+    message: "Sync queued. New posts appear on the posts screen once it completes.",
+    status: "success" as const,
+  });
 }
 
 function actionResult(result: DisconnectResult): DisconnectActionState {

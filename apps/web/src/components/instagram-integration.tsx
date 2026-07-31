@@ -11,6 +11,7 @@ import {
   type IntegrationAccountView,
 } from "../lib/instagram-integration";
 import { InstagramDisconnectControl } from "./instagram-disconnect-control";
+import { InstagramSyncControl } from "./instagram-sync-control";
 import { PageHeader } from "./page-header";
 import { StatusBadge } from "./status-badge";
 import { EmptyState, ErrorSummary } from "./states";
@@ -175,10 +176,18 @@ function IntegrationAccountCard({
       </div>
 
       {canManage && connection.state !== "DISCONNECTED" ? (
-        <InstagramDisconnectControl
-          accountId={account.accountId}
-          username={formatUsername(account.username)}
-        />
+        <>
+          {/* Offered only on a healthy connection: an import against a blocked
+              credential fails in the worker and reads as a broken sync rather
+              than as a connection needing attention. */}
+          {connection.state === "CONNECTED" ? (
+            <InstagramSyncControl accountId={account.accountId} />
+          ) : null}
+          <InstagramDisconnectControl
+            accountId={account.accountId}
+            username={formatUsername(account.username)}
+          />
+        </>
       ) : null}
     </section>
   );
