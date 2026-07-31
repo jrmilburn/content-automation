@@ -11,10 +11,13 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("../../../../lib/server/integrations-data", () => ({
   loadInstagramIntegrations: () => loadInstagramIntegrations(),
 }));
-// The disconnect control is a client component whose server action reaches the
-// auth stack; this page test is about the page, not that chain.
+// Both controls are client components whose server actions reach the auth
+// stack; this page test is about the page, not that chain.
 vi.mock("../../../../components/instagram-disconnect-control", () => ({
   InstagramDisconnectControl: () => <button type="button">Disconnect account</button>,
+}));
+vi.mock("../../../../components/instagram-sync-control", () => ({
+  InstagramSyncControl: () => <button type="button">Sync now</button>,
 }));
 vi.mock("../../../../lib/server/observability", () => ({
   webErrorMonitor: { captureException: vi.fn() },
