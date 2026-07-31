@@ -2061,6 +2061,225 @@ h2 {
   }
 }
 
+.posts-filters {
+  padding: clamp(1.25rem, 3vw, 1.75rem);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-compact);
+  margin-top: clamp(1.75rem, 4vw, 2.5rem);
+  background: var(--color-surface);
+}
+
+.posts-filters__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.posts-filters__heading h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.posts-filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 1rem;
+}
+
+.posts-filter-form label {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+}
+
+.posts-filter-form label > span {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  font-weight: 720;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.posts-filter-form__search {
+  flex: 1 1 16rem;
+}
+
+.posts-filter-form input,
+.posts-filter-form select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-compact);
+  background: var(--color-canvas);
+  color: inherit;
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+.posts-results {
+  margin-top: clamp(1.75rem, 4vw, 2.5rem);
+}
+
+.posts-results__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.posts-results__header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.posts-results__header p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.84rem;
+}
+
+.posts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: clamp(1rem, 2.5vw, 1.5rem);
+  padding: 0;
+  margin: clamp(1.25rem, 3vw, 1.75rem) 0 0;
+  list-style: none;
+}
+
+.post-card {
+  display: flex;
+  height: 100%;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-compact);
+  background: var(--color-surface);
+}
+
+.post-thumbnail {
+  display: flex;
+  width: 4.5rem;
+  height: 4.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-compact);
+  background: var(--color-canvas);
+  object-fit: cover;
+}
+
+.post-thumbnail__glyph {
+  color: var(--color-rule);
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.post-card__body {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 0.6rem;
+}
+
+.post-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.post-card__meta h3 {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 620;
+}
+
+.post-card__caption {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.post-card__actions {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.posts-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: clamp(1.5rem, 4vw, 2.25rem);
+}
+
+.posts-pending {
+  padding: clamp(1.25rem, 3vw, 1.5rem);
+  border: 1px dashed var(--color-rule);
+  border-radius: var(--radius-compact);
+  margin-top: clamp(1.75rem, 4vw, 2.5rem);
+}
+
+.posts-pending h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.68rem;
+  font-weight: 720;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.posts-pending > p {
+  max-width: 68ch;
+  margin: 0 0 1rem;
+  color: var(--color-muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.posts-pending dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+
+.posts-pending dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.84rem;
+  font-weight: 620;
+}
+
+.posts-pending dd {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 799px) {
+  .posts-filter-form {
+    display: grid;
+  }
+
+  .posts-filter-form .button {
+    justify-self: start;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
