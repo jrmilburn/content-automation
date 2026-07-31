@@ -181,6 +181,8 @@ model Workspace {
   settings       SystemSetting[]
   syncRuns       SyncRun[]
   users          InternalUser[]
+  videoAssets    VideoAsset[]
+  uploadIntents  VideoUploadIntent[]
 
   @@index([status])
   @@map("workspaces")
@@ -301,6 +303,7 @@ model InternalUser {
   workspace        Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   actorAuditEvents AuditEvent[]       @relation("audit_actor_user")
   changedSettings  SystemSetting[]    @relation("setting_changed_by_user")
+  uploadIntents    VideoUploadIntent[] @relation("upload_intent_created_by_user")
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, oidcSubject])
@@ -425,6 +428,8 @@ model InstagramPost {
   workspace            Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   account              InstagramAccount          @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
   snapshots            InstagramMetricSnapshot[]
+  videoAssets          VideoAsset[]
+  uploadIntents        VideoUploadIntent[]
 
   @@unique([workspaceId, id])
   @@unique([instagramAccountId, providerMediaId])
@@ -553,4 +558,115 @@ model SystemSetting {
   @@unique([workspaceId, key, version])
   @@index([workspaceId, key, effectiveAt(sort: Desc)])
   @@map("system_settings")
+}
+
+// Lifecycle of one multipart upload the server authorised.
+//
+// An intent exists from the moment the server reserves an object key until the
+// upload either becomes an asset or is discarded. Terminal states are kept
+// rather than deleted so an abandoned upload can be reconciled against the
+// provider and so a repeated completion is recognised instead of re-run.
+enum VideoUploadIntentState {
+  PENDING
+  COMPLETED
+  ABORTED
+  EXPIRED
+
+  @@map("video_upload_intent_state")
+}
+
+// Only PENDING_VALIDATION is reachable from the upload commands. The validation
+// worker owns the transition to READY or REJECTED; nothing here may publish an
+// asset that a probe has not accepted.
+enum VideoAssetState {
+  PENDING_VALIDATION
+  READY
+  REJECTED
+
+  @@map("video_asset_state")
+}
+
+// A server-authorised intent to upload one source video for one post.
+//
+// The client never supplies the object key, the bucket or the byte limit: the
+// server reserves all three, and `declaredBytes`/`declaredContentType` record
+// only what the browser claimed so a later mismatch against server-observed
+// metadata is provable rather than silent.
+//
+// `pendingForPostId` mirrors `instagramPostId` while the intent is PENDING and
+// is nulled on every terminal state. Postgres ignores nulls in unique indexes,
+// so this gives the documented "at most one pending replacement intent" rule a
+// real database guarantee while still allowing a post to accumulate any number
+// of completed, aborted and expired intents. A partial index would express the
+// same rule but would not be visible to schema.prisma, and db:drift:check
+// compares the live database against this file.
+model VideoUploadIntent {
+  id                  String                 @id @db.Uuid
+  workspaceId         String                 @map("workspace_id") @db.Uuid
+  instagramPostId     String                 @map("instagram_post_id") @db.Uuid
+  pendingForPostId    String?                @map("pending_for_post_id") @db.Uuid
+  objectKey           String                 @map("object_key") @db.VarChar(512)
+  bucket              String                 @db.VarChar(63)
+  region              String                 @db.VarChar(64)
+  providerUploadId    String                 @map("provider_upload_id") @db.VarChar(512)
+  declaredBytes       BigInt                 @map("declared_bytes")
+  declaredContentType String                 @map("declared_content_type") @db.VarChar(128)
+  partSizeBytes       Int                    @map("part_size_bytes")
+  partCount           Int                    @map("part_count")
+  state               VideoUploadIntentState @default(PENDING)
+  expiresAt           DateTime               @map("expires_at") @db.Timestamptz(3)
+  completedAt         DateTime?              @map("completed_at") @db.Timestamptz(3)
+  createdByUserId     String                 @map("created_by_user_id") @db.Uuid
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace           Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  post                InstagramPost          @relation(fields: [workspaceId, instagramPostId], references: [workspaceId, id], onDelete: Restrict)
+  createdByUser       InternalUser           @relation("upload_intent_created_by_user", fields: [workspaceId, createdByUserId], references: [workspaceId, id], onDelete: Restrict)
+  asset               VideoAsset?
+
+  @@unique([workspaceId, id])
+  @@unique([objectKey])
+  @@unique([workspaceId, pendingForPostId])
+  @@index([workspaceId, instagramPostId, createdAt(sort: Desc)])
+  @@index([state, expiresAt])
+  @@map("video_upload_intents")
+}
+
+// One uploaded source video, recorded from server-observed object metadata.
+//
+// `etag` is the provider's integrity token, not a cryptographic digest: for a
+// multipart object S3 returns a composite of per-part hashes. `declaredChecksum`
+// is what the browser claimed and is advisory only. `verifiedChecksum` is filled
+// by the validation worker when it streams the object, and until then the asset
+// stays PENDING_VALIDATION and is not eligible for analysis.
+//
+// The intent relation is unique, so a retried or replayed completion resolves to
+// the same asset row instead of creating a duplicate.
+model VideoAsset {
+  id                String            @id @db.Uuid
+  workspaceId       String            @map("workspace_id") @db.Uuid
+  instagramPostId   String            @map("instagram_post_id") @db.Uuid
+  uploadIntentId    String            @map("upload_intent_id") @db.Uuid
+  objectKey         String            @map("object_key") @db.VarChar(512)
+  bucket            String            @db.VarChar(63)
+  region            String            @db.VarChar(64)
+  objectVersion     String?           @map("object_version") @db.VarChar(256)
+  etag              String            @db.VarChar(256)
+  bytes             BigInt
+  contentType       String?           @map("content_type") @db.VarChar(128)
+  declaredChecksum  String?           @map("declared_checksum_sha256") @db.Char(64)
+  verifiedChecksum  String?           @map("verified_checksum_sha256") @db.Char(64)
+  state             VideoAssetState   @default(PENDING_VALIDATION)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  post              InstagramPost     @relation(fields: [workspaceId, instagramPostId], references: [workspaceId, id], onDelete: Restrict)
+  uploadIntent      VideoUploadIntent @relation(fields: [workspaceId, uploadIntentId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, uploadIntentId])
+  @@unique([objectKey])
+  @@index([workspaceId, instagramPostId, createdAt(sort: Desc)])
+  @@index([workspaceId, state])
+  @@map("video_assets")
 }

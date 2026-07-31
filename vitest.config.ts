@@ -13,6 +13,7 @@ export default defineConfig({
     exclude: [
       ...configDefaults.exclude,
       "packages/db/tests/integration/**/*.integration.test.ts",
+      "packages/integrations/tests/integration/**/*.integration.test.ts",
       "packages/queue/tests/integration/**/*.integration.test.ts",
       "tests/e2e/**",
     ],

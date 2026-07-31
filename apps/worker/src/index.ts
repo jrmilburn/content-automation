@@ -36,6 +36,9 @@ import {
 import { createInstagramSyncScheduler } from "./instagram/sync-scheduler.js";
 import { createInstagramTokenMaintenanceScheduler } from "./instagram/token-maintenance-scheduler.js";
 import { createOutboxReconciler } from "./outbox-reconciler.js";
+import { assetCleanupQueue, createAssetCleanupHandler } from "./uploads/asset-cleanup-handler.js";
+import { createAssetCleanupScheduler } from "./uploads/asset-cleanup-scheduler.js";
+import { createWorkerObjectStorage } from "./uploads/object-storage.js";
 
 const config = loadRuntimeConfig();
 const databaseConfig = loadDatabaseConfig();
@@ -102,6 +105,7 @@ const loadEncryption = (): Readonly<{
   }
   return credentialEncryption;
 };
+const objectStorage = createWorkerObjectStorage(config);
 const registry = createQueueHandlerRegistry([
   createInstagramSyncAccountHandler({
     acquireConcurrency: (signal) => providerConcurrency.acquire("instagram", signal),
@@ -123,11 +127,21 @@ const registry = createQueueHandlerRegistry([
     loadEncryption,
     logger,
   }),
+  createAssetCleanupHandler({
+    database,
+    logger,
+    storage: objectStorage,
+  }),
 ]);
 const workerRuntime = createQueueWorkerRuntime({
   client: queue,
   registry,
-  requiredQueues: [instagramSnapshotQueue, instagramSyncQueue, instagramTokenQueue],
+  requiredQueues: [
+    assetCleanupQueue,
+    instagramSnapshotQueue,
+    instagramSyncQueue,
+    instagramTokenQueue,
+  ],
 });
 const tokenMaintenance = createInstagramTokenMaintenanceScheduler({
   batchSize: config.QUEUE_DISPATCH_BATCH_SIZE,
@@ -145,6 +159,16 @@ const syncScheduler = createInstagramSyncScheduler({
   // Finer than token maintenance because the shortest snapshot bucket closes in
   // two hours; the bucketed idempotency keys make the exact interval safe.
   intervalMs: config.QUEUE_RECONCILE_INTERVAL_SECONDS * 1_000 * 12,
+  logger,
+});
+const assetCleanup = createAssetCleanupScheduler({
+  batchSize: config.QUEUE_DISPATCH_BATCH_SIZE,
+  database,
+  errorMonitor,
+  // Abandonment is measured in hours, so this sweep runs on the same slow
+  // cadence as token maintenance; the daily idempotency key makes the exact
+  // interval safe.
+  intervalMs: config.QUEUE_RECONCILE_INTERVAL_SECONDS * 1_000 * 60,
   logger,
 });
 const reconciler = createOutboxReconciler({
@@ -171,6 +195,7 @@ async function start(): Promise<void> {
     reconciler.start();
     tokenMaintenance.start();
     syncScheduler.start();
+    assetCleanup.start();
     server.listen(config.WORKER_HEALTH_PORT, () => {
       logger.info("worker.started", {
         correlationId: lifecycleCorrelationId,
@@ -203,6 +228,7 @@ function shutDown(signal: NodeJS.Signals): Promise<void> {
 
   shutdownPromise = (async () => {
     try {
+      await assetCleanup.stop();
       await syncScheduler.stop();
       await tokenMaintenance.stop();
       await reconciler.stop();

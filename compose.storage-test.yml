@@ -1,0 +1,31 @@
+name: studio-parallel-storage-test
+
+services:
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      # The adapter always asks for server-side encryption, because the storage
+      # policy requires it in every deployed environment. MinIO refuses SSE-S3
+      # unless a key source is configured, so the test container gets one and
+      # the suite exercises the same encrypted write path production uses
+      # rather than a weakened one. The plaintext below decodes to
+      # "test-only-minio-kms-key-32bytes!" and protects nothing.
+      MINIO_KMS_SECRET_KEY: "studio-parallel-test-key:dGVzdC1vbmx5LW1pbmlvLWttcy1rZXktMzJieXRlcyE="
+      MINIO_ROOT_PASSWORD: studio_parallel_test_secret
+      MINIO_ROOT_USER: studio_parallel_test
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mc ready local || exit 1
+      interval: 1s
+      timeout: 5s
+      retries: 30
+    ports:
+      # Offset from MinIO's defaults so a developer already running one for
+      # another project does not silently have their bucket used instead.
+      - "59000:9000"
+    # Deliberately not tmpfs, for the same reason as the database compose file:
+    # a memory-backed store completes multipart writes fast enough to hide
+    # ordering and durability defects that a disk-backed one exposes. The
+    # container is removed after every run, so nothing persists.

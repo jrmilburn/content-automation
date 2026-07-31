@@ -221,6 +221,22 @@ export {
   type StrategyValidationIssue,
   type StrategyValidationResult,
 } from "./strategy-contract.js";
+export {
+  acceptedVideoContentTypes,
+  acceptedVideoFileExtensions,
+  completeUploadRequestSchema,
+  evaluateUploadAdmission,
+  hasUniquePartNumbers,
+  isAcceptedVideoContentType,
+  uploadAdmissionRefusalReasons,
+  videoAssetValidationKey,
+  videoUploadCleanupKey,
+  type AcceptedVideoContentType,
+  type CompleteUploadRequest,
+  type UploadAdmissionDecision,
+  type UploadAdmissionRefusalReason,
+  type UploadAdmissionRequest,
+} from "./video-upload.js";
 
 export type ServiceName = (typeof serviceNames)[number];
 

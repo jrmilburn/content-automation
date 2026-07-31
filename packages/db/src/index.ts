@@ -157,4 +157,24 @@ export {
   type AuditActor,
   type WorkspaceRepositories,
 } from "./repositories.js";
+export {
+  closeVideoUploadIntent,
+  createVideoAsset,
+  createVideoUploadIntent,
+  findPendingVideoUploadIntentForPost,
+  findVideoAssetForIntent,
+  findVideoUploadIntent,
+  listExpiredVideoUploadIntents,
+  uploadIntentAbortedAction,
+  uploadIntentCompletedAction,
+  uploadIntentExpiredAction,
+  uploadIntentInitiatedAction,
+  videoAssetResourceType,
+  videoUploadIntentResourceType,
+  type CreateUploadIntentInput,
+  type CreateVideoAssetInput,
+  type ExpiredUploadIntent,
+  type VideoAssetRecord,
+  type VideoUploadIntentRecord,
+} from "./video-upload.js";
 export { createWorkspaceContext, type WorkspaceContext } from "./workspace-context.js";
