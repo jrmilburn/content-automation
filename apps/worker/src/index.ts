@@ -26,6 +26,10 @@ import {
   instagramSyncQueue,
 } from "./instagram/sync-account-handler.js";
 import {
+  createInstagramSnapshotPostHandler,
+  instagramSnapshotQueue,
+} from "./instagram/snapshot-post-handler.js";
+import {
   createInstagramTokenMaintainHandler,
   instagramTokenQueue,
 } from "./instagram/token-maintain-handler.js";
@@ -104,6 +108,14 @@ const registry = createQueueHandlerRegistry([
     loadMasterKeys: () => loadEncryption().masterKeys,
     logger,
   }),
+  createInstagramSnapshotPostHandler({
+    // Shares the provider gate with every other Instagram queue, so snapshots
+    // cannot crowd out a sync or a token refresh against the same rate limit.
+    acquireConcurrency: (signal) => providerConcurrency.acquire("instagram", signal),
+    database,
+    loadMasterKeys: () => loadEncryption().masterKeys,
+    logger,
+  }),
   createInstagramTokenMaintainHandler({
     acquireConcurrency: (signal) => providerConcurrency.acquire("instagram", signal),
     database,
@@ -114,7 +126,7 @@ const registry = createQueueHandlerRegistry([
 const workerRuntime = createQueueWorkerRuntime({
   client: queue,
   registry,
-  requiredQueues: [instagramSyncQueue, instagramTokenQueue],
+  requiredQueues: [instagramSnapshotQueue, instagramSyncQueue, instagramTokenQueue],
 });
 const tokenMaintenance = createInstagramTokenMaintenanceScheduler({
   batchSize: config.QUEUE_DISPATCH_BATCH_SIZE,
