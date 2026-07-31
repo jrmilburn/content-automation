@@ -3,6 +3,7 @@ import "server-only";
 import { loadAuthConfig } from "@studio-parallel/config";
 import {
   createWorkspaceContext,
+  listInstagramAccountSummaries,
   loadWorkspaceDashboardFoundation,
   type SessionPrincipal,
   type WorkspaceContext,
@@ -20,6 +21,7 @@ import {
 import { createWebRequestContext, reportError } from "@studio-parallel/observability";
 import { headers } from "next/headers";
 
+import { presentDashboardIntegration } from "../instagram-integration";
 import { getDatabase } from "./database";
 import { webErrorMonitor, webLogger } from "./observability";
 import { requireShellActor } from "./shell-session";
@@ -89,17 +91,24 @@ function createProductionDashboardSources(): DashboardSources {
   return {
     ...unavailableSources,
     integration: async (context, now) => {
-      const foundation = await loadWorkspaceDashboardFoundation(getDatabase(), context, now);
+      const database = getDatabase();
+      const [foundation, accounts] = await Promise.all([
+        loadWorkspaceDashboardFoundation(database, context, now),
+        listInstagramAccountSummaries(database, context, { now }),
+      ]);
       if (!foundation) throw new Error("Active dashboard workspace was not found");
 
+      // Derived from the same projection and rules the integration screen uses,
+      // so the two surfaces cannot disagree about the connection.
       return createAvailableDashboardSection(
-        {
-          action: { href: "/accounts", label: "Connect Instagram account" },
-          description:
-            "Connect an approved professional account before posts, trends and strategy can populate.",
-          status: "not_connected",
-          statusLabel: "Not connected",
-        },
+        presentDashboardIntegration(
+          accounts.map((account) => ({
+            connectionStatus: account.connectionStatus,
+            grantedScopes: account.grantedScopes,
+            healthState: account.health.state,
+            username: account.username,
+          })),
+        ),
         foundation.checkedAt,
         now,
       );
@@ -110,15 +119,18 @@ function createProductionDashboardSources(): DashboardSources {
 function createTestDashboardSources(): DashboardSources {
   return {
     ...unavailableSources,
+    // Matches the connected account the integrations and posts fixtures show;
+    // a dashboard reporting "not connected" beside them would be incoherent.
     integration: async (_context, now) =>
       createAvailableDashboardSection(
-        {
-          action: { href: "/accounts", label: "Connect Instagram account" },
-          description:
-            "Connect an approved professional account before posts, trends and strategy can populate.",
-          status: "not_connected",
-          statusLabel: "Not connected",
-        },
+        presentDashboardIntegration([
+          {
+            connectionStatus: "ACTIVE",
+            grantedScopes: ["instagram_business_basic", "instagram_business_manage_insights"],
+            healthState: "HEALTHY",
+            username: "studioparallel",
+          },
+        ]),
         now,
         now,
       ),

@@ -9,9 +9,12 @@ test("the authenticated shell is navigable and accessible at its active viewport
 
   expect(response?.ok()).toBe(true);
   await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
-  const setupAction = page.getByRole("link", { name: "Connect Instagram account" });
+  // The dashboard reflects the connected account the fixtures describe; it
+  // previously reported "not connected" no matter what the data said.
+  const setupAction = page.getByRole("link", { name: "Review connection" });
   await expect(setupAction).toBeVisible();
-  await expect(setupAction).toHaveAttribute("href", "/accounts");
+  await expect(setupAction).toHaveAttribute("href", "/settings/integrations");
+  await expect(page.getByText("@studioparallel").first()).toBeVisible();
 
   const viewport = page.viewportSize();
   if (viewport && viewport.width <= 390) {
