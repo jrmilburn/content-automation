@@ -101,6 +101,13 @@ export {
   type InstagramRevocationOutcome,
 } from "./instagram-account.js";
 export {
+  listInstagramMetricSnapshots,
+  recordInstagramMetricSnapshot,
+  type InstagramSnapshotCommit,
+  type InstagramSnapshotInput,
+  type InstagramSnapshotSummary,
+} from "./instagram-insights.js";
+export {
   instagramPostPageSize,
   instagramPostSearchLimit,
   isInstagramMediaKind,
