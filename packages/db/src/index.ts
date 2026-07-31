@@ -101,6 +101,14 @@ export {
   type InstagramRevocationOutcome,
 } from "./instagram-account.js";
 export {
+  instagramSyncRunActive,
+  listInstagramAccountsDueForSync,
+  listInstagramPostsDueForSnapshot,
+  listInstagramSnapshotCoverage,
+  type InstagramAccountDueForSync,
+  type InstagramPostDueForSnapshot,
+} from "./instagram-scheduling.js";
+export {
   listInstagramMetricSnapshots,
   recordInstagramMetricSnapshot,
   type InstagramSnapshotCommit,

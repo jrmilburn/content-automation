@@ -17,7 +17,9 @@ import {
   classifyJobHandlerError,
   instagramApiVersion,
   instagramBootstrapHorizonDays,
+  instagramIncrementalOverlapDays,
   instagramMaximumSyncPages,
+  instagramSyncTriggerFromKey,
   JobHandlerFailure,
   normaliseInstagramMediaItem,
   type InstagramSyncTrigger,
@@ -137,12 +139,31 @@ async function importAccountMedia(options: ImportOptions): Promise<Transactional
   const accessToken = await readAccessToken({ account, dependencies, workspace });
 
   const startedAt = now();
-  const trigger: InstagramSyncTrigger = account.lastSuccessfulSyncAt ? "SCHEDULED" : "BOOTSTRAP";
+  // The enqueuing key states the purpose. Inferring it from the watermark
+  // instead would report every operator-requested import as scheduled, and the
+  // one-running-run-per-trigger lock would then treat the two as the same
+  // purpose — so a manual request could not overlap a sweep, which is exactly
+  // what that lock is meant to permit.
+  const trigger: InstagramSyncTrigger =
+    instagramSyncTriggerFromKey(job.idempotencyKey) ??
+    (account.lastSuccessfulSyncAt ? "SCHEDULED" : "BOOTSTRAP");
+
+  // A first import reaches back over the bootstrap horizon. A later one only
+  // needs to overlap far enough to catch edits and anything the previous run
+  // missed, so it does not re-page months of unchanged media every day.
+  const horizonStart = new Date(
+    startedAt.getTime() -
+      (account.lastSuccessfulSyncAt
+        ? instagramIncrementalOverlapDays
+        : instagramBootstrapHorizonDays) *
+        dayMilliseconds,
+  );
+
   const run = await startInstagramSyncRun(database, workspace, {
     apiVersion: instagramApiVersion,
     backgroundJobId: execution.jobId,
     correlationId: envelope.correlationId,
-    horizonStart: new Date(startedAt.getTime() - instagramBootstrapHorizonDays * dayMilliseconds),
+    horizonStart,
     idempotencyKey: job.idempotencyKey,
     instagramAccountId: account.id,
     startedAt,
