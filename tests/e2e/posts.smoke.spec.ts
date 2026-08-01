@@ -10,7 +10,9 @@ test("the posts list is filterable and accessible at the active viewport", async
 
   const results = page.getByRole("region", { name: "Imported posts" });
   await expect(results.getByRole("article")).toHaveCount(4);
-  await expect(results.getByText("Unsupported media")).toBeVisible();
+  // Scoped to the badge row: the media kind also appears in the source video
+  // link's accessible name, which names the post the link belongs to.
+  await expect(results.locator(".post-card__meta").getByText("Unsupported media")).toBeVisible();
   await expect(results.getByText("No caption")).toBeVisible();
 
   // The fixture points every thumbnail at an unreachable signed URL, so the
@@ -64,10 +66,44 @@ test("uncaptured triage signals are named rather than shown as zero", async ({ p
 
   const pending = page.getByRole("region", { name: "Not available yet" });
   await expect(pending).toBeVisible();
-  for (const label of ["Source video", "Analysis", "Metrics"]) {
+  for (const label of ["Analysis", "Metrics"]) {
     await expect(pending.getByText(label, { exact: true })).toBeVisible();
   }
   await expect(pending.getByText("Not captured").first()).toBeVisible();
+
+  // Source video is stored state now, so it must not still be listed here.
+  await expect(pending.getByText("Source video", { exact: true })).toHaveCount(0);
+
+  await expectAccessible(page);
+});
+
+test("a post links through to its own source video upload", async ({ page }) => {
+  await page.goto("/posts");
+
+  // The upload page existed before this link did, reachable only by typing a
+  // URL. Clicking through from the list is the path a user actually has.
+  const card = page.getByRole("region", { name: "Imported posts" }).getByRole("article").first();
+
+  await card.getByRole("link", { name: /Add source video/u }).click();
+
+  await expect(page).toHaveURL(/\/posts\/[0-9a-f-]+\/source-video$/u);
+  await expect(page.getByRole("heading", { level: 1, name: "Source video" })).toBeVisible();
+  await expect(page.getByLabel("Choose a video")).toBeVisible();
+});
+
+test("each source video state is distinguishable on the list", async ({ page }) => {
+  await page.goto("/posts");
+
+  const results = page.getByRole("region", { name: "Imported posts" });
+
+  for (const label of [
+    "No source video",
+    "Checking source video",
+    "Source video ready",
+    "Source video rejected",
+  ]) {
+    await expect(results.getByText(label, { exact: true })).toBeVisible();
+  }
 
   await expectAccessible(page);
 });
