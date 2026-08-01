@@ -4,10 +4,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   analysisContractArtifacts,
+  analysisModelRequested,
   analysisPromptText,
+  analysisPromptVersion,
+  analysisSchemaVersion,
   analysisTaxonomy,
   assertGeminiStructuredOutputSchema,
+  completePostCreativeAnalysisV1,
+  createAnalysisInstruction,
   geminiPostCreativeAnalysisV1Schema,
+  postCreativeAnalysisModelResponseV1Schema,
   postCreativeAnalysisV1Schema,
   validatePostCreativeAnalysisV1,
   type AnalysisValidationCode,
@@ -35,7 +41,7 @@ function createValidAnalysis(): PostCreativeAnalysisV1 {
   return {
     contract: {
       schemaVersion: "post-creative-analysis-v1.0.0",
-      promptVersion: "post-creative-analysis-prompt-v1.0.0",
+      promptVersion: "post-creative-analysis-prompt-v1.1.0",
       modelRequested: "gemini-3.6-flash",
     },
     content: {
@@ -390,5 +396,118 @@ describe("analysis semantic validation", () => {
     const input = createValidAnalysis();
     input.craft.suggestedImprovements.value![0]!.relevantTimestamps = ["00:31"];
     expectInvalidCode(input, "TIME_OUT_OF_RANGE");
+  });
+});
+
+describe("model request and server-stamped facts", () => {
+  it("does not ask the model for provenance or duration", () => {
+    // Both are facts the worker holds exactly. Asking for either produced a
+    // plausible wrong answer that failed validation: the model reported a
+    // different model name, and estimated a duration outside the half-second
+    // tolerance roughly one run in three.
+    const shape = postCreativeAnalysisModelResponseV1Schema.shape;
+
+    expect(Object.hasOwn(shape, "contract")).toBe(false);
+    expect(Object.hasOwn(shape.content.shape, "durationSeconds")).toBe(false);
+  });
+
+  it("still asks the model for everything it is the only source of", () => {
+    const shape = postCreativeAnalysisModelResponseV1Schema.shape;
+
+    for (const section of ["content", "callToAction", "visual", "craft", "quality"]) {
+      expect(Object.hasOwn(shape, section)).toBe(true);
+    }
+    expect(Object.hasOwn(shape.content.shape, "hook")).toBe(true);
+  });
+
+  it("stamps provenance from the caller rather than the response", () => {
+    const stamped = completePostCreativeAnalysisV1(
+      { content: {}, contract: { modelRequested: "gemini-2.5-flash" } },
+      { probedDurationSeconds: 12.5 },
+    ) as PostCreativeAnalysisV1;
+
+    // A model that volunteers a contract block must not be able to overwrite
+    // the record of what was actually called.
+    expect(stamped.contract).toEqual({
+      schemaVersion: analysisSchemaVersion,
+      promptVersion: analysisPromptVersion,
+      modelRequested: analysisModelRequested,
+    });
+  });
+
+  it("stamps the probed duration as derived rather than observed", () => {
+    const stamped = completePostCreativeAnalysisV1(
+      { content: { transcript: null } },
+      { probedDurationSeconds: 12.5 },
+    ) as PostCreativeAnalysisV1;
+
+    expect(stamped.content.durationSeconds).toEqual({
+      value: 12.5,
+      availability: "available",
+      basis: "derived",
+      confidence: "high",
+      evidence: [],
+      limitation: null,
+    });
+    // Everything else the model returned survives the stamp.
+    expect(Object.hasOwn(stamped.content, "transcript")).toBe(true);
+  });
+
+  it("produces an analysis that validates once stamped", () => {
+    // Strip exactly what the model is not asked for, then confirm stamping
+    // puts back something the validator accepts.
+    const analysis = createValidAnalysis() as unknown as Record<string, unknown>;
+    const content = { ...(analysis["content"] as Record<string, unknown>) };
+
+    delete analysis["contract"];
+    delete content["durationSeconds"];
+
+    const stamped = completePostCreativeAnalysisV1(
+      { ...analysis, content },
+      { probedDurationSeconds: 30 },
+    );
+
+    expect(validatePostCreativeAnalysisV1(stamped, { probedDurationSeconds: 30 }).valid).toBe(true);
+  });
+
+  it("leaves a non-object response alone for the caller to reject", () => {
+    expect(completePostCreativeAnalysisV1("not json", { probedDurationSeconds: 30 })).toBe(
+      "not json",
+    );
+  });
+});
+
+describe("analysis instruction", () => {
+  it("carries the prompt and the response shape in one instruction", () => {
+    const instruction = createAnalysisInstruction();
+
+    expect(instruction).toContain(analysisPromptText);
+    expect(instruction).toContain('"properties"');
+    expect(instruction).toContain("Return only a single JSON object");
+  });
+
+  it("describes a shape that excludes the server-stamped fields", () => {
+    // The instruction is the only description the model gets, so asking for a
+    // field here would reintroduce the invented values it replaces.
+    const instruction = createAnalysisInstruction();
+    const described = JSON.parse(
+      instruction.slice(instruction.indexOf("{", instruction.indexOf("JSON Schema"))),
+    ) as { properties: Record<string, { properties?: Record<string, unknown> }> };
+
+    expect(Object.hasOwn(described.properties, "contract")).toBe(false);
+    expect(
+      Object.hasOwn(described.properties["content"]?.properties ?? {}, "durationSeconds"),
+    ).toBe(false);
+  });
+
+  it("states the timestamp format the contract actually accepts", () => {
+    // "MM:SS" alone was satisfied by values the pattern rejects, so the format
+    // is spelled out with an example.
+    expect(analysisPromptText).toContain("zero-padded MM:SS");
+    expect(analysisPromptText).toContain("00:07");
+  });
+
+  it("states the observation consistency rule the validator enforces", () => {
+    expect(analysisPromptText).toContain("value must be null AND confidence must be null");
   });
 });
