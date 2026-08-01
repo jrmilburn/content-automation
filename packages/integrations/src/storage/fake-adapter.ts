@@ -9,6 +9,7 @@ import {
   type ObjectStorageAdapter,
   ObjectStorageError,
   type SignedPartInstruction,
+  type StoredObjectBody,
   type StoredObjectMetadata,
 } from "./contract.js";
 
@@ -48,12 +49,17 @@ export type FakeObjectStorage = Readonly<{
   adapter: ObjectStorageAdapter;
   /** Stores part bytes as a provider would when the browser PUTs a part. */
   putPart(providerUploadId: string, partNumber: number, body: Uint8Array): string;
+  /** Stores a whole object directly, for seeding media fixtures in tests. */
+  putObject(objectKey: string, body: Uint8Array, contentType: string): void;
   /** Reads a stored object back, for assertions. */
   readObject(objectKey: string): Uint8Array | null;
   /** Backdates an upload so abandonment sweeps can be exercised. */
   setInitiatedAt(providerUploadId: string, initiatedAt: Date): void;
   uploadCount(): number;
 }>;
+
+/** Small enough that even a modest fixture is delivered in several reads. */
+const fakeReadChunkBytes = 64 * 1024;
 
 function digest(body: Uint8Array): string {
   return createHash("sha256").update(body).digest("hex").slice(0, 32);
@@ -155,6 +161,46 @@ export function createFakeObjectStorage(
       return Promise.resolve(Object.freeze({ objectKey: request.objectKey, providerUploadId }));
     },
 
+    getObject(objectKey: string): Promise<StoredObjectBody | null> {
+      const object = objects.get(objectKey);
+
+      if (object === undefined) {
+        return Promise.resolve(null);
+      }
+
+      const { body } = object;
+      let sent = 0;
+
+      return Promise.resolve(
+        Object.freeze({
+          // Deliver in several chunks even though the bytes are already in
+          // memory. A caller that only works when the whole object arrives in
+          // one read would pass here and fail against a real provider.
+          body: new ReadableStream<Uint8Array>({
+            pull(controller) {
+              const offset = Math.min(sent, body.byteLength);
+
+              if (offset >= body.byteLength) {
+                controller.close();
+                return;
+              }
+
+              const end = Math.min(offset + fakeReadChunkBytes, body.byteLength);
+
+              controller.enqueue(body.subarray(offset, end));
+              sent = end;
+            },
+          }),
+          metadata: Object.freeze({
+            bytes: body.byteLength,
+            contentType: object.contentType,
+            etag: object.etag,
+            objectVersion: object.objectVersion,
+          }),
+        }),
+      );
+    },
+
     headObject(objectKey: string): Promise<StoredObjectMetadata | null> {
       const object = objects.get(objectKey);
 
@@ -226,6 +272,13 @@ export function createFakeObjectStorage(
       upload.parts.set(partNumber, Object.freeze({ body, etag }));
 
       return etag;
+    },
+
+    putObject(objectKey: string, body: Uint8Array, contentType: string): void {
+      objects.set(
+        objectKey,
+        Object.freeze({ body, contentType, etag: digest(body), objectVersion: randomUUID() }),
+      );
     },
 
     readObject(objectKey: string): Uint8Array | null {

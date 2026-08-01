@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "./generated/prisma/client.js";
+import type { Prisma, PrismaClient, VideoAssetRejectionCode } from "./generated/prisma/client.js";
 import { createId } from "./id.js";
 import type { WorkspaceContext } from "./workspace-context.js";
 
@@ -223,6 +223,100 @@ export async function createVideoAsset(
     },
     select: assetSelect,
   });
+}
+
+/** Everything validation needs to judge one asset, read in a single query. */
+export type VideoAssetForValidation = Readonly<{
+  bytes: bigint;
+  declaredChecksum: string | null;
+  id: string;
+  instagramPostId: string;
+  objectKey: string;
+  state: "PENDING_VALIDATION" | "READY" | "REJECTED";
+  uploadIntentDeclaredContentType: string;
+}>;
+
+export async function findVideoAssetForValidation(
+  executor: UploadExecutor,
+  context: WorkspaceContext,
+  assetId: string,
+): Promise<VideoAssetForValidation | null> {
+  const asset = await executor.videoAsset.findFirst({
+    select: {
+      ...assetSelect,
+      declaredChecksum: true,
+      // The declared content type lives on the intent, which is the record of
+      // what the browser claimed when the server authorised the upload.
+      uploadIntent: { select: { declaredContentType: true } },
+    },
+    where: { id: assetId, workspaceId: context.workspaceId },
+  });
+
+  if (asset === null) {
+    return null;
+  }
+
+  return Object.freeze({
+    bytes: asset.bytes,
+    declaredChecksum: asset.declaredChecksum,
+    id: asset.id,
+    instagramPostId: asset.instagramPostId,
+    objectKey: asset.objectKey,
+    state: asset.state,
+    uploadIntentDeclaredContentType: asset.uploadIntent.declaredContentType,
+  });
+}
+
+export type RecordVideoAssetValidationInput = Readonly<{
+  assetId: string;
+  audioCodec?: string | null | undefined;
+  containerFormat?: string | null | undefined;
+  durationMs?: number | null | undefined;
+  heightPx?: number | null | undefined;
+  purgeAfter?: Date | null | undefined;
+  rejectionCode?: VideoAssetRejectionCode | null | undefined;
+  state: "READY" | "REJECTED";
+  validatedAt: Date;
+  verifiedChecksum?: string | null | undefined;
+  videoCodec?: string | null | undefined;
+  widthPx?: number | null | undefined;
+}>;
+
+/**
+ * Records one terminal validation outcome.
+ *
+ * The update is conditional on the asset still being PENDING_VALIDATION, so a
+ * redelivered job cannot overwrite a verdict that already landed, and a failed
+ * replacement can never displace an asset that is already READY. The boolean
+ * says whether this call was the one that decided the outcome.
+ */
+export async function recordVideoAssetValidation(
+  executor: UploadExecutor,
+  context: WorkspaceContext,
+  input: RecordVideoAssetValidationInput,
+): Promise<boolean> {
+  const updated = await executor.videoAsset.updateMany({
+    data: {
+      audioCodec: input.audioCodec ?? null,
+      containerFormat: input.containerFormat ?? null,
+      durationMs: input.durationMs ?? null,
+      heightPx: input.heightPx ?? null,
+      purgeAfter: input.purgeAfter ?? null,
+      rejectionCode: input.rejectionCode ?? null,
+      state: input.state,
+      validatedAt: input.validatedAt,
+      verifiedChecksum: input.verifiedChecksum ?? null,
+      videoCodec: input.videoCodec ?? null,
+      widthPx: input.widthPx ?? null,
+    },
+    where: {
+      id: input.assetId,
+      state: "PENDING_VALIDATION",
+      workspaceId: context.workspaceId,
+    },
+  });
+
+  return updated.count === 1;
 }
 
 export type ExpiredUploadIntent = Readonly<{
