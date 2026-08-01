@@ -30,6 +30,33 @@ export {
 } from "./analysis-contract.js";
 
 export {
+  analyticsVersion,
+  calculateDerivedMetric,
+  calculateDerivedMetrics,
+  createMetricInputs,
+  derivedMetricDefinitions,
+  derivedMetrics,
+  derivedMetricUnavailabilityReasons,
+  derivedMetricUnits,
+  metricDurationSources,
+  metricDurationToleranceSeconds,
+  metricInputKeys,
+  metricValueSources,
+  resolveMetricDuration,
+  type DerivedMetric,
+  type DerivedMetricDefinition,
+  type DerivedMetricResult,
+  type DerivedMetricUnavailabilityReason,
+  type DerivedMetricUnit,
+  type MetricDurationResolution,
+  type MetricDurationSource,
+  type MetricInputKey,
+  type MetricInputSet,
+  type MetricInputState,
+  type MetricValueSource,
+} from "./analytics-metrics.js";
+
+export {
   evaluateGoogleOidcProfile,
   isAllowedRequestOrigin,
   oidcDenialReasons,
