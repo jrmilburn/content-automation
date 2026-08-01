@@ -11,8 +11,26 @@ The canonical implementation is `packages/domain/src/analysis-contract.ts`.
 | Artifact | Active version | Lifecycle | Integrity |
 | --- | --- | --- | --- |
 | Analysis schema | `post-creative-analysis-v1.0.0` | `active` | SHA-256 of the canonical provider JSON Schema |
-| Analysis prompt | `post-creative-analysis-prompt-v1.0.0` | `active` | SHA-256 of the exact UTF-8 prompt text |
+| Analysis prompt | `post-creative-analysis-prompt-v1.1.0` | `active` | SHA-256 of the exact UTF-8 prompt text |
 | Requested model | `gemini-3.6-flash` | pinned | Exact stable ID, never a moving alias |
+
+## How the request is made
+
+The response shape is described inside the prompt and enforced afterwards by `validatePostCreativeAnalysisV1`. It is not supplied as a provider response schema, because `gemini-3.6-flash` rejects this contract on every provider-schema path:
+
+- `responseSchema` refuses `additionalProperties` and array-valued `type`, both of which the canonical projection emits.
+- `responseSchema` and `responseJsonSchema` then both refuse it for complexity. Measured against the live API, nesting depth is accepted to 31 and enum values beyond 2000, but a nested observation-shaped schema is refused somewhere between 27 and 48 properties. This contract has 381.
+
+Splitting the contract into accepted fragments would take roughly ten requests and re-read the video for each. Describing the shape in the prompt returns the whole contract in one request, and validation is server-side either way.
+
+Two fields are never requested from the model and are stamped by the worker instead:
+
+- `contract` records the schema, prompt and model actually used. Asked for it, the model reported `gemini-2.5-flash` while `gemini-3.6-flash` was being called.
+- `content.durationSeconds` is checked against the probed duration to half a second, which is tighter than a model can estimate from sampled frames. The validation worker already measures it exactly.
+
+`npm run analysis:contract:live -- <video>` proves the request against the real API. It is excluded from `npm run check` and from CI because it spends money and needs a reachable provider; run it whenever the prompt, schema or model changes. Local assumptions are not evidence here — `assertGeminiStructuredOutputSchema` passed for as long as nobody sent the request anywhere.
+
+Responses vary. Across observed runs roughly one in seven failed semantic validation on a single field while remaining structurally sound, which is what the handler's retry policy exists for; a validation failure is a retryable outcome, not a defect in the contract.
 
 Artifact records are immutable code values. A text, schema, taxonomy or semantic-contract change creates a new semantic version and hashes; it never rewrites the meaning of an existing version. Lifecycle values are `draft`, `active` and `retired`. Exactly one `activeDefault` bundle is exported. The analysis handler will persist these IDs and hashes with each result rather than copying mutable settings into historical records.
 
