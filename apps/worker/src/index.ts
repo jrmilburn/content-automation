@@ -1,6 +1,8 @@
 import {
   loadCredentialEncryptionConfig,
   loadDatabaseConfig,
+  loadMediaValidationConfig,
+  loadObjectStorageConfig,
   loadRuntimeConfig,
 } from "@studio-parallel/config";
 import { createDatabaseClient, decodeMasterKey } from "@studio-parallel/db";
@@ -38,6 +40,11 @@ import { createInstagramTokenMaintenanceScheduler } from "./instagram/token-main
 import { createOutboxReconciler } from "./outbox-reconciler.js";
 import { assetCleanupQueue, createAssetCleanupHandler } from "./uploads/asset-cleanup-handler.js";
 import { createAssetCleanupScheduler } from "./uploads/asset-cleanup-scheduler.js";
+import {
+  assetValidateQueue,
+  createAssetValidateHandler,
+} from "./uploads/asset-validate-handler.js";
+import { createFfprobeMediaProbe } from "./uploads/media-probe.js";
 import { createWorkerObjectStorage } from "./uploads/object-storage.js";
 
 const config = loadRuntimeConfig();
@@ -105,7 +112,9 @@ const loadEncryption = (): Readonly<{
   }
   return credentialEncryption;
 };
-const objectStorage = createWorkerObjectStorage(config);
+const storageConfig = loadObjectStorageConfig();
+const mediaConfig = loadMediaValidationConfig();
+const objectStorage = createWorkerObjectStorage(config, storageConfig);
 const registry = createQueueHandlerRegistry([
   createInstagramSyncAccountHandler({
     acquireConcurrency: (signal) => providerConcurrency.acquire("instagram", signal),
@@ -132,12 +141,21 @@ const registry = createQueueHandlerRegistry([
     logger,
     storage: objectStorage,
   }),
+  createAssetValidateHandler({
+    database,
+    logger,
+    mediaConfig,
+    probe: createFfprobeMediaProbe(),
+    storage: objectStorage,
+    storageConfig,
+  }),
 ]);
 const workerRuntime = createQueueWorkerRuntime({
   client: queue,
   registry,
   requiredQueues: [
     assetCleanupQueue,
+    assetValidateQueue,
     instagramSnapshotQueue,
     instagramSyncQueue,
     instagramTokenQueue,

@@ -1,6 +1,6 @@
 import {
-  loadObjectStorageConfig,
   loadObjectStorageCredentials,
+  type ObjectStorageConfig,
   type RuntimeConfig,
 } from "@studio-parallel/config";
 import {
@@ -19,9 +19,10 @@ import {
  * the fake sweep look like it proved something. Real release behaviour is
  * exercised against MinIO in the storage integration suite.
  */
-export function createWorkerObjectStorage(config: RuntimeConfig): ObjectStorageAdapter {
-  const storageConfig = loadObjectStorageConfig();
-
+export function createWorkerObjectStorage(
+  config: RuntimeConfig,
+  storageConfig: ObjectStorageConfig,
+): ObjectStorageAdapter {
   if (config.PROVIDER_MODE === "fake") {
     return createFakeObjectStorage({
       signedUrlTtlSeconds: storageConfig.UPLOAD_SIGNED_URL_TTL_SECONDS,

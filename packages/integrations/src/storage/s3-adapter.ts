@@ -2,8 +2,12 @@ import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  type GetObjectCommandOutput,
   HeadObjectCommand,
   ListMultipartUploadsCommand,
+  NoSuchKey,
   NotFound,
   S3Client,
   UploadPartCommand,
@@ -20,6 +24,7 @@ import {
   type ObjectStorageAdapter,
   ObjectStorageError,
   type SignedPartInstruction,
+  type StoredObjectBody,
   type StoredObjectMetadata,
 } from "./contract.js";
 
@@ -88,6 +93,44 @@ export function createS3ObjectStorageAdapter(
 
       throw new ObjectStorageError("headObject", error);
     }
+  }
+
+  async function deleteObject(objectKey: string): Promise<void> {
+    try {
+      // S3 and its compatible providers treat deleting an absent key as
+      // success, so no absence branch is needed here.
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: objectKey }));
+    } catch (error) {
+      throw new ObjectStorageError("deleteObject", error);
+    }
+  }
+
+  async function getObject(objectKey: string): Promise<StoredObjectBody | null> {
+    let stored: GetObjectCommandOutput;
+
+    try {
+      stored = await client.send(new GetObjectCommand({ Bucket: bucket, Key: objectKey }));
+    } catch (error) {
+      // R2, MinIO and S3 disagree on which absence error a GET raises, so both
+      // shapes map to the documented null rather than an exception.
+      if (error instanceof NoSuchKey || error instanceof NotFound) {
+        return null;
+      }
+
+      throw new ObjectStorageError("getObject", error);
+    }
+
+    // An object without a body is not something the caller can validate, and
+    // treating it as an empty read would let a provider fault masquerade as a
+    // zero-byte upload. Fail instead.
+    if (stored.Body === undefined) {
+      throw new ObjectStorageError("getObject");
+    }
+
+    return Object.freeze({
+      body: stored.Body.transformToWebStream(),
+      metadata: toStoredObjectMetadata(stored, "getObject"),
+    });
   }
 
   async function abortMultipartUpload(handle: MultipartUploadHandle): Promise<void> {
@@ -266,6 +309,8 @@ export function createS3ObjectStorageAdapter(
     abortMultipartUpload,
     completeMultipartUpload,
     createMultipartUpload,
+    deleteObject,
+    getObject,
     headObject,
     listAbandonedUploads,
     signPartUpload,

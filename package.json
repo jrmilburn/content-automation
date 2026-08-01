@@ -50,6 +50,8 @@
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile.junit=artifacts/unit/results.xml",
     "test:db:integration": "node packages/db/scripts/run-integration-tests.mjs",
     "test:db:integration:existing": "vitest run --config packages/db/vitest.integration.config.ts",
+    "test:media:integration": "node apps/worker/scripts/run-media-integration-tests.mjs",
+    "test:media:integration:existing": "vitest run --config apps/worker/vitest.integration.config.ts",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:install": "playwright install chromium",
     "test:e2e:install:ci": "playwright install --with-deps chromium",
@@ -57,7 +59,7 @@
     "test:storage:integration:existing": "vitest run --config packages/integrations/vitest.integration.config.ts",
     "test:watch": "vitest",
     "typecheck": "npm run build:packages && tsc -p tsconfig.tools.json --noEmit && npm run typecheck --workspaces --if-present",
-    "validate:local": "npm run check && npm run security:dependencies && npm run security:secrets && npm run security:supply-chain && npm run test:db:integration && npm run test:storage:integration && npm run test:e2e"
+    "validate:local": "npm run check && npm run security:dependencies && npm run security:secrets && npm run security:supply-chain && npm run test:db:integration && npm run test:storage:integration && npm run test:media:integration && npm run test:e2e"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",

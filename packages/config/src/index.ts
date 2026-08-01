@@ -328,6 +328,70 @@ const objectStorageConfigSchema = z
 
 export type ObjectStorageConfig = Readonly<z.infer<typeof objectStorageConfigSchema>>;
 
+// Codec and container names arrive as lowercase comma-separated lists so a
+// deployment can narrow or widen the accepted set without a code change, which
+// is what docs/technical/video-ingestion.md means by configuration owning the
+// validation policy.
+const codecListSchema = (fallback: string) =>
+  z
+    .string()
+    .trim()
+    .default(fallback)
+    .transform((value) =>
+      Object.freeze(
+        value
+          .split(",")
+          .map((entry) => entry.trim().toLowerCase())
+          .filter((entry) => entry.length > 0),
+      ),
+    )
+    .refine((entries) => entries.length > 0, "must list at least one accepted value");
+
+// Validation limits live only in the worker: the web image never decodes media.
+// Defaults are the launch policy from docs/technical/video-ingestion.md and are
+// deliberately narrower than what Gemini accepts, so a format only widens once
+// a fixture proves the deployed probe handles it.
+const mediaValidationConfigSchema = z
+  .object({
+    // 20-minute product cap. The floor rejects zero-length and single-frame
+    // objects that decode but carry no analysable content.
+    MEDIA_MAX_DURATION_SECONDS: z.coerce.number().int().min(1).max(21_600).default(1_200),
+    MEDIA_MIN_DURATION_SECONDS: z.coerce.number().int().min(0).max(3_600).default(1),
+    MEDIA_MIN_DIMENSION_PX: z.coerce.number().int().min(1).max(16_384).default(128),
+    MEDIA_MAX_DIMENSION_PX: z.coerce.number().int().min(1).max(16_384).default(8_192),
+    MEDIA_ALLOWED_VIDEO_CODECS: codecListSchema("h264,hevc,vp9,av1"),
+    // Audio is optional; when present it must still be one of these.
+    MEDIA_ALLOWED_AUDIO_CODECS: codecListSchema("aac,opus"),
+    // The probe parses attacker-influenced bytes, so it runs under an explicit
+    // wall-clock and output ceiling rather than inheriting the process default.
+    MEDIA_PROBE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).default(30_000),
+    MEDIA_PROBE_MAX_OUTPUT_BYTES: z.coerce
+      .number()
+      .int()
+      .min(1_024)
+      .max(16_777_216)
+      .default(1_048_576),
+  })
+  .superRefine((config, context) => {
+    if (config.MEDIA_MIN_DURATION_SECONDS > config.MEDIA_MAX_DURATION_SECONDS) {
+      context.addIssue({
+        code: "custom",
+        path: ["MEDIA_MIN_DURATION_SECONDS"],
+        message: "must not exceed MEDIA_MAX_DURATION_SECONDS",
+      });
+    }
+
+    if (config.MEDIA_MIN_DIMENSION_PX > config.MEDIA_MAX_DIMENSION_PX) {
+      context.addIssue({
+        code: "custom",
+        path: ["MEDIA_MIN_DIMENSION_PX"],
+        message: "must not exceed MEDIA_MAX_DIMENSION_PX",
+      });
+    }
+  });
+
+export type MediaValidationConfig = Readonly<z.infer<typeof mediaValidationConfigSchema>>;
+
 // Storage keys are never given a usable default: a misconfigured deployment
 // must fail closed rather than sign requests against an unintended account.
 const objectStorageCredentialsSchema = z.object({
@@ -443,6 +507,18 @@ export function loadObjectStorageCredentials(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): ObjectStorageCredentials {
   const result = objectStorageCredentialsSchema.safeParse(environment);
+
+  if (!result.success) {
+    throw new ConfigurationError(result.error.issues);
+  }
+
+  return Object.freeze(result.data);
+}
+
+export function loadMediaValidationConfig(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): MediaValidationConfig {
+  const result = mediaValidationConfigSchema.safeParse(environment);
 
   if (!result.success) {
     throw new ConfigurationError(result.error.issues);

@@ -586,6 +586,25 @@ enum VideoAssetState {
   @@map("video_asset_state")
 }
 
+// Why validation refused an asset. These are the only rejection details that
+// reach a user, a log line or an API response: the probe's own message can echo
+// container internals and the temporary file path, so it is never surfaced.
+enum VideoAssetRejectionCode {
+  EMPTY_OBJECT
+  BYTES_EXCEEDED
+  CHECKSUM_MISMATCH
+  CONTAINER_UNSUPPORTED
+  CONTAINER_MISMATCH
+  UNDECODABLE
+  NO_VIDEO_STREAM
+  VIDEO_CODEC_UNSUPPORTED
+  AUDIO_CODEC_UNSUPPORTED
+  DURATION_OUT_OF_RANGE
+  DIMENSIONS_OUT_OF_RANGE
+
+  @@map("video_asset_rejection_code")
+}
+
 // A server-authorised intent to upload one source video for one post.
 //
 // The client never supplies the object key, the bucket or the byte limit: the
@@ -643,30 +662,47 @@ model VideoUploadIntent {
 // The intent relation is unique, so a retried or replayed completion resolves to
 // the same asset row instead of creating a duplicate.
 model VideoAsset {
-  id                String            @id @db.Uuid
-  workspaceId       String            @map("workspace_id") @db.Uuid
-  instagramPostId   String            @map("instagram_post_id") @db.Uuid
-  uploadIntentId    String            @map("upload_intent_id") @db.Uuid
-  objectKey         String            @map("object_key") @db.VarChar(512)
-  bucket            String            @db.VarChar(63)
-  region            String            @db.VarChar(64)
-  objectVersion     String?           @map("object_version") @db.VarChar(256)
-  etag              String            @db.VarChar(256)
-  bytes             BigInt
-  contentType       String?           @map("content_type") @db.VarChar(128)
-  declaredChecksum  String?           @map("declared_checksum_sha256") @db.Char(64)
-  verifiedChecksum  String?           @map("verified_checksum_sha256") @db.Char(64)
-  state             VideoAssetState   @default(PENDING_VALIDATION)
-  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
-  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
-  post              InstagramPost     @relation(fields: [workspaceId, instagramPostId], references: [workspaceId, id], onDelete: Restrict)
-  uploadIntent      VideoUploadIntent @relation(fields: [workspaceId, uploadIntentId], references: [workspaceId, id], onDelete: Restrict)
+  id               String                   @id @db.Uuid
+  workspaceId      String                   @map("workspace_id") @db.Uuid
+  instagramPostId  String                   @map("instagram_post_id") @db.Uuid
+  uploadIntentId   String                   @map("upload_intent_id") @db.Uuid
+  objectKey        String                   @map("object_key") @db.VarChar(512)
+  bucket           String                   @db.VarChar(63)
+  region           String                   @db.VarChar(64)
+  objectVersion    String?                  @map("object_version") @db.VarChar(256)
+  etag             String                   @db.VarChar(256)
+  bytes            BigInt
+  contentType      String?                  @map("content_type") @db.VarChar(128)
+  declaredChecksum String?                  @map("declared_checksum_sha256") @db.Char(64)
+  verifiedChecksum String?                  @map("verified_checksum_sha256") @db.Char(64)
+  state            VideoAssetState          @default(PENDING_VALIDATION)
+  // Everything below is written once by the validation worker. Detected values
+  // come from the probe, never from the browser, and stay null while the asset
+  // is PENDING_VALIDATION or was rejected before the probe ran.
+  durationMs       Int?                     @map("duration_ms")
+  widthPx          Int?                     @map("width_px")
+  heightPx         Int?                     @map("height_px")
+  videoCodec       String?                  @map("video_codec") @db.VarChar(64)
+  audioCodec       String?                  @map("audio_codec") @db.VarChar(64)
+  containerFormat  String?                  @map("container_format") @db.VarChar(64)
+  rejectionCode    VideoAssetRejectionCode? @map("rejection_code")
+  validatedAt      DateTime?                @map("validated_at") @db.Timestamptz(3)
+  // Set when an asset is rejected so the cleanup sweep can purge the stored
+  // object on the retention schedule without re-deriving the policy.
+  purgeAfter       DateTime?                @map("purge_after") @db.Timestamptz(3)
+  purgedAt         DateTime?                @map("purged_at") @db.Timestamptz(3)
+  createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace        Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  post             InstagramPost            @relation(fields: [workspaceId, instagramPostId], references: [workspaceId, id], onDelete: Restrict)
+  uploadIntent     VideoUploadIntent        @relation(fields: [workspaceId, uploadIntentId], references: [workspaceId, id], onDelete: Restrict)
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, uploadIntentId])
   @@unique([objectKey])
   @@index([workspaceId, instagramPostId, createdAt(sort: Desc)])
   @@index([workspaceId, state])
+  // Drives the purge sweep over rejected objects still holding bytes.
+  @@index([state, purgeAfter])
   @@map("video_assets")
 }

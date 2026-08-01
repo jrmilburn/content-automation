@@ -65,7 +65,9 @@ npm run test:e2e:install  # once per pinned Playwright browser version
 npm run validate:local
 ```
 
-`validate:local` runs the repository quality checks, dependency audit, redacting secret scan, supply-chain policy checks, disposable PostgreSQL suite, production build and desktop/mobile Playwright accessibility smoke. Documentation-only changes may mark database/browser checks not applicable when the pull request explains why; formatting, secret scanning and directly affected checks still run.
+`validate:local` runs the repository quality checks, dependency audit, redacting secret scan, supply-chain policy checks, disposable PostgreSQL suite, disposable MinIO storage suite, media validation suite, production build and desktop/mobile Playwright accessibility smoke. Documentation-only changes may mark database/browser checks not applicable when the pull request explains why; formatting, secret scanning and directly affected checks still run.
+
+The media validation suite needs `ffmpeg` and `ffprobe` on `PATH`. They ship in the worker image; install them locally with `brew install ffmpeg` on macOS or `apt-get install ffmpeg` on Debian and Ubuntu. The runner names the missing tool rather than failing inside a test body.
 
 Copy the executed commands and concise results into the pull request's Validation evidence section. Do not merge on an unverified verbal assertion.
 

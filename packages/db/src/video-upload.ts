@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "./generated/prisma/client.js";
+import type { Prisma, PrismaClient, VideoAssetRejectionCode } from "./generated/prisma/client.js";
 import { createId } from "./id.js";
 import type { WorkspaceContext } from "./workspace-context.js";
 
@@ -225,6 +225,100 @@ export async function createVideoAsset(
   });
 }
 
+/** Everything validation needs to judge one asset, read in a single query. */
+export type VideoAssetForValidation = Readonly<{
+  bytes: bigint;
+  declaredChecksum: string | null;
+  id: string;
+  instagramPostId: string;
+  objectKey: string;
+  state: "PENDING_VALIDATION" | "READY" | "REJECTED";
+  uploadIntentDeclaredContentType: string;
+}>;
+
+export async function findVideoAssetForValidation(
+  executor: UploadExecutor,
+  context: WorkspaceContext,
+  assetId: string,
+): Promise<VideoAssetForValidation | null> {
+  const asset = await executor.videoAsset.findFirst({
+    select: {
+      ...assetSelect,
+      declaredChecksum: true,
+      // The declared content type lives on the intent, which is the record of
+      // what the browser claimed when the server authorised the upload.
+      uploadIntent: { select: { declaredContentType: true } },
+    },
+    where: { id: assetId, workspaceId: context.workspaceId },
+  });
+
+  if (asset === null) {
+    return null;
+  }
+
+  return Object.freeze({
+    bytes: asset.bytes,
+    declaredChecksum: asset.declaredChecksum,
+    id: asset.id,
+    instagramPostId: asset.instagramPostId,
+    objectKey: asset.objectKey,
+    state: asset.state,
+    uploadIntentDeclaredContentType: asset.uploadIntent.declaredContentType,
+  });
+}
+
+export type RecordVideoAssetValidationInput = Readonly<{
+  assetId: string;
+  audioCodec?: string | null | undefined;
+  containerFormat?: string | null | undefined;
+  durationMs?: number | null | undefined;
+  heightPx?: number | null | undefined;
+  purgeAfter?: Date | null | undefined;
+  rejectionCode?: VideoAssetRejectionCode | null | undefined;
+  state: "READY" | "REJECTED";
+  validatedAt: Date;
+  verifiedChecksum?: string | null | undefined;
+  videoCodec?: string | null | undefined;
+  widthPx?: number | null | undefined;
+}>;
+
+/**
+ * Records one terminal validation outcome.
+ *
+ * The update is conditional on the asset still being PENDING_VALIDATION, so a
+ * redelivered job cannot overwrite a verdict that already landed, and a failed
+ * replacement can never displace an asset that is already READY. The boolean
+ * says whether this call was the one that decided the outcome.
+ */
+export async function recordVideoAssetValidation(
+  executor: UploadExecutor,
+  context: WorkspaceContext,
+  input: RecordVideoAssetValidationInput,
+): Promise<boolean> {
+  const updated = await executor.videoAsset.updateMany({
+    data: {
+      audioCodec: input.audioCodec ?? null,
+      containerFormat: input.containerFormat ?? null,
+      durationMs: input.durationMs ?? null,
+      heightPx: input.heightPx ?? null,
+      purgeAfter: input.purgeAfter ?? null,
+      rejectionCode: input.rejectionCode ?? null,
+      state: input.state,
+      validatedAt: input.validatedAt,
+      verifiedChecksum: input.verifiedChecksum ?? null,
+      videoCodec: input.videoCodec ?? null,
+      widthPx: input.widthPx ?? null,
+    },
+    where: {
+      id: input.assetId,
+      state: "PENDING_VALIDATION",
+      workspaceId: context.workspaceId,
+    },
+  });
+
+  return updated.count === 1;
+}
+
 export type ExpiredUploadIntent = Readonly<{
   id: string;
   objectKey: string;
@@ -251,4 +345,60 @@ export async function listExpiredVideoUploadIntents(
   });
 
   return Object.freeze(rows.map((row) => Object.freeze(row)));
+}
+
+export type PurgeableVideoAsset = Readonly<{
+  id: string;
+  objectKey: string;
+  workspaceId: string;
+}>;
+
+/**
+ * Finds rejected assets whose stored object is now due for deletion.
+ *
+ * Like the intent sweep this runs as the system across every workspace, and
+ * each row carries its own workspace so the caller acts in the right context.
+ * `purgedAt` being null is what makes a repeated sweep skip work already done.
+ */
+export async function listPurgeableVideoAssets(
+  executor: UploadExecutor,
+  input: Readonly<{ dueBefore: Date; limit: number }>,
+): Promise<readonly PurgeableVideoAsset[]> {
+  const rows = await executor.videoAsset.findMany({
+    orderBy: { purgeAfter: "asc" },
+    select: { id: true, objectKey: true, workspaceId: true },
+    take: input.limit,
+    where: {
+      purgeAfter: { lt: input.dueBefore },
+      purgedAt: null,
+      state: "REJECTED",
+    },
+  });
+
+  return Object.freeze(rows.map((row) => Object.freeze(row)));
+}
+
+/**
+ * Records that a rejected asset's stored object has been deleted.
+ *
+ * Conditional on `purgedAt` still being null so two racing sweeps cannot both
+ * believe they purged it. The rejection metadata stays on the row: the object
+ * is gone, but why it was refused remains answerable.
+ */
+export async function markVideoAssetPurged(
+  executor: UploadExecutor,
+  context: WorkspaceContext,
+  input: Readonly<{ assetId: string; purgedAt: Date }>,
+): Promise<boolean> {
+  const updated = await executor.videoAsset.updateMany({
+    data: { purgedAt: input.purgedAt },
+    where: {
+      id: input.assetId,
+      purgedAt: null,
+      state: "REJECTED",
+      workspaceId: context.workspaceId,
+    },
+  });
+
+  return updated.count === 1;
 }

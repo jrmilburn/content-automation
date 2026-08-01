@@ -49,6 +49,20 @@ export type StoredObjectMetadata = Readonly<{
   objectVersion: string | null;
 }>;
 
+/**
+ * One stored object opened for reading, with the metadata observed as the read
+ * began.
+ *
+ * The body is a web stream rather than a Node stream so this contract stays
+ * free of runtime-specific types; the worker adapts it at the point of use. It
+ * is deliberately a stream and not a buffer: a source video is capped at 1 GiB
+ * and must never be held in memory to be checksummed or probed.
+ */
+export type StoredObjectBody = Readonly<{
+  body: ReadableStream<Uint8Array>;
+  metadata: StoredObjectMetadata;
+}>;
+
 /** A multipart upload the provider still holds but no client completed. */
 export type AbandonedUpload = Readonly<{
   initiatedAt: Date;
@@ -91,6 +105,24 @@ export type ObjectStorageAdapter = Readonly<{
     parts: readonly CompletedPart[],
   ): Promise<StoredObjectMetadata>;
   createMultipartUpload(request: CreateMultipartUploadRequest): Promise<MultipartUploadHandle>;
+  /**
+   * Removes one stored object.
+   *
+   * An object that is already gone is the desired end state, so this succeeds
+   * rather than raising. That keeps a retried purge free instead of turning a
+   * completed cleanup into a permanent error.
+   */
+  deleteObject(objectKey: string): Promise<void>;
+  /**
+   * Opens one stored object for server-side reading, returning null when the
+   * object does not exist.
+   *
+   * Validation needs the whole object to compute a cryptographic checksum and
+   * to feed the media probe. It reads through the server rather than issuing a
+   * signed download URL on purpose: a signed URL for private source video is a
+   * broadly fetchable credential, and nothing in this system needs one.
+   */
+  getObject(objectKey: string): Promise<StoredObjectBody | null>;
   /** Returns null when the object does not exist, rather than throwing. */
   headObject(objectKey: string): Promise<StoredObjectMetadata | null>;
   listAbandonedUploads(request: ListAbandonedUploadsRequest): Promise<readonly AbandonedUpload[]>;
