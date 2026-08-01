@@ -2,6 +2,7 @@ import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   type GetObjectCommandOutput,
   HeadObjectCommand,
@@ -91,6 +92,16 @@ export function createS3ObjectStorageAdapter(
       }
 
       throw new ObjectStorageError("headObject", error);
+    }
+  }
+
+  async function deleteObject(objectKey: string): Promise<void> {
+    try {
+      // S3 and its compatible providers treat deleting an absent key as
+      // success, so no absence branch is needed here.
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: objectKey }));
+    } catch (error) {
+      throw new ObjectStorageError("deleteObject", error);
     }
   }
 
@@ -298,6 +309,7 @@ export function createS3ObjectStorageAdapter(
     abortMultipartUpload,
     completeMultipartUpload,
     createMultipartUpload,
+    deleteObject,
     getObject,
     headObject,
     listAbandonedUploads,

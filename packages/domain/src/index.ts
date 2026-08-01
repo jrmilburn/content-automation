@@ -229,6 +229,7 @@ export {
   hasUniquePartNumbers,
   isAcceptedVideoContentType,
   uploadAdmissionRefusalReasons,
+  videoAssetPurgeKey,
   videoAssetValidationKey,
   videoUploadCleanupKey,
   type AcceptedVideoContentType,

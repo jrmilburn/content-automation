@@ -161,6 +161,13 @@ export function createFakeObjectStorage(
       return Promise.resolve(Object.freeze({ objectKey: request.objectKey, providerUploadId }));
     },
 
+    deleteObject(objectKey: string): Promise<void> {
+      // Deleting an object that is already gone is the desired end state.
+      objects.delete(objectKey);
+
+      return Promise.resolve();
+    },
+
     getObject(objectKey: string): Promise<StoredObjectBody | null> {
       const object = objects.get(objectKey);
 

@@ -346,3 +346,59 @@ export async function listExpiredVideoUploadIntents(
 
   return Object.freeze(rows.map((row) => Object.freeze(row)));
 }
+
+export type PurgeableVideoAsset = Readonly<{
+  id: string;
+  objectKey: string;
+  workspaceId: string;
+}>;
+
+/**
+ * Finds rejected assets whose stored object is now due for deletion.
+ *
+ * Like the intent sweep this runs as the system across every workspace, and
+ * each row carries its own workspace so the caller acts in the right context.
+ * `purgedAt` being null is what makes a repeated sweep skip work already done.
+ */
+export async function listPurgeableVideoAssets(
+  executor: UploadExecutor,
+  input: Readonly<{ dueBefore: Date; limit: number }>,
+): Promise<readonly PurgeableVideoAsset[]> {
+  const rows = await executor.videoAsset.findMany({
+    orderBy: { purgeAfter: "asc" },
+    select: { id: true, objectKey: true, workspaceId: true },
+    take: input.limit,
+    where: {
+      purgeAfter: { lt: input.dueBefore },
+      purgedAt: null,
+      state: "REJECTED",
+    },
+  });
+
+  return Object.freeze(rows.map((row) => Object.freeze(row)));
+}
+
+/**
+ * Records that a rejected asset's stored object has been deleted.
+ *
+ * Conditional on `purgedAt` still being null so two racing sweeps cannot both
+ * believe they purged it. The rejection metadata stays on the row: the object
+ * is gone, but why it was refused remains answerable.
+ */
+export async function markVideoAssetPurged(
+  executor: UploadExecutor,
+  context: WorkspaceContext,
+  input: Readonly<{ assetId: string; purgedAt: Date }>,
+): Promise<boolean> {
+  const updated = await executor.videoAsset.updateMany({
+    data: { purgedAt: input.purgedAt },
+    where: {
+      id: input.assetId,
+      purgedAt: null,
+      state: "REJECTED",
+      workspaceId: context.workspaceId,
+    },
+  });
+
+  return updated.count === 1;
+}

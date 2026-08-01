@@ -106,6 +106,14 @@ export type ObjectStorageAdapter = Readonly<{
   ): Promise<StoredObjectMetadata>;
   createMultipartUpload(request: CreateMultipartUploadRequest): Promise<MultipartUploadHandle>;
   /**
+   * Removes one stored object.
+   *
+   * An object that is already gone is the desired end state, so this succeeds
+   * rather than raising. That keeps a retried purge free instead of turning a
+   * completed cleanup into a permanent error.
+   */
+  deleteObject(objectKey: string): Promise<void>;
+  /**
    * Opens one stored object for server-side reading, returning null when the
    * object does not exist.
    *

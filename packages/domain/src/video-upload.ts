@@ -132,3 +132,11 @@ export function videoAssetValidationKey(assetId: string): string {
 export function videoUploadCleanupKey(intentId: string, at: Date): string {
   return `asset-cleanup-${intentId}-${at.toISOString().slice(0, 10)}`;
 }
+
+/**
+ * Purging a rejected asset's stored object is keyed the same way, and by the
+ * asset rather than the intent so the two sweeps can never collide on one key.
+ */
+export function videoAssetPurgeKey(assetId: string, at: Date): string {
+  return `asset-purge-${assetId}-${at.toISOString().slice(0, 10)}`;
+}

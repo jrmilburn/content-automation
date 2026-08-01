@@ -2,10 +2,12 @@ import {
   createWorkspaceContext,
   enqueueBackgroundJob,
   listExpiredVideoUploadIntents,
+  listPurgeableVideoAssets,
+  videoAssetResourceType,
   videoUploadIntentResourceType,
   type DatabaseClient,
 } from "@studio-parallel/db";
-import { videoUploadCleanupKey } from "@studio-parallel/domain";
+import { videoAssetPurgeKey, videoUploadCleanupKey } from "@studio-parallel/domain";
 import {
   createCorrelationId,
   reportError,
@@ -48,29 +50,33 @@ export function createAssetCleanupScheduler(options: {
   let interval: NodeJS.Timeout | undefined;
   let active: Promise<unknown> | undefined;
 
-  const sweep = async (): Promise<number> => {
-    const at = now();
-    const expired = await listExpiredVideoUploadIntents(options.database, {
-      expiredBefore: at,
-      limit: options.batchSize,
-    });
+  type Releasable = Readonly<{
+    id: string;
+    idempotencyKey: string;
+    resourceType: string;
+    workspaceId: string;
+  }>;
 
+  const enqueueAll = async (
+    items: readonly Releasable[],
+    failureEvent: string,
+  ): Promise<number> => {
     let enqueued = 0;
 
-    for (const intent of expired) {
+    for (const item of items) {
       const correlationId: CorrelationId = createCorrelationId();
 
       try {
         const result = await enqueueBackgroundJob(
           options.database,
-          createWorkspaceContext(intent.workspaceId),
+          createWorkspaceContext(item.workspaceId),
           {
             correlationId,
             handlerVersion: assetCleanupQueue.version,
-            idempotencyKey: videoUploadCleanupKey(intent.id, at),
+            idempotencyKey: item.idempotencyKey,
             queueName: assetCleanupQueue.name,
-            resourceId: intent.id,
-            resourceType: videoUploadIntentResourceType,
+            resourceId: item.id,
+            resourceType: item.resourceType,
           },
         );
 
@@ -79,26 +85,72 @@ export function createAssetCleanupScheduler(options: {
         // One workspace's problem must not stop the rest of the sweep.
         reportError(
           error,
-          {
-            correlationId,
-            event: "video.upload.cleanup_schedule_failed",
-            stage: "asset_cleanup",
-          },
+          { correlationId, event: failureEvent, stage: "asset_cleanup" },
           { logger: options.logger, monitor: options.errorMonitor },
         );
       }
     }
 
-    if (enqueued > 0) {
+    return enqueued;
+  };
+
+  const sweep = async (): Promise<number> => {
+    const at = now();
+    const expired = await listExpiredVideoUploadIntents(options.database, {
+      expiredBefore: at,
+      limit: options.batchSize,
+    });
+
+    const intents = await enqueueAll(
+      expired.map((intent) =>
+        Object.freeze({
+          id: intent.id,
+          idempotencyKey: videoUploadCleanupKey(intent.id, at),
+          resourceType: videoUploadIntentResourceType,
+          workspaceId: intent.workspaceId,
+        }),
+      ),
+      "video.upload.cleanup_schedule_failed",
+    );
+
+    if (intents > 0) {
       options.logger.info("video.upload.cleanup_scheduled", {
         correlationId: createCorrelationId(),
         stage: "asset_cleanup",
         unit: "intents",
-        value: enqueued,
+        value: intents,
       });
     }
 
-    return enqueued;
+    // Rejected objects are swept on the same cadence but counted separately, so
+    // a purge backlog is visible rather than hidden inside the intent number.
+    const purgeable = await listPurgeableVideoAssets(options.database, {
+      dueBefore: at,
+      limit: options.batchSize,
+    });
+
+    const assets = await enqueueAll(
+      purgeable.map((asset) =>
+        Object.freeze({
+          id: asset.id,
+          idempotencyKey: videoAssetPurgeKey(asset.id, at),
+          resourceType: videoAssetResourceType,
+          workspaceId: asset.workspaceId,
+        }),
+      ),
+      "video.asset.purge_schedule_failed",
+    );
+
+    if (assets > 0) {
+      options.logger.info("video.asset.purge_scheduled", {
+        correlationId: createCorrelationId(),
+        stage: "asset_cleanup",
+        unit: "assets",
+        value: assets,
+      });
+    }
+
+    return intents + assets;
   };
 
   const tick = (): void => {
