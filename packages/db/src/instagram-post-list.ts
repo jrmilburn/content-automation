@@ -34,6 +34,17 @@ export type InstagramPostListFilters = Readonly<{
   search?: string;
 }>;
 
+/**
+ * Where a post stands on having an analysable source video.
+ *
+ * `NONE` and `REJECTED` are kept apart because they mean different work: one
+ * post has never been given a video, the other was given one that failed
+ * validation and needs a different file.
+ */
+export const sourceVideoStates = ["NONE", "PENDING_VALIDATION", "READY", "REJECTED"] as const;
+
+export type SourceVideoState = (typeof sourceVideoStates)[number];
+
 export type InstagramPostListItem = Readonly<{
   caption: string | null;
   id: string;
@@ -45,6 +56,7 @@ export type InstagramPostListItem = Readonly<{
   permalink: string | null;
   providerThumbnailUrl: string | null;
   publishedAt: string;
+  sourceVideoState: SourceVideoState;
 }>;
 
 export type InstagramPostList = Readonly<{
@@ -66,7 +78,27 @@ const listSelect = {
   permalink: true,
   providerThumbnailUrl: true,
   publishedAt: true,
+  // Prisma resolves this as one extra query for the whole page rather than one
+  // per row, so the list stays free of an N+1. Only the state is read: no
+  // object key, checksum or byte count belongs on a triage screen.
+  videoAssets: { select: { state: true } },
 } as const;
+
+/**
+ * Collapses a post's asset versions into the one state worth triaging.
+ *
+ * A post accumulates versions — a rejected upload, then a replacement — so the
+ * most advanced state wins rather than the most recent row. Showing "rejected"
+ * for a post that already has a ready replacement would send someone to fix
+ * something that is no longer broken.
+ */
+function resolveSourceVideoState(assets: readonly Readonly<{ state: string }>[]): SourceVideoState {
+  if (assets.some((asset) => asset.state === "READY")) return "READY";
+  if (assets.some((asset) => asset.state === "PENDING_VALIDATION")) return "PENDING_VALIDATION";
+  if (assets.some((asset) => asset.state === "REJECTED")) return "REJECTED";
+
+  return "NONE";
+}
 
 const mediaKinds = new Set<string>(instagramMediaKinds);
 
@@ -138,6 +170,7 @@ function toListItem(record: {
   permalink: string | null;
   providerThumbnailUrl: string | null;
   publishedAt: Date;
+  videoAssets: readonly Readonly<{ state: string }>[];
 }): InstagramPostListItem {
   return Object.freeze({
     caption: record.caption,
@@ -154,6 +187,7 @@ function toListItem(record: {
       ? record.providerThumbnailUrl
       : null,
     publishedAt: record.publishedAt.toISOString(),
+    sourceVideoState: resolveSourceVideoState(record.videoAssets),
   });
 }
 
