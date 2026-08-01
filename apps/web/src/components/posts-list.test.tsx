@@ -21,6 +21,7 @@ function post(overrides: Partial<InstagramPostListItem> = {}): InstagramPostList
     permalink: "https://www.instagram.com/reel/abc123/",
     providerThumbnailUrl: "https://scontent.example/signed.jpg",
     publishedAt: "2026-07-29T22:15:00.000Z",
+    sourceVideoState: "NONE",
     ...overrides,
   };
 }
@@ -45,6 +46,11 @@ function snapshot(overrides: Partial<PostsSnapshot> = {}): PostsSnapshot {
 
 function emptyList(nextCursor: string | null = null) {
   return { generatedAt: "2026-07-31T03:00:00.000Z", nextCursor, posts: [], totalCount: 0 };
+}
+
+/** Posts live under `list`, so this keeps a caller from nesting them wrongly. */
+function withPosts(...posts: readonly InstagramPostListItem[]): PostsSnapshot {
+  return snapshot({ list: { ...emptyList(), posts: [...posts], totalCount: posts.length } });
 }
 
 describe("PostsList empty states", () => {
@@ -182,10 +188,18 @@ describe("PostsList unavailable triage signals", () => {
     render(<PostsList snapshot={snapshot()} values={values()} />);
 
     const pending = screen.getByRole("region", { name: "Not available yet" });
-    for (const label of ["Source video", "Analysis", "Metrics"]) {
+    for (const label of ["Analysis", "Metrics"]) {
       expect(within(pending).getByText(label)).toBeVisible();
     }
-    expect(within(pending).getAllByText("Not captured")).toHaveLength(3);
+    expect(within(pending).getAllByText("Not captured")).toHaveLength(2);
+  });
+
+  it("no longer claims source video is uncaptured now that it is stored", () => {
+    render(<PostsList snapshot={snapshot()} values={values()} />);
+
+    const pending = screen.getByRole("region", { name: "Not available yet" });
+
+    expect(within(pending).queryByText("Source video")).toBeNull();
   });
 
   it("never renders a zero for an uncaptured signal", () => {
@@ -193,6 +207,76 @@ describe("PostsList unavailable triage signals", () => {
 
     const pending = container.querySelector(".posts-pending");
     expect(pending?.textContent).not.toMatch(/\b0\b/u);
+  });
+});
+
+describe("PostsList source video", () => {
+  it("links every post to its own source video page", () => {
+    render(
+      <PostsList
+        snapshot={withPosts(post(), post({ id: "019a0000-0000-7000-8000-000000000402" }))}
+        values={values()}
+      />,
+    );
+
+    const links = screen
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"))
+      .filter((href) => href?.includes("/source-video"));
+
+    expect(links).toEqual([
+      "/posts/019a0000-0000-7000-8000-000000000401/source-video",
+      "/posts/019a0000-0000-7000-8000-000000000402/source-video",
+    ]);
+  });
+
+  it("identifies which post a source video link belongs to", () => {
+    // Every card carries the same visible action text, so without the post's
+    // own identity the links are indistinguishable to a screen reader listing
+    // them out of context.
+    //
+    // The name has no space before "for" because the accessible-name algorithm
+    // trims each element's text before joining, which is also why the sibling
+    // "View on Instagram" link reads as "...Instagram(30 July...".
+    render(<PostsList snapshot={snapshot()} values={values()} />);
+
+    expect(
+      screen.getByRole("link", { name: /^Add source video\s*for the Reel published/u }),
+    ).toBeVisible();
+  });
+
+  it("distinguishes all four source video states", () => {
+    for (const [state, label, action] of [
+      ["NONE", "No source video", "Add source video"],
+      ["PENDING_VALIDATION", "Checking source video", "View source video"],
+      ["READY", "Source video ready", "Replace source video"],
+      ["REJECTED", "Source video rejected", "Upload a different file"],
+    ] as const) {
+      const { unmount } = render(
+        <PostsList snapshot={withPosts(post({ sourceVideoState: state }))} values={values()} />,
+      );
+
+      expect(screen.getByText(label)).toBeVisible();
+      expect(screen.getByRole("link", { name: new RegExp(action, "u") })).toBeVisible();
+
+      unmount();
+    }
+  });
+
+  it("separates a post that never had a video from one whose video was refused", () => {
+    // Both need action, but not the same action: one needs a first upload and
+    // the other needs a different file.
+    const { unmount } = render(
+      <PostsList snapshot={withPosts(post({ sourceVideoState: "NONE" }))} values={values()} />,
+    );
+    expect(screen.queryByText("Source video rejected")).toBeNull();
+    unmount();
+
+    render(
+      <PostsList snapshot={withPosts(post({ sourceVideoState: "REJECTED" }))} values={values()} />,
+    );
+    expect(screen.queryByText("No source video")).toBeNull();
+    expect(screen.getByText("Source video rejected")).toBeVisible();
   });
 });
 

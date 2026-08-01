@@ -2222,6 +2222,12 @@ h2 {
 }
 
 .post-card__actions {
+  /* Two links share this row now. Without an explicit gap they render as one
+     run-on string, because the markup has no whitespace text node between the
+     elements and neither is a block. */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
   margin: 0;
   font-size: 0.82rem;
 }

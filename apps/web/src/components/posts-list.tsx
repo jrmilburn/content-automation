@@ -9,6 +9,8 @@ import {
   mediaKindFilterOptions,
   pendingTriageDimensions,
   presentMediaKind,
+  presentSourceVideo,
+  sourceVideoHref,
   type PostsFilterValues,
 } from "../lib/posts-list";
 import type { PostsSnapshot } from "../lib/server/posts-data";
@@ -20,10 +22,10 @@ import { StatusBadge } from "./status-badge";
 /**
  * The imported posts triage list.
  *
- * Source, analysis and metric state are named as pending rather than rendered
- * as empty values. There is no stored data behind any of them yet, and showing
- * a blank or a zero would read as "checked, nothing wrong" instead of "not
- * captured".
+ * Source video is real stored state and is rendered as such. Analysis and
+ * metric state are still named as pending rather than shown as empty values:
+ * there is no stored data behind either, and a blank or a zero would read as
+ * "checked, nothing wrong" instead of "not captured".
  */
 
 const description = "Find imported posts and triage what still needs work.";
@@ -188,6 +190,7 @@ function PostsFilters({
 
 function PostCard({ post }: Readonly<{ post: InstagramPostListItem }>) {
   const kind = presentMediaKind(post);
+  const sourceVideo = presentSourceVideo(post);
   const published = formatPublishedAt(post.publishedAt);
   const headingId = `post-${post.id}`;
 
@@ -201,19 +204,29 @@ function PostCard({ post }: Readonly<{ post: InstagramPostListItem }>) {
         <div className="post-card__body">
           <div className="post-card__meta">
             <StatusBadge tone={kind.tone}>{kind.label}</StatusBadge>
+            <StatusBadge tone={sourceVideo.tone}>{sourceVideo.label}</StatusBadge>
             <h3 id={headingId}>
               <time dateTime={post.publishedAt}>{published}</time>
             </h3>
           </div>
           <p className="post-card__caption">{captionExcerpt(post.caption)}</p>
-          {post.permalink ? (
-            <p className="post-card__actions">
+          <p className="post-card__actions">
+            <Link href={sourceVideoHref(post.id)}>
+              {sourceVideo.action}
+              {/* Every card repeats the same action text, so the link needs the
+                  post's own identity to be distinguishable out of context. */}
+              <span className="visually-hidden">
+                {" "}
+                for the {kind.label} published {published}
+              </span>
+            </Link>
+            {post.permalink ? (
               <a href={post.permalink} rel="noreferrer noopener" target="_blank">
                 View on Instagram
                 <span className="visually-hidden"> ({published}, opens in a new tab)</span>
               </a>
-            </p>
-          ) : null}
+            ) : null}
+          </p>
         </div>
       </article>
     </li>

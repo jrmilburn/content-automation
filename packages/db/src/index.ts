@@ -120,9 +120,11 @@ export {
   instagramPostSearchLimit,
   isInstagramMediaKind,
   loadInstagramPostList,
+  sourceVideoStates,
   type InstagramPostList,
   type InstagramPostListFilters,
   type InstagramPostListItem,
+  type SourceVideoState,
 } from "./instagram-post-list.js";
 export {
   listInstagramCredentialsDueForMaintenance,

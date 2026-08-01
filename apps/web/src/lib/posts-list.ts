@@ -1,4 +1,8 @@
-import type { InstagramPostListFilters, InstagramPostListItem } from "@studio-parallel/db";
+import type {
+  InstagramPostListFilters,
+  InstagramPostListItem,
+  SourceVideoState,
+} from "@studio-parallel/db";
 import { instagramMediaKinds, type InstagramMediaKind } from "@studio-parallel/domain";
 
 import type { StatusTone } from "../components/status-badge";
@@ -39,10 +43,6 @@ export const mediaKindFilterOptions: ReadonlyArray<
  * says what it cannot tell you instead of implying every post is fine.
  */
 export const pendingTriageDimensions = [
-  Object.freeze({
-    detail: "Source videos are not uploaded yet, so no post can be matched to one.",
-    label: "Source video",
-  }),
   Object.freeze({
     detail: "Analysis has not run against any post yet.",
     label: "Analysis",
@@ -154,6 +154,45 @@ export function formatPublishedAt(value: string): string {
 
 export function postAccessibleName(post: InstagramPostListItem): string {
   return `${presentMediaKind(post).label} published ${formatPublishedAt(post.publishedAt)}`;
+}
+
+/**
+ * How each source-video state reads on a triage card.
+ *
+ * The action text differs per state because the work differs: an untouched post
+ * needs a first upload, a rejected one needs a different file, and a ready one
+ * only needs replacing if the operator chooses to.
+ */
+const sourceVideoPresentation: Readonly<
+  Record<SourceVideoState, Readonly<{ action: string; label: string; tone: StatusTone }>>
+> = Object.freeze({
+  NONE: Object.freeze({ action: "Add source video", label: "No source video", tone: "neutral" }),
+  PENDING_VALIDATION: Object.freeze({
+    action: "View source video",
+    label: "Checking source video",
+    tone: "information",
+  }),
+  READY: Object.freeze({
+    action: "Replace source video",
+    label: "Source video ready",
+    tone: "success",
+  }),
+  REJECTED: Object.freeze({
+    action: "Upload a different file",
+    label: "Source video rejected",
+    tone: "warning",
+  }),
+});
+
+export function presentSourceVideo(
+  post: Readonly<{ sourceVideoState: SourceVideoState }>,
+): Readonly<{ action: string; label: string; tone: StatusTone }> {
+  return sourceVideoPresentation[post.sourceVideoState];
+}
+
+/** The in-application route to one post's source video. */
+export function sourceVideoHref(postId: string): string {
+  return `/posts/${postId}/source-video`;
 }
 
 function parseDate(value: string, endOfDay = false): Date | undefined {

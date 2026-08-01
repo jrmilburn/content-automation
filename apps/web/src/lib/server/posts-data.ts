@@ -59,6 +59,8 @@ export async function loadPostsSnapshot(
 }
 
 const testAccountId = "019a0000-0000-7000-8000-000000000301";
+// One post per source-video state, so local and browser runs exercise every
+// badge and every action label without needing a real upload to have happened.
 const testPosts = [
   {
     caption:
@@ -68,6 +70,7 @@ const testPosts = [
     mediaProductType: "REELS",
     mediaType: "VIDEO",
     publishedAt: "2026-07-29T22:15:00.000Z",
+    sourceVideoState: "NONE" as const,
   },
   {
     caption: "Behind the scenes on the winter campaign shoot.",
@@ -76,6 +79,7 @@ const testPosts = [
     mediaProductType: "REELS",
     mediaType: "VIDEO",
     publishedAt: "2026-07-27T03:40:00.000Z",
+    sourceVideoState: "READY" as const,
   },
   {
     caption: null,
@@ -84,6 +88,7 @@ const testPosts = [
     mediaProductType: "FEED",
     mediaType: "IMAGE",
     publishedAt: "2026-07-24T08:05:00.000Z",
+    sourceVideoState: "PENDING_VALIDATION" as const,
   },
   {
     caption: "Studio reference board.",
@@ -92,6 +97,7 @@ const testPosts = [
     mediaProductType: null,
     mediaType: "STORY",
     publishedAt: "2026-07-21T11:30:00.000Z",
+    sourceVideoState: "REJECTED" as const,
   },
 ];
 
@@ -138,6 +144,7 @@ function testSnapshot(
             // timing rather than on the fallback working.
             providerThumbnailUrl: "data:image/jpeg;base64,dGhpcyBpcyBub3QgYW4gaW1hZ2U=",
             publishedAt: post.publishedAt,
+            sourceVideoState: post.sourceVideoState,
           }),
         ),
       ),
