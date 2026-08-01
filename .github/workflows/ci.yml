@@ -154,6 +154,42 @@ jobs:
       - name: Run real object storage integration tests
         run: npm run test:storage:integration:existing
 
+  media:
+    name: Media validation integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APP_ENV: test
+      PROVIDER_MODE: fake
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          node-version-file: .node-version
+      - name: Install from lockfile
+        run: npm ci
+      # ffmpeg builds the fixtures and ffprobe reads them back. The runner image
+      # is not contractually required to carry either, so this installs them
+      # explicitly rather than depending on what happens to be preinstalled.
+      - name: Install the media toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes ffmpeg
+          ffprobe -version | head -n 1
+      - name: Build workspace packages
+        run: npm run build:packages
+      # Only this job runs the real parser. The unit suite feeds the policy
+      # hand-written probe output, which proves the rules but not the reading:
+      # it cannot catch the deployed ffprobe describing a real file differently
+      # from how a fixture author imagined it would.
+      - name: Run real media validation integration tests
+        run: npm run test:media:integration
+
   browser:
     name: Browser and accessibility smoke
     runs-on: ubuntu-latest

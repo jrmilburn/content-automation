@@ -12,6 +12,7 @@ export default defineConfig({
   test: {
     exclude: [
       ...configDefaults.exclude,
+      "apps/worker/tests/integration/**/*.integration.test.ts",
       "packages/db/tests/integration/**/*.integration.test.ts",
       "packages/integrations/tests/integration/**/*.integration.test.ts",
       "packages/queue/tests/integration/**/*.integration.test.ts",

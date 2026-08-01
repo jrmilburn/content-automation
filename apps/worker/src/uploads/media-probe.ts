@@ -176,9 +176,11 @@ export function createFfprobeMediaProbe(command = "ffprobe"): MediaProbe {
             maxBuffer: limits.maxOutputBytes,
             shell: false,
             timeout: limits.timeoutMs,
-            // An empty environment keeps any inherited credential out of a
-            // process that is parsing untrusted input.
-            env: {},
+            // Only PATH is passed through, so no inherited credential reaches a
+            // process that parses untrusted input. PATH itself cannot be
+            // dropped: without it the runtime cannot resolve a bare command
+            // name and every probe fails as ENOENT.
+            env: { PATH: process.env["PATH"] ?? "" },
           },
           (error, stdout) => {
             if (error === null) {
@@ -191,22 +193,25 @@ export function createFfprobeMediaProbe(command = "ffprobe"): MediaProbe {
               signal?: string | null;
             };
 
-            // A timeout or an output overrun is a resource-limit stop, not a
-            // verdict about the media, so it stays distinguishable.
-            if (
-              failure.killed === true ||
-              failure.signal !== null ||
-              failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
-            ) {
-              resolve(Object.freeze({ ok: false, reason: "TIMED_OUT" }));
+            // Checked before the resource-limit branch: a missing binary is a
+            // deployment fault, not a verdict about the media, and must never
+            // be recorded as a rejected asset.
+            if (failure.code === "ENOENT") {
+              reject(new Error("ffprobe is not available in this image"));
               return;
             }
 
-            // ENOENT means the probe binary is missing from the image, which is
-            // a deployment fault rather than a bad upload. It must not be
-            // recorded as a rejected asset.
-            if (failure.code === "ENOENT") {
-              reject(new Error("ffprobe is not available in this image"));
+            // A timeout or an output overrun is a resource-limit stop, so it
+            // stays distinguishable from a decode failure. `signal` is compared
+            // against both nullish forms: a normal non-zero exit reports null,
+            // but a spawn failure leaves it undefined, and treating undefined
+            // as "was signalled" would misreport every such error as a timeout.
+            if (
+              failure.killed === true ||
+              (failure.signal ?? null) !== null ||
+              failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+            ) {
+              resolve(Object.freeze({ ok: false, reason: "TIMED_OUT" }));
               return;
             }
 
