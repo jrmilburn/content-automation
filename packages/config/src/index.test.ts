@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import { analysisModelRequested } from "@studio-parallel/domain";
+
 import {
   ConfigurationError,
   loadAuthConfig,
   loadCredentialEncryptionConfig,
   loadDatabaseConfig,
+  loadGeminiConfig,
+  loadGeminiCredentials,
   loadInstagramOAuthConfig,
   loadMetaWebhookConfig,
   loadObjectStorageConfig,
@@ -390,6 +394,50 @@ describe("loadObjectStorageCredentials", () => {
     } catch (error) {
       expect((error as Error).message).not.toContain(secretCanary);
       expect((error as ConfigurationError).fields).toContain("STORAGE_ACCESS_KEY_ID");
+    }
+  });
+});
+
+describe("loadGeminiConfig", () => {
+  it("pins the model the analysis contract was proved against", () => {
+    expect(loadGeminiConfig({}).GEMINI_MODEL).toBe(analysisModelRequested);
+  });
+
+  it("refuses a moving alias, which would change the model behind a stored analysis", () => {
+    expect(() => loadGeminiConfig({ GEMINI_MODEL: "gemini-flash-latest" })).toThrow(
+      /GEMINI_MODEL must be an exact version, never a moving alias/,
+    );
+  });
+
+  it("requires HTTPS for the provider host in deployed environments", () => {
+    expect(
+      loadGeminiConfig({ APP_ENV: "local", GEMINI_API_HOST: "http://127.0.0.1:8080" })
+        .GEMINI_API_HOST,
+    ).toBe("http://127.0.0.1:8080");
+    expect(() =>
+      loadGeminiConfig({ APP_ENV: "production", GEMINI_API_HOST: "http://gemini.example" }),
+    ).toThrow(/GEMINI_API_HOST must use HTTPS in staging and production/);
+  });
+
+  it("defaults concurrency to one, because Gemini bills per token", () => {
+    expect(loadGeminiConfig({}).GEMINI_PROJECT_CONCURRENCY).toBe(1);
+  });
+});
+
+describe("loadGeminiCredentials", () => {
+  it("has no default, so a misconfigured deployment fails closed", () => {
+    expect(() => loadGeminiCredentials({})).toThrow(ConfigurationError);
+  });
+
+  it("never echoes the key", () => {
+    const secretCanary = "gemini-key-canary-value";
+
+    try {
+      loadGeminiCredentials({ GEMINI_API_KEY: `${secretCanary}${"x".repeat(400)}` });
+      expect.unreachable("expected a configuration error");
+    } catch (error) {
+      expect((error as Error).message).not.toContain(secretCanary);
+      expect((error as ConfigurationError).fields).toContain("GEMINI_API_KEY");
     }
   });
 });
