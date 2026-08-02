@@ -109,12 +109,24 @@ export {
   type InstagramPostDueForSnapshot,
 } from "./instagram-scheduling.js";
 export {
+  instagramSnapshotValueSelect,
   listInstagramMetricSnapshots,
+  readInstagramSnapshotObservations,
   recordInstagramMetricSnapshot,
   type InstagramSnapshotCommit,
   type InstagramSnapshotInput,
   type InstagramSnapshotSummary,
+  type InstagramSnapshotValueRow,
 } from "./instagram-insights.js";
+export {
+  cohortPostLimit,
+  comparePostToCohort,
+  loadCohort,
+  loadPostMetricValue,
+  type Cohort,
+  type CohortMember,
+  type CohortRequest,
+} from "./analytics-cohorts.js";
 export {
   instagramPostPageSize,
   instagramPostSearchLimit,

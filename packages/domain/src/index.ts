@@ -53,6 +53,34 @@ export {
 } from "./analytics-metrics.js";
 
 export {
+  cohortKinds,
+  cohortSelectionVersion,
+  cohortUnavailabilityReasons,
+  compareToBaseline,
+  createCohortFingerprint,
+  excludeFocalPost,
+  median,
+  recentCohortDays,
+  recentCohortPostLimit,
+  selectComparableSnapshot,
+  selectComparableSnapshots,
+  snapshotAgeWindowFor,
+  snapshotAgeWindows,
+  summariseCoverage,
+  summariseSpread,
+  type BaselineComparison,
+  type CohortCoverage,
+  type CohortDefinition,
+  type CohortFingerprintInput,
+  type CohortKind,
+  type CohortSpread,
+  type CohortUnavailabilityReason,
+  type ComparableSnapshotCandidate,
+  type SnapshotAgeWindow,
+  type SnapshotAgeWindowKey,
+} from "./analytics-cohorts.js";
+
+export {
   evaluateGoogleOidcProfile,
   isAllowedRequestOrigin,
   oidcDenialReasons,
