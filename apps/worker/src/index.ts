@@ -1,6 +1,7 @@
 import {
   loadCredentialEncryptionConfig,
   loadDatabaseConfig,
+  loadGeminiConfig,
   loadMediaValidationConfig,
   loadObjectStorageConfig,
   loadRuntimeConfig,
@@ -84,9 +85,16 @@ const queue = createPgBossWorkerQueue({
 });
 // Meta limits by app and by account, so provider work is serialised rather than
 // scaled with the worker's own concurrency.
+// Only host, model and budgets are read here. The key loads inside the live
+// branch of `createWorkerGeminiAdapter`, so a deployment without one still
+// starts.
+const geminiConfig = loadGeminiConfig();
+// Gemini bills per token, so its budget is a spend control rather than a
+// politeness limit: a burst of parallel analyses is the fastest way to spend
+// unintentionally. The global limit leaves room for both providers at once.
 const providerConcurrency = createProviderConcurrencyGate({
-  globalLimit: 4,
-  providerLimits: { instagram: 1 },
+  globalLimit: 6,
+  providerLimits: { gemini: geminiConfig.GEMINI_PROJECT_CONCURRENCY, instagram: 1 },
 });
 // Loaded on first use so a deployment that has not yet configured Instagram
 // still starts, and so the key is read once rather than per job. The version is

@@ -1,4 +1,23 @@
 export {
+  GeminiError,
+  type GeminiAdapter,
+  type GeminiFile,
+  type GeminiGenerationRequest,
+  type GeminiGenerationResult,
+  type GeminiUploadRequest,
+} from "./gemini/contract.js";
+export {
+  createFakeGemini,
+  type FakeGemini,
+  type FakeGeminiDependencies,
+  type FakeGeminiFailure,
+} from "./gemini/fake-client.js";
+export {
+  createGeminiHttpAdapter,
+  type FetchLike,
+  type GeminiHttpDependencies,
+} from "./gemini/http-client.js";
+export {
   type AbandonedUpload,
   type CompletedPart,
   type CreateMultipartUploadRequest,

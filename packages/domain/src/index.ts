@@ -81,6 +81,22 @@ export {
 } from "./analytics-cohorts.js";
 
 export {
+  classifyGeminiCandidate,
+  classifyGeminiFileState,
+  classifyGeminiResponse,
+  geminiCandidateOutcomes,
+  geminiFileStates,
+  geminiResponseClasses,
+  isGeminiFileName,
+  parseGeminiRetryAfterMs,
+  readGeminiUsage,
+  type GeminiCandidateOutcome,
+  type GeminiFileState,
+  type GeminiResponseClass,
+  type GeminiUsage,
+} from "./gemini-response.js";
+
+export {
   evaluateGoogleOidcProfile,
   isAllowedRequestOrigin,
   oidcDenialReasons,

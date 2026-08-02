@@ -1,3 +1,4 @@
+import { analysisModelRequested } from "@studio-parallel/domain";
 import { z } from "zod";
 
 const localEnvironments = new Set(["local", "test", "preview"]);
@@ -392,6 +393,72 @@ const mediaValidationConfigSchema = z
 
 export type MediaValidationConfig = Readonly<z.infer<typeof mediaValidationConfigSchema>>;
 
+// Gemini host, model and budgets are safe deploy config. The key loads
+// separately, so the web application — which never calls Gemini — has no reason
+// to touch it.
+const geminiConfigSchema = z
+  .object({
+    APP_ENV: z.enum(["local", "test", "preview", "staging", "production"]).default("local"),
+    GEMINI_API_HOST: z.url().default("https://generativelanguage.googleapis.com"),
+    // An exact stable ID. A moving alias would silently change the model behind
+    // a stored analysis, so `latest` is refused rather than merely discouraged.
+    GEMINI_MODEL: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .regex(/^[a-z0-9][a-z0-9.-]*$/u, "must be a model id")
+      .refine(
+        (value) => !value.includes("latest"),
+        "must be an exact version, never a moving alias",
+      )
+      .default(analysisModelRequested),
+    // The proofs return a full analysis inside 32k; a smaller ceiling truncates
+    // the contract rather than saving money.
+    GEMINI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1_024).max(65_536).default(32_000),
+    // A video upload is minutes of transfer; a model call is seconds of wait.
+    GEMINI_UPLOAD_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(1_800_000).default(600_000),
+    GEMINI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(900_000).default(300_000),
+    GEMINI_FILE_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(2_000),
+    GEMINI_FILE_POLL_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(600).default(60),
+    // One concurrent video per project by default. Gemini bills per token and a
+    // burst of parallel analyses is the fastest way to spend unintentionally.
+    GEMINI_PROJECT_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(1),
+  })
+  .superRefine((config, context) => {
+    if (config.APP_ENV !== "staging" && config.APP_ENV !== "production") {
+      return;
+    }
+
+    let host: URL;
+
+    try {
+      host = new URL(config.GEMINI_API_HOST);
+    } catch {
+      return;
+    }
+
+    if (host.protocol !== "https:") {
+      context.addIssue({
+        code: "custom",
+        path: ["GEMINI_API_HOST"],
+        message: "must use HTTPS in staging and production",
+      });
+    }
+  });
+
+export type GeminiConfig = Readonly<z.infer<typeof geminiConfigSchema>>;
+
+// The Gemini key is never given a default, for the same reason storage keys are
+// not: a misconfigured deployment must fail closed rather than bill an
+// unintended project. Bounds only — a format regex would put the key's shape
+// into a validation message.
+const geminiCredentialsSchema = z.object({
+  GEMINI_API_KEY: z.string().trim().min(1).max(256),
+});
+
+export type GeminiCredentials = Readonly<z.infer<typeof geminiCredentialsSchema>>;
+
 // Storage keys are never given a usable default: a misconfigured deployment
 // must fail closed rather than sign requests against an unintended account.
 const objectStorageCredentialsSchema = z.object({
@@ -507,6 +574,30 @@ export function loadObjectStorageCredentials(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): ObjectStorageCredentials {
   const result = objectStorageCredentialsSchema.safeParse(environment);
+
+  if (!result.success) {
+    throw new ConfigurationError(result.error.issues);
+  }
+
+  return Object.freeze(result.data);
+}
+
+export function loadGeminiConfig(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): GeminiConfig {
+  const result = geminiConfigSchema.safeParse(environment);
+
+  if (!result.success) {
+    throw new ConfigurationError(result.error.issues);
+  }
+
+  return Object.freeze(result.data);
+}
+
+export function loadGeminiCredentials(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): GeminiCredentials {
+  const result = geminiCredentialsSchema.safeParse(environment);
 
   if (!result.success) {
     throw new ConfigurationError(result.error.issues);
