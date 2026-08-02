@@ -244,103 +244,9 @@ export type AnalysisObservation = Readonly<{
 
 type JsonObject = { [key: string]: unknown };
 
-const providerSchemaKeywords = new Set([
-  "additionalProperties",
-  "description",
-  "enum",
-  "format",
-  "items",
-  "maximum",
-  "maxItems",
-  "minimum",
-  "minItems",
-  "prefixItems",
-  "properties",
-  "required",
-  "title",
-  "type",
-]);
-
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-function nullableUnion(union: unknown): JsonObject | null {
-  if (!Array.isArray(union) || union.length !== 2) {
-    return null;
-  }
-
-  const objects = union.filter(isJsonObject);
-  const nullMember = objects.find((member) => member.type === "null");
-  const valueMember = objects.find((member) => member.type !== "null");
-  if (nullMember === undefined || valueMember === undefined) {
-    return null;
-  }
-
-  return valueMember;
-}
-
-function projectProviderSchema(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(projectProviderSchema);
-  }
-
-  if (!isJsonObject(value)) {
-    return value;
-  }
-
-  const nullableMember = nullableUnion(value.anyOf ?? value.oneOf);
-  if (nullableMember !== null) {
-    const projected = projectProviderSchema(nullableMember);
-    if (!isJsonObject(projected)) {
-      throw new Error("Nullable provider schema member must be an object");
-    }
-
-    const memberTypes = Array.isArray(projected.type) ? projected.type : [projected.type];
-    return {
-      ...projected,
-      type: [...memberTypes.filter((type) => type !== undefined), "null"],
-      ...(Array.isArray(projected.enum) ? { enum: [...projected.enum, null] } : {}),
-    };
-  }
-
-  const result: JsonObject = {};
-  for (const [key, child] of Object.entries(value)) {
-    if (!providerSchemaKeywords.has(key)) {
-      continue;
-    }
-
-    if (key === "properties" && isJsonObject(child)) {
-      result[key] = Object.fromEntries(
-        Object.entries(child).map(([property, schema]) => [
-          property,
-          projectProviderSchema(schema),
-        ]),
-      );
-      continue;
-    }
-
-    result[key] = projectProviderSchema(child);
-  }
-
-  return result;
-}
-
-export function createGeminiStructuredOutputSchema(
-  schema: z.ZodType,
-): Readonly<Record<string, unknown>> {
-  return deepFreeze(
-    projectProviderSchema(
-      z.toJSONSchema(schema, {
-        reused: "inline",
-      }),
-    ) as JsonObject,
-  );
-}
-
-export const geminiPostCreativeAnalysisV1Schema = createGeminiStructuredOutputSchema(
-  postCreativeAnalysisV1Schema,
-);
 
 /**
  * What the model is actually asked to produce.
@@ -437,71 +343,6 @@ export function createAnalysisInstruction(): string {
 Return only a single JSON object conforming to this JSON Schema. Emit every required property. Do not wrap the response in markdown or prose.
 
 ${JSON.stringify(postCreativeAnalysisModelResponseJsonSchema)}`;
-}
-
-export type ProviderSchemaAcceptance = Readonly<{
-  byteLength: number;
-  maximumDepth: number;
-}>;
-
-export function assertGeminiStructuredOutputSchema(schema: unknown): ProviderSchemaAcceptance {
-  if (!isJsonObject(schema) || schema.type !== "object") {
-    throw new Error("Gemini structured-output schema must have an object root");
-  }
-
-  let maximumDepth = 0;
-  const visit = (node: unknown, depth: number): void => {
-    maximumDepth = Math.max(maximumDepth, depth);
-    if (!isJsonObject(node)) {
-      return;
-    }
-
-    for (const key of Object.keys(node)) {
-      if (!providerSchemaKeywords.has(key)) {
-        throw new Error(`Unsupported Gemini schema keyword: ${key}`);
-      }
-    }
-
-    const types = Array.isArray(node.type) ? node.type : [node.type];
-    if (
-      types.some(
-        (type) =>
-          !["array", "boolean", "integer", "null", "number", "object", "string"].includes(
-            String(type),
-          ),
-      )
-    ) {
-      throw new Error("Gemini schema contains an unsupported type");
-    }
-    if (node.enum !== undefined && !Array.isArray(node.enum)) {
-      throw new Error("Gemini schema enum must be an array");
-    }
-
-    if (isJsonObject(node.properties)) {
-      for (const child of Object.values(node.properties)) {
-        visit(child, depth + 1);
-      }
-    }
-    if (node.items !== undefined) {
-      visit(node.items, depth + 1);
-    }
-    if (Array.isArray(node.prefixItems)) {
-      for (const child of node.prefixItems) {
-        visit(child, depth + 1);
-      }
-    }
-  };
-
-  visit(schema, 1);
-  const byteLength = new TextEncoder().encode(JSON.stringify(schema)).byteLength;
-  if (maximumDepth > 8) {
-    throw new Error(`Gemini schema depth ${maximumDepth} exceeds the v1 depth budget`);
-  }
-  if (byteLength > 100_000) {
-    throw new Error(`Gemini schema size ${byteLength} exceeds the v1 size budget`);
-  }
-
-  return { byteLength, maximumDepth };
 }
 
 export const analysisValidationCodes = [
@@ -986,7 +827,11 @@ export const analysisContractArtifacts = deepFreeze({
     kind: "analysis_schema",
     version: analysisSchemaVersion,
     lifecycle: "active" satisfies AnalysisArtifactLifecycle,
-    sha256: "838723209c9edd3ccf3e35acf22e0a1137864919c581f6350131cb76d9e11561",
+    // SHA-256 of `postCreativeAnalysisModelResponseJsonSchema`: the schema the
+    // request actually carries. It previously hashed a Gemini-subset projection
+    // the API rejects and that nothing sends, so it certified an unmakeable
+    // request. The contract itself is unchanged, so v1.0.0 still means v1.0.0.
+    sha256: "642e1a2a1533c708847ff3db45635238170fde1151c7c19b2d6ef4545932fa06",
   },
   prompt: {
     kind: "analysis_prompt",
