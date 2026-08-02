@@ -47,6 +47,17 @@ contain fixed status labels only; deployment configuration and secrets are never
 
 Run either process independently with `npm run dev:web` or `npm run dev:worker`.
 
+### Environment files in development
+
+The two processes read different files, because they load them by different mechanisms.
+
+- **Web** — Next.js loads `.env` and `.env.local` itself.
+- **Worker** — `npm run dev:worker` loads `.env` and then `.env.worker`, through node's own parser.
+
+Precedence runs left to right, so `.env.worker` overrides `.env`, and a variable already exported in the shell overrides both. A missing file is skipped rather than fatal, so a container or CI run that supplies real environment variables behaves exactly as before. Node's parser strips surrounding quotes; hand-rolled shell splitters generally do not, which turns a quoted `DATABASE_URL` into `Invalid URL` rather than a missing value.
+
+`npm run start:worker` reads the real process environment only. Production configuration is never loaded from a file in the repository.
+
 ## Validation and builds
 
 ```powershell
