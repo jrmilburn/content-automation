@@ -77,6 +77,10 @@ Posts mature over time. Cohort selection follows this order:
 
 The input fingerprint includes post, snapshot, current analysis, feature taxonomy and analytics versions.
 
+Selection windows are not the storage buckets. `instagramSnapshotBuckets` partitions every possible age so each observation has one home, which means it assigns by upper edge alone: a snapshot taken ten hours after publication is stored as `day_1` because ten hours is under thirty-six. `snapshotAgeWindows` carries both edges, so `day_1` means 18–36h and that ten-hour observation is not comparable. Selection therefore reads `post_age_seconds` and never the stored bucket; trusting the label would compare an immature post against settled ones. The two overlap at exactly forty days, where a snapshot is both within the `30d` tolerance and mature — a tolerance may answer yes twice where a partition must choose once.
+
+`import` and `mature` name no moment, so closeness to a target is undefined for them and the most mature observation inside the window is selected instead. Where two observations are equidistant from a target, the less mature one wins: it never credits a post with time it had not yet accumulated.
+
 ## Baselines and feature comparisons
 
 For feature path/value `f=v` and metric `m`:

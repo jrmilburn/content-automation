@@ -217,3 +217,105 @@ export async function listInstagramMetricSnapshots(
 
   return Object.freeze(rows.map((row) => Object.freeze(row)));
 }
+
+/** Every stored value column, for a read that will recompute derived metrics. */
+export const instagramSnapshotValueSelect = Object.freeze({
+  availability: true,
+  averageWatchTimeMs: true,
+  comments: true,
+  follows: true,
+  likes: true,
+  plays: true,
+  profileActivity: true,
+  profileVisits: true,
+  reach: true,
+  saves: true,
+  shares: true,
+  skipRate: true,
+  totalInteractions: true,
+  totalWatchTimeMs: true,
+  views: true,
+} as const);
+
+export type InstagramSnapshotValueRow = Readonly<{
+  availability: unknown;
+  averageWatchTimeMs: number | null;
+  comments: number | null;
+  follows: number | null;
+  likes: number | null;
+  plays: number | null;
+  profileActivity: number | null;
+  profileVisits: number | null;
+  reach: number | null;
+  saves: number | null;
+  shares: number | null;
+  skipRate: unknown;
+  totalInteractions: number | null;
+  totalWatchTimeMs: bigint | null;
+  views: number | null;
+}>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readColumnValue(canonical: InstagramCanonicalMetric, row: InstagramSnapshotValueRow) {
+  const raw = (row as unknown as Record<string, unknown>)[metricColumns[canonical]];
+
+  if (raw === null || raw === undefined) return null;
+  // Watch time is stored wide and a ratio is stored exact; both come back as
+  // something other than a number and must be narrowed here rather than by a
+  // caller that has no reason to know how the column was chosen.
+  if (typeof raw === "bigint") return Number(raw);
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+
+  const parsed = Number(String(raw));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Rebuilds the observations a snapshot row was written from.
+ *
+ * This is the exact inverse of the column split above and lives beside it so the
+ * two cannot drift: a metric added to `metricColumns` is readable the moment it
+ * is writable.
+ *
+ * A column is trusted only when the availability map says the observation was
+ * available. A stored value with any other availability would be a write-path
+ * defect, and honouring it here would launder that defect into a metric.
+ *
+ * `title` is not recovered because it was never stored — it is provider display
+ * text with no bearing on a calculation, and the contract keeps only the fields
+ * that change a value's meaning.
+ */
+export function readInstagramSnapshotObservations(
+  row: InstagramSnapshotValueRow,
+): readonly InstagramMetricObservation[] {
+  const availability = isRecord(row.availability) ? row.availability : {};
+  const observations: InstagramMetricObservation[] = [];
+
+  for (const key of Object.keys(metricColumns)) {
+    const canonical = key as InstagramCanonicalMetric;
+    const entry = availability[canonical];
+    if (!isRecord(entry)) continue;
+
+    const state = entry["availability"];
+    const observation: InstagramMetricObservation = {
+      availability: (typeof state === "string"
+        ? state
+        : "unavailable") as InstagramMetricObservation["availability"],
+      canonical,
+      description: typeof entry["description"] === "string" ? entry["description"] : null,
+      period: typeof entry["period"] === "string" ? entry["period"] : null,
+      providerName: typeof entry["providerName"] === "string" ? entry["providerName"] : null,
+      providerUnit: (entry["providerUnit"] ?? null) as InstagramMetricObservation["providerUnit"],
+      title: null,
+      unit: (entry["unit"] ?? null) as InstagramMetricObservation["unit"],
+      value: state === "available" ? readColumnValue(canonical, row) : null,
+    };
+
+    observations.push(Object.freeze(observation));
+  }
+
+  return Object.freeze(observations);
+}
