@@ -9,10 +9,9 @@ import {
   analysisPromptVersion,
   analysisSchemaVersion,
   analysisTaxonomy,
-  assertGeminiStructuredOutputSchema,
   completePostCreativeAnalysisV1,
   createAnalysisInstruction,
-  geminiPostCreativeAnalysisV1Schema,
+  postCreativeAnalysisModelResponseJsonSchema,
   postCreativeAnalysisModelResponseV1Schema,
   postCreativeAnalysisV1Schema,
   validatePostCreativeAnalysisV1,
@@ -255,17 +254,7 @@ describe("post creative analysis v1 contract", () => {
   });
 });
 
-describe("Gemini structured-output projection and version artifacts", () => {
-  it("uses only the accepted Gemini JSON Schema subset within the v1 complexity budget", () => {
-    expect(assertGeminiStructuredOutputSchema(geminiPostCreativeAnalysisV1Schema)).toEqual({
-      byteLength: 31_705,
-      maximumDepth: 7,
-    });
-    expect(JSON.stringify(geminiPostCreativeAnalysisV1Schema)).not.toMatch(
-      /anyOf|oneOf|\$schema|\$ref/,
-    );
-  });
-
+describe("version artifacts", () => {
   it("pins immutable active-default schema, prompt and exact model artifacts", () => {
     const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -274,13 +263,16 @@ describe("Gemini structured-output projection and version artifacts", () => {
     expect(Object.isFrozen(analysisContractArtifacts.schema)).toBe(true);
     expect(Object.isFrozen(analysisContractArtifacts.prompt)).toBe(true);
     expect(Object.isFrozen(analysisTaxonomy.hookCategory)).toBe(true);
-    expect(Object.isFrozen(geminiPostCreativeAnalysisV1Schema.properties)).toBe(true);
+    expect(Object.isFrozen(postCreativeAnalysisModelResponseJsonSchema["properties"])).toBe(true);
     expect(analysisContractArtifacts.activeDefault).toEqual({
       schemaVersion: analysisContractArtifacts.schema.version,
       promptVersion: analysisContractArtifacts.prompt.version,
       modelRequested: "gemini-3.6-flash",
     });
-    expect(digest(JSON.stringify(geminiPostCreativeAnalysisV1Schema))).toBe(
+    // The integrity value covers the schema the request actually carries. It
+    // previously hashed a Gemini-subset projection that the API rejects and
+    // that nothing sends, so it certified a request nobody could make.
+    expect(digest(JSON.stringify(postCreativeAnalysisModelResponseJsonSchema))).toBe(
       analysisContractArtifacts.schema.sha256,
     );
     expect(digest(analysisPromptText)).toBe(analysisContractArtifacts.prompt.sha256);

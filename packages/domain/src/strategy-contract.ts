@@ -4,7 +4,6 @@ import {
   analysisArtifactLifecycles,
   analysisModelRequested,
   analysisTaxonomy,
-  createGeminiStructuredOutputSchema,
   type AnalysisArtifactLifecycle,
 } from "./analysis-contract.js";
 
@@ -214,7 +213,84 @@ export type StrategyClaimDimension = z.infer<typeof claimDimensionSchema>;
 export type StrategyEvidenceType = (typeof strategyTaxonomy.evidenceType)[number];
 export type StrategyMode = z.infer<typeof modeSchema>;
 
-export const geminiStrategyV1Schema = createGeminiStructuredOutputSchema(strategyV1Schema);
+/**
+ * What the model is actually asked to produce.
+ *
+ * Two fields the caller already holds exactly are withheld, for the reason #122
+ * established on the analysis side: asking for a fact the system knows only
+ * invites a plausible wrong answer that then fails validation.
+ *
+ * `schemaVersion` is a `z.literal`, so a model that paraphrases it fails the
+ * whole response on provenance nobody needed from it. Called against
+ * `gemini-3.6-flash`, the analysis contract's equivalent block came back naming
+ * `gemini-2.5-flash` and a bare `1.0.0`.
+ *
+ * `mode` is the frozen request mode. The worker chose it before the call and
+ * `validateStrategyV1` rejects any other value as `MODE_MISMATCH`, so the model
+ * echoing it can only ever agree or destroy the response. The mode still shapes
+ * the output — `createStrategyInstruction` states it — it is simply not asked
+ * for back.
+ *
+ * `completeStrategyV1` stamps both from the caller's own facts.
+ */
+export const strategyModelResponseV1Schema = strategyV1Schema.omit({
+  mode: true,
+  schemaVersion: true,
+});
+
+export type StrategyModelResponseV1 = z.infer<typeof strategyModelResponseV1Schema>;
+
+/** The response shape as JSON Schema, for describing it in the instruction. */
+export const strategyModelResponseJsonSchema = deepFreeze(
+  z.toJSONSchema(strategyModelResponseV1Schema, { reused: "inline" }) as Record<string, unknown>,
+);
+
+/**
+ * Stamps the caller's own facts onto a model response so it can be validated.
+ *
+ * The model's object is taken as-is and only what the worker already decided is
+ * added, so nothing the provider claims can overwrite the record of which
+ * contract version ran or which mode was requested.
+ */
+export function completeStrategyV1(
+  response: unknown,
+  context: Readonly<{ mode: StrategyMode }>,
+): unknown {
+  if (typeof response !== "object" || response === null || Array.isArray(response)) {
+    return response;
+  }
+
+  return {
+    ...(response as Record<string, unknown>),
+    schemaVersion: strategySchemaVersion,
+    mode: context.mode,
+  };
+}
+
+/**
+ * Builds the single text instruction sent alongside the frozen evidence.
+ *
+ * The shape is described in the prompt rather than supplied as a provider
+ * response schema, because `gemini-3.6-flash` rejects this contract on every
+ * provider-schema path. `responseSchema` refuses `additionalProperties` and
+ * array-valued `type`, which the projection emitted 17 and 5 times; both
+ * `responseSchema` and `responseJsonSchema` then refuse it for complexity, at 91
+ * properties and depth 11. That is the same three failures #122 measured for
+ * analysis, from the same projection helper.
+ *
+ * Describing the shape in the prompt returns the whole contract in one call.
+ * The response is enforced by `validateStrategyV1` either way: a provider schema
+ * was never what made the output trustworthy.
+ */
+export function createStrategyInstruction(context: Readonly<{ mode: StrategyMode }>): string {
+  return `${strategyPromptText}
+
+This request is mode=${context.mode}. Apply that mode's rules exactly. Do not return the mode or the schema version; the caller records both.
+
+Return only a single JSON object conforming to this JSON Schema. Emit every required property. Do not wrap the response in markdown or prose.
+
+${JSON.stringify(strategyModelResponseJsonSchema)}`;
+}
 
 export type StrategyManifestEvidence = Readonly<{
   evidenceId: string;
@@ -955,7 +1031,11 @@ export const strategyContractArtifacts = deepFreeze({
     kind: "strategy_schema",
     version: strategySchemaVersion,
     lifecycle: "active" satisfies AnalysisArtifactLifecycle,
-    sha256: "3ee27383e62239079a39da3f317d375b0c28aaaeb11bd0564a17dd96240bd650",
+    // SHA-256 of `strategyModelResponseJsonSchema`: the schema the request
+    // actually carries. It previously hashed a Gemini-subset projection the API
+    // rejects three ways and that nothing sends. The contract itself is
+    // unchanged, so v1.0.0 still means v1.0.0.
+    sha256: "b3532582e27db3054869bcce90487ed7bafe7329a1ae292ed1dd5156c73cfb94",
   },
   prompt: {
     kind: "strategy_prompt",

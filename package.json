@@ -35,6 +35,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",
     "analysis:contract:live": "tsx scripts/analysis-contract/run-live-proof.ts",
+    "strategy:contract:live": "tsx scripts/strategy-contract/run-live-proof.ts",
     "meta:contract:live": "tsx scripts/meta-contract/run-live-proof.ts",
     "queue:migrate": "npm run build:packages && npm run migrate -w @studio-parallel/queue",
     "security:dependencies": "npm audit --audit-level=high",

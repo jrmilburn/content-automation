@@ -9,11 +9,8 @@ export {
   analysisSchemaVersion,
   analysisTaxonomy,
   analysisValidationCodes,
-  assertGeminiStructuredOutputSchema,
   completePostCreativeAnalysisV1,
   createAnalysisInstruction,
-  createGeminiStructuredOutputSchema,
-  geminiPostCreativeAnalysisV1Schema,
   postCreativeAnalysisModelResponseJsonSchema,
   postCreativeAnalysisModelResponseV1Schema,
   postCreativeAnalysisV1Schema,
@@ -26,7 +23,6 @@ export {
   type AnalysisValidationResult,
   type PostCreativeAnalysisModelResponseV1,
   type PostCreativeAnalysisV1,
-  type ProviderSchemaAcceptance,
 } from "./analysis-contract.js";
 
 export {
@@ -230,10 +226,13 @@ export {
   type JobRetryDecision,
 } from "./job-retry.js";
 export {
+  completeStrategyV1,
+  createStrategyInstruction,
   createStrategyRecommendationFingerprint,
-  geminiStrategyV1Schema,
   strategyContractArtifacts,
   strategyModelRequested,
+  strategyModelResponseJsonSchema,
+  strategyModelResponseV1Schema,
   strategyPromptText,
   strategyPromptVersion,
   strategySchemaVersion,
@@ -247,6 +246,7 @@ export {
   type StrategyEvidenceType,
   type StrategyManifestEvidence,
   type StrategyMode,
+  type StrategyModelResponseV1,
   type StrategyV1,
   type StrategyValidationCode,
   type StrategyValidationContext,

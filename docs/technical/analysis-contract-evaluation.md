@@ -10,7 +10,7 @@ The canonical implementation is `packages/domain/src/analysis-contract.ts`.
 
 | Artifact | Active version | Lifecycle | Integrity |
 | --- | --- | --- | --- |
-| Analysis schema | `post-creative-analysis-v1.0.0` | `active` | SHA-256 of the canonical provider JSON Schema |
+| Analysis schema | `post-creative-analysis-v1.0.0` | `active` | SHA-256 of the JSON Schema the request carries |
 | Analysis prompt | `post-creative-analysis-prompt-v1.1.0` | `active` | SHA-256 of the exact UTF-8 prompt text |
 | Requested model | `gemini-3.6-flash` | pinned | Exact stable ID, never a moving alias |
 
@@ -18,7 +18,7 @@ The canonical implementation is `packages/domain/src/analysis-contract.ts`.
 
 The response shape is described inside the prompt and enforced afterwards by `validatePostCreativeAnalysisV1`. It is not supplied as a provider response schema, because `gemini-3.6-flash` rejects this contract on every provider-schema path:
 
-- `responseSchema` refuses `additionalProperties` and array-valued `type`, both of which the canonical projection emits.
+- `responseSchema` refuses `additionalProperties` and array-valued `type`, both of which the removed projection emitted.
 - `responseSchema` and `responseJsonSchema` then both refuse it for complexity. Measured against the live API, nesting depth is accepted to 31 and enum values beyond 2000, but a nested observation-shaped schema is refused somewhere between 27 and 48 properties. This contract has 381.
 
 Splitting the contract into accepted fragments would take roughly ten requests and re-read the video for each. Describing the shape in the prompt returns the whole contract in one request, and validation is server-side either way.
@@ -28,7 +28,9 @@ Two fields are never requested from the model and are stamped by the worker inst
 - `contract` records the schema, prompt and model actually used. Asked for it, the model reported `gemini-2.5-flash` while `gemini-3.6-flash` was being called.
 - `content.durationSeconds` is checked against the probed duration to half a second, which is tighter than a model can estimate from sampled frames. The validation worker already measures it exactly.
 
-`npm run analysis:contract:live -- <video>` proves the request against the real API. It is excluded from `npm run check` and from CI because it spends money and needs a reachable provider; run it whenever the prompt, schema or model changes. Local assumptions are not evidence here — `assertGeminiStructuredOutputSchema` passed for as long as nobody sent the request anywhere.
+`npm run analysis:contract:live -- <video>` proves the request against the real API. It is excluded from `npm run check` and from CI because it spends money and needs a reachable provider; run it whenever the prompt, schema or model changes. Local assumptions are not evidence here — `assertGeminiStructuredOutputSchema` passed for as long as nobody sent the request anywhere, and #126 then proved it passed the strategy contract too. It and `createGeminiStructuredOutputSchema` are removed.
+
+The schema integrity value hashes `postCreativeAnalysisModelResponseJsonSchema`, the shape the request actually carries. It previously hashed the removed provider projection. The contract itself did not change, so `v1.0.0` still means `v1.0.0`.
 
 Responses vary. Across observed runs roughly one in seven failed semantic validation on a single field while remaining structurally sound, which is what the handler's retry policy exists for; a validation failure is a retryable outcome, not a defect in the contract.
 
@@ -51,13 +53,13 @@ Machine values use lower snake case. UI labels can be humanised, but stored valu
 
 Taxonomy changes require a new schema version or an explicit versioned mapping. Historical results are never silently remapped.
 
-## Provider-schema acceptance
+## Provider acceptance
 
-Zod is the canonical syntax contract. Its generated JSON Schema is projected to the Gemini structured-output subset: object properties/required/additional properties, scalar and nullable types, enums, array items/counts, numeric bounds, titles, descriptions and formats. Unsupported validation keywords are intentionally left to Zod and semantic validation after the response.
+Zod is the canonical syntax contract. Its generated JSON Schema is what the instruction describes; unsupported validation keywords are intentionally left to Zod and semantic validation after the response. The described response shape is 361 properties at depth 7 and 37,532 UTF-8 bytes.
 
-The automated provider fake rejects unsupported keywords, non-object roots, a depth over 8 or a UTF-8 schema size over 100,000 bytes. V1 is 31,705 bytes at depth 7. The suite also serialises and parses a complete response through JSON and canonical Zod validation so transport does not change nullability or enum behaviour.
+The suite serialises and parses a complete response through JSON and canonical Zod validation so transport does not change nullability or enum behaviour.
 
-Before activation in a paid environment, the adapter contract suite must send this exact schema and pinned model through the currently selected Gemini API surface using synthetic text-only input, then record:
+Before activation in a paid environment, the live proof must send this exact instruction and pinned model through the currently selected Gemini API surface, then record:
 
 - provider request success and returned model ID;
 - syntactic Zod success after JSON transport;
@@ -65,7 +67,7 @@ Before activation in a paid environment, the adapter contract suite must send th
 - schema/prompt hashes and request configuration hash;
 - zero request/response logging or dataset-sharing opt-in.
 
-The paid live smoke is a release/activation gate and is never run by the default unit suite. A provider rejection creates a new draft schema projection or adapter change; it does not mutate v1 artifacts.
+The paid live smoke is a release/activation gate and is never run by the default unit suite. A provider rejection creates a new draft schema or adapter change; it does not mutate v1 artifacts.
 
 ## Synthetic and gold fixture catalogue
 
