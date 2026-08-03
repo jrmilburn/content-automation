@@ -326,7 +326,7 @@ describe("calculateFeatureFamily", () => {
     expect(calculated[0]?.statistic.classification).toBe("statistically_supported_association");
 
     // What the classification used is what a reader is shown beside it.
-    await storeFeatureStatistics(database, context, input, calculated, calculatedAt);
+    await storeFeatureStatistics(database, context, input, calculated, calculatedAt, runId);
     const stored = await database.accountFeatureStatistic.findFirstOrThrow();
     // The column rounds, so this is the stored precision rather than the exact
     // quotient. It is nowhere near the 0.4545 the group-only denominator gave.
