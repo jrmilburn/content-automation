@@ -207,6 +207,16 @@ export {
   type StrategyEvidenceRequest,
 } from "./strategy-evidence.js";
 export {
+  failStrategyGeneration,
+  findStrategyGenerationForJob,
+  publishStrategyGeneration,
+  recordStrategyStage,
+  strategyResultExistsForJob,
+  type FrozenStrategyGeneration,
+  type PublishStrategyInput,
+  type PublishStrategyResult,
+} from "./strategy-generation.js";
+export {
   previewStrategyRequest,
   requestStrategyGeneration,
   strategyDefaultPeriodDays,

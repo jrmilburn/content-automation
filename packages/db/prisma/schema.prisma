@@ -376,9 +376,17 @@ model InstagramAccount {
   featureStatistics       AccountFeatureStatistic[]
   analyticsRuns           AccountAnalyticsRun[]
   strategyGenerations     StrategyGeneration[]
+  // The strategy a reader should see. Moved transactionally when a new one
+  // publishes, so nothing observes an account between two current strategies,
+  // and a failed generation leaves the previous one in place.
+  currentStrategyId       String?                   @map("current_strategy_id") @db.Uuid
+  currentStrategy         StrategyGeneration?       @relation("CurrentStrategy", fields: [workspaceId, currentStrategyId], references: [workspaceId, id], onDelete: Restrict)
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, providerAccountId])
+  // Required by the current-strategy relation, and true anyway: a generation is
+  // current for at most one account.
+  @@unique([workspaceId, currentStrategyId])
   @@index([workspaceId, connectionStatus])
   @@index([workspaceId, tokenExpiresAt])
   @@index([workspaceId, lastSuccessfulSyncAt])
@@ -1074,6 +1082,17 @@ enum StrategyGenerationState {
   @@map("strategy_generation_state")
 }
 
+// How far one generation attempt got. Mirrors the analysis job's stage for the
+// same reason: a job state says whether work is running, and this says what it
+// was doing, which is what an operator needs when it stops.
+enum StrategyGenerationStage {
+  REQUESTING
+  REPAIRING
+  PUBLISHING
+
+  @@map("strategy_generation_stage")
+}
+
 enum StrategyMode {
   EVIDENCE_LED
   EXPLORATORY
@@ -1125,69 +1144,89 @@ enum StrategyEvidenceCategory {
 // "which numbers did this strategy see" would only be answerable by guessing
 // from timestamps, and a later recalculation would silently rewrite the answer.
 model StrategyGeneration {
-  id                     String                  @id @db.Uuid
-  workspaceId            String                  @map("workspace_id") @db.Uuid
-  instagramAccountId     String                  @map("instagram_account_id") @db.Uuid
-  backgroundJobId        String                  @map("background_job_id") @db.Uuid
-  analyticsRunId         String                  @map("analytics_run_id") @db.Uuid
-  state                  StrategyGenerationState @default(PENDING)
-  mode                   StrategyMode
-  primaryMetric          String                  @map("primary_metric") @db.VarChar(64)
-  ageWindow              String                  @map("age_window") @db.VarChar(16)
-  requestedPeriodDays    Int                     @map("requested_period_days")
+  id                         String                  @id @db.Uuid
+  workspaceId                String                  @map("workspace_id") @db.Uuid
+  instagramAccountId         String                  @map("instagram_account_id") @db.Uuid
+  backgroundJobId            String                  @map("background_job_id") @db.Uuid
+  analyticsRunId             String                  @map("analytics_run_id") @db.Uuid
+  state                      StrategyGenerationState @default(PENDING)
+  mode                       StrategyMode
+  primaryMetric              String                  @map("primary_metric") @db.VarChar(64)
+  ageWindow                  String                  @map("age_window") @db.VarChar(16)
+  requestedPeriodDays        Int                     @map("requested_period_days")
   // The window the evidence actually covers, which is the active run's, not the
   // requested period. Both are stored because they can disagree, and a strategy
   // that scoped its claims to a period the numbers do not cover would be wrong
   // in a way no reader could see.
-  publishedFrom          DateTime                @map("published_from") @db.Timestamptz(3)
-  publishedTo            DateTime                @map("published_to") @db.Timestamptz(3)
-  pillarEmphasis         String[]                @map("pillar_emphasis")
-  formatEmphasis         String[]                @map("format_emphasis")
-  editorialConstraint    String?                 @map("editorial_constraint") @db.VarChar(1000)
-  analysedPostCount      Int                     @map("analysed_post_count")
-  comparablePostCount    Int                     @map("comparable_post_count")
-  publicationWeekCount   Int                     @map("publication_week_count")
-  evidenceCount          Int                     @map("evidence_count")
-  postEvidenceCount      Int                     @map("post_evidence_count")
-  statisticEvidenceCount Int                     @map("statistic_evidence_count")
+  publishedFrom              DateTime                @map("published_from") @db.Timestamptz(3)
+  publishedTo                DateTime                @map("published_to") @db.Timestamptz(3)
+  pillarEmphasis             String[]                @map("pillar_emphasis")
+  formatEmphasis             String[]                @map("format_emphasis")
+  editorialConstraint        String?                 @map("editorial_constraint") @db.VarChar(1000)
+  analysedPostCount          Int                     @map("analysed_post_count")
+  comparablePostCount        Int                     @map("comparable_post_count")
+  publicationWeekCount       Int                     @map("publication_week_count")
+  evidenceCount              Int                     @map("evidence_count")
+  postEvidenceCount          Int                     @map("post_evidence_count")
+  statisticEvidenceCount     Int                     @map("statistic_evidence_count")
   // An estimate and stored as one. No tokenizer exists here and the provider
   // reports usage only after the call, so this is a deterministic proxy
   // versioned into the retrieval version rather than a measurement.
-  estimatedInputTokens   Int                     @map("estimated_input_tokens")
-  manifestHash           String                  @map("manifest_hash") @db.Char(64)
-  requestSignature       String                  @map("request_signature") @db.Char(64)
+  estimatedInputTokens       Int                     @map("estimated_input_tokens")
+  manifestHash               String                  @map("manifest_hash") @db.Char(64)
+  requestSignature           String                  @map("request_signature") @db.Char(64)
   // Separates an explicit regeneration from the request it repeats. Without it a
   // regeneration over unchanged evidence would collapse onto the first
   // generation and silently return the old answer.
-  regenerationOrdinal    Int                     @default(0) @map("regeneration_ordinal")
-  regeneratedFromId      String?                 @map("regenerated_from_id") @db.Uuid
-  retrievalVersion       String                  @map("retrieval_version") @db.VarChar(64)
-  analyticsVersion       String                  @map("analytics_version") @db.VarChar(64)
-  statisticsVersion      String                  @map("statistics_version") @db.VarChar(64)
-  cohortVersion          String                  @map("cohort_version") @db.VarChar(64)
-  analysisSchemaVersion  String                  @map("analysis_schema_version") @db.VarChar(64)
-  strategySchemaVersion  String                  @map("strategy_schema_version") @db.VarChar(64)
-  strategySchemaSha256   String                  @map("strategy_schema_sha256") @db.Char(64)
-  strategyPromptVersion  String                  @map("strategy_prompt_version") @db.VarChar(64)
-  strategyPromptSha256   String                  @map("strategy_prompt_sha256") @db.Char(64)
-  modelRequested         String                  @map("model_requested") @db.VarChar(64)
-  correlationId          String                  @map("correlation_id") @db.Uuid
-  requestedByUserId      String?                 @map("requested_by_user_id") @db.Uuid
-  requestedAt            DateTime                @map("requested_at") @db.Timestamptz(3)
-  frozenAt               DateTime                @map("frozen_at") @db.Timestamptz(3)
-  failureClass           String?                 @map("failure_class") @db.VarChar(32)
-  failureCode            String?                 @map("failure_code") @db.VarChar(64)
-  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt              DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
-  workspace              Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
-  account                InstagramAccount        @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
-  backgroundJob          BackgroundJob           @relation(fields: [workspaceId, backgroundJobId], references: [workspaceId, id], onDelete: Restrict)
-  analyticsRun           AccountAnalyticsRun     @relation(fields: [workspaceId, analyticsRunId], references: [workspaceId, id], onDelete: Restrict)
-  requestedByUser        InternalUser?           @relation("StrategyGenerationRequestedBy", fields: [workspaceId, requestedByUserId], references: [workspaceId, id], onDelete: Restrict)
-  regeneratedFrom        StrategyGeneration?     @relation("StrategyRegeneration", fields: [workspaceId, regeneratedFromId], references: [workspaceId, id], onDelete: Restrict)
-  regenerations          StrategyGeneration[]    @relation("StrategyRegeneration")
-  evidence               StrategyEvidence[]
-  citedByEvidence        StrategyEvidence[]      @relation("StrategyEvidenceSource")
+  regenerationOrdinal        Int                     @default(0) @map("regeneration_ordinal")
+  regeneratedFromId          String?                 @map("regenerated_from_id") @db.Uuid
+  retrievalVersion           String                  @map("retrieval_version") @db.VarChar(64)
+  analyticsVersion           String                  @map("analytics_version") @db.VarChar(64)
+  statisticsVersion          String                  @map("statistics_version") @db.VarChar(64)
+  cohortVersion              String                  @map("cohort_version") @db.VarChar(64)
+  analysisSchemaVersion      String                  @map("analysis_schema_version") @db.VarChar(64)
+  strategySchemaVersion      String                  @map("strategy_schema_version") @db.VarChar(64)
+  strategySchemaSha256       String                  @map("strategy_schema_sha256") @db.Char(64)
+  strategyPromptVersion      String                  @map("strategy_prompt_version") @db.VarChar(64)
+  strategyPromptSha256       String                  @map("strategy_prompt_sha256") @db.Char(64)
+  modelRequested             String                  @map("model_requested") @db.VarChar(64)
+  correlationId              String                  @map("correlation_id") @db.Uuid
+  requestedByUserId          String?                 @map("requested_by_user_id") @db.Uuid
+  requestedAt                DateTime                @map("requested_at") @db.Timestamptz(3)
+  frozenAt                   DateTime                @map("frozen_at") @db.Timestamptz(3)
+  stage                      StrategyGenerationStage @default(REQUESTING)
+  // Persisted rather than counted in memory, so the one-repair bound survives a
+  // redelivery. An in-attempt counter would reset on every retry and let a
+  // failing contract spend twice the calls it was allowed.
+  repairAttempted            Boolean                 @default(false) @map("repair_attempted")
+  // The validated strategy. Null until one publishes, which is what makes a
+  // failed attempt leave the previous current strategy untouched.
+  result                     Json?
+  // Fingerprints of the ideas this strategy proposed, so a later generation can
+  // be told what not to repeat without reading the whole result back.
+  recommendationFingerprints String[]                @map("recommendation_fingerprints")
+  modelVersion               String?                 @map("model_version") @db.VarChar(64)
+  finishReason               String?                 @map("finish_reason") @db.VarChar(64)
+  inputTokens                Int?                    @map("input_tokens")
+  outputTokens               Int?                    @map("output_tokens")
+  totalTokens                Int?                    @map("total_tokens")
+  providerLatencyMs          Int?                    @map("provider_latency_ms")
+  generatedAt                DateTime?               @map("generated_at") @db.Timestamptz(3)
+  completedAt                DateTime?               @map("completed_at") @db.Timestamptz(3)
+  failureClass               String?                 @map("failure_class") @db.VarChar(32)
+  failureCode                String?                 @map("failure_code") @db.VarChar(64)
+  createdAt                  DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                  DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace                  Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  account                    InstagramAccount        @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
+  backgroundJob              BackgroundJob           @relation(fields: [workspaceId, backgroundJobId], references: [workspaceId, id], onDelete: Restrict)
+  analyticsRun               AccountAnalyticsRun     @relation(fields: [workspaceId, analyticsRunId], references: [workspaceId, id], onDelete: Restrict)
+  requestedByUser            InternalUser?           @relation("StrategyGenerationRequestedBy", fields: [workspaceId, requestedByUserId], references: [workspaceId, id], onDelete: Restrict)
+  regeneratedFrom            StrategyGeneration?     @relation("StrategyRegeneration", fields: [workspaceId, regeneratedFromId], references: [workspaceId, id], onDelete: Restrict)
+  regenerations              StrategyGeneration[]    @relation("StrategyRegeneration")
+  evidence                   StrategyEvidence[]
+  citedByEvidence            StrategyEvidence[]      @relation("StrategyEvidenceSource")
+  currentForAccount          InstagramAccount?       @relation("CurrentStrategy")
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, backgroundJobId])
@@ -1250,8 +1289,13 @@ model StrategyEvidence {
   sourceGeneration      StrategyGeneration?         @relation("StrategyEvidenceSource", fields: [workspaceId, sourceGenerationId], references: [workspaceId, id], onDelete: Restrict)
 
   @@unique([workspaceId, id])
-  // One entry per opaque key per generation, and one entry per referenced
-  // record per generation, are both enforced by unique indexes in the migration.
+  // One entry per opaque key per generation. The key is what the model cites,
+  // so two rows sharing one would make a citation ambiguous. Declared here
+  // rather than only in the migration because Prisma can express it, and an
+  // index the schema does not describe reads as drift against the database.
+  @@unique([strategyGenerationId, evidenceKey], map: "strategy_evidence_manifest_key")
+  // One entry per referenced record per generation is enforced by a partial
+  // unique index in the migration; Prisma cannot express a filtered index.
   @@index([workspaceId, strategyGenerationId, category, rank], map: "strategy_evidence_generation_rank_idx")
   @@index([workspaceId, featureStatisticId], map: "strategy_evidence_statistic_idx")
   @@index([workspaceId, instagramPostId], map: "strategy_evidence_post_idx")
