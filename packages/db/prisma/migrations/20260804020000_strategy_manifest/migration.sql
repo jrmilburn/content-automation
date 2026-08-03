@@ -1,4 +1,3 @@
-Prisma target: aws-0-ap-southeast-2.pooler.supabase.com:5432 (DIRECT_URL)
 -- CreateEnum
 CREATE TYPE "strategy_generation_state" AS ENUM ('PENDING', 'PROCESSING', 'SUCCEEDED', 'FAILED');
 
