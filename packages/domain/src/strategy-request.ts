@@ -525,7 +525,13 @@ export function strategyGenerateKey(requestSignature: string): string {
  * shows are not the fields a prompt needs.
  */
 export function renderStrategyManifest(
-  identity: StrategyManifestIdentity,
+  // Only the scope the prompt states, not the whole identity. The versions and
+  // the run belong to the hash rather than to the text, and asking a caller that
+  // already holds frozen rows to reconstruct them would invite placeholders.
+  identity: Pick<
+    StrategyManifestIdentity,
+    "ageWindow" | "instagramAccountId" | "primaryMetric" | "publishedFrom" | "publishedTo"
+  >,
   entries: readonly StrategyEvidenceEntry[],
 ): string {
   const lines = entries.map((entry) => {

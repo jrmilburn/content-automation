@@ -45,12 +45,27 @@ export type GeminiUploadRequest = Readonly<{
   mimeType: string;
 }>;
 
+/**
+ * One generation request.
+ *
+ * The source is optional because two callers need different things from the
+ * same primitive: analysis reasons about a video, and strategy reasons about
+ * text that application code already selected and froze. Sending an empty file
+ * part rather than omitting it would make the provider reject the request, so
+ * the two are distinguished here rather than papered over.
+ *
+ * `fileUri` and `mimeType` travel together or not at all. Either names a video
+ * to reason about, and one without the other is a caller error rather than a
+ * partially specified request.
+ */
 export type GeminiGenerationRequest = Readonly<{
-  fileUri: string;
+  /** Omitted for a text-only request. Paired with `mimeType`. */
+  fileUri?: string | undefined;
   /** The single text part. Its shape contract belongs to the caller. */
   instruction: string;
   maxOutputTokens?: number | undefined;
-  mimeType: string;
+  /** Omitted for a text-only request. Paired with `fileUri`. */
+  mimeType?: string | undefined;
 }>;
 
 export type GeminiGenerationResult = Readonly<{

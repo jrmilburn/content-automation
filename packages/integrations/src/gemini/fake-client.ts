@@ -101,20 +101,25 @@ export function createFakeGemini(dependencies: FakeGeminiDependencies = {}): Fak
       ): Promise<GeminiGenerationResult> {
         takeFailure("generateStructuredText");
 
-        const file = byUri(request.fileUri);
-        if (file === undefined) {
-          throw new GeminiError({
-            operation: "generateStructuredText",
-            responseClass: "invalid_request",
-          });
-        }
-        if (file.state !== "ACTIVE") {
-          // The real provider refuses a file it is still processing. Accepting
-          // it here would hide a missing poll.
-          throw new GeminiError({
-            operation: "generateStructuredText",
-            responseClass: "invalid_request",
-          });
+        // A text-only request references no file, so there is nothing to resolve
+        // or to be active. Requiring one here would make every strategy test
+        // upload a video it never reasons about.
+        if (request.fileUri !== undefined) {
+          const file = byUri(request.fileUri);
+          if (file === undefined) {
+            throw new GeminiError({
+              operation: "generateStructuredText",
+              responseClass: "invalid_request",
+            });
+          }
+          if (file.state !== "ACTIVE") {
+            // The real provider refuses a file it is still processing. Accepting
+            // it here would hide a missing poll.
+            throw new GeminiError({
+              operation: "generateStructuredText",
+              responseClass: "invalid_request",
+            });
+          }
         }
 
         seenInstructions.push(request.instruction);

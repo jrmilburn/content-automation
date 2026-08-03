@@ -52,6 +52,10 @@ import {
   createAnalyticsRecalculateHandler,
 } from "./analytics/recalculate-handler.js";
 import { createAnalyticsScheduler } from "./analytics/analytics-scheduler.js";
+import {
+  createStrategyGenerateHandler,
+  strategyGenerateQueue,
+} from "./strategy/strategy-generate-handler.js";
 import { createWorkerGeminiAdapter } from "./analysis/gemini-client.js";
 import { createWorkerObjectStorage } from "./uploads/object-storage.js";
 
@@ -177,6 +181,14 @@ const registry = createQueueHandlerRegistry([
     database,
     logger,
   }),
+  createStrategyGenerateHandler({
+    // Text-only, but it is the same paid project as analysis, so it holds the
+    // same slot rather than competing for quota beside it.
+    acquireConcurrency: (signal) => providerConcurrency.acquire("gemini", signal),
+    database,
+    gemini: createWorkerGeminiAdapter(config, geminiConfig),
+    logger,
+  }),
 ]);
 const workerRuntime = createQueueWorkerRuntime({
   client: queue,
@@ -189,6 +201,7 @@ const workerRuntime = createQueueWorkerRuntime({
     instagramSnapshotQueue,
     instagramSyncQueue,
     instagramTokenQueue,
+    strategyGenerateQueue,
   ],
 });
 const tokenMaintenance = createInstagramTokenMaintenanceScheduler({

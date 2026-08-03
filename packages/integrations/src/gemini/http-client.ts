@@ -178,19 +178,22 @@ export function createGeminiHttpAdapter(dependencies: GeminiHttpDependencies): G
       request: GeminiGenerationRequest,
     ): Promise<GeminiGenerationResult> {
       const startedAt = now();
+      // A text-only request omits the file part rather than sending an empty
+      // one: the provider rejects a `file_data` part with no URI, so the
+      // difference has to be in the request rather than in its values.
+      const parts =
+        request.fileUri && request.mimeType
+          ? [
+              { file_data: { file_uri: request.fileUri, mime_type: request.mimeType } },
+              { text: request.instruction },
+            ]
+          : [{ text: request.instruction }];
+
       const response = await send(
         `${host}/v1beta/models/${config.GEMINI_MODEL}:generateContent`,
         {
           body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { file_data: { file_uri: request.fileUri, mime_type: request.mimeType } },
-                  { text: request.instruction },
-                ],
-                role: "user",
-              },
-            ],
+            contents: [{ parts, role: "user" }],
             generationConfig: {
               maxOutputTokens: request.maxOutputTokens ?? config.GEMINI_MAX_OUTPUT_TOKENS,
               responseMimeType: "application/json",
