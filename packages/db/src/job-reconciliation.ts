@@ -1,4 +1,4 @@
-import { assertJobTransition } from "@studio-parallel/domain";
+import { assertJobTransition, queueDeliveryExpirySeconds } from "@studio-parallel/domain";
 import {
   OperationalError,
   parseCorrelationId,
@@ -129,12 +129,23 @@ export async function reconcileBackgroundJobs(
   // never be delivered again: the dispatcher only publishes undispatched rows,
   // and no other rule matches this shape. Jobs stranded before the release path
   // started resetting the row are recovered here.
+  //
+  // The age bound is the whole rule. QUEUED with no lease and a dispatched
+  // outbox is *also* the state of a perfectly healthy job in the window between
+  // the dispatcher publishing and a worker claiming, so an unbounded version of
+  // this query matches almost every queued job on every tick — requeueing live
+  // work, inflating the dispatch count and making a repair count that should
+  // read zero read permanently non-zero. Past the delivery expiry no message can
+  // still be in flight, so what remains is genuinely stranded.
   const strandedDelivery = await options.database.backgroundJob.findMany({
     select: { cancellationRequestedAt: true, id: true, state: true, workspaceId: true },
     take: batchSize,
     where: {
       leaseId: null,
-      outbox: { cancelledAt: null, dispatchedAt: { not: null } },
+      outbox: {
+        cancelledAt: null,
+        dispatchedAt: { lte: new Date(now.getTime() - queueDeliveryExpirySeconds * 1_000) },
+      },
       state: "QUEUED",
     },
   });
@@ -344,22 +355,17 @@ async function requeueStrandedDelivery(
     });
     if (!job) return false;
 
-    const reset = await transaction.jobOutbox.updateMany({
-      data: {
-        dispatchedAt: null,
-        leaseExpiresAt: null,
-        leaseId: null,
-        nextAttemptAt: now,
-        queueDeliveryId: null,
-      },
-      where: { backgroundJobId: job.id, cancelledAt: null, dispatchedAt: { not: null } },
-    });
-    if (reset.count !== 1) return false;
-
-    await transaction.backgroundJob.updateMany({
+    // The job row goes first, in the order every other repair in this file takes
+    // its locks, and its count is the concurrency guard: a worker that claimed
+    // this job between the scan and here has already moved the version, and
+    // reporting a repair that did not happen would be worse than doing nothing.
+    const claimed = await transaction.backgroundJob.updateMany({
       data: { dispatchStatus: "PENDING", version: { increment: 1 } },
       where: { id: job.id, version: job.version, workspaceId },
     });
+    if (claimed.count !== 1) return false;
+
+    await resetOutbox(transaction, job, now);
 
     await createServiceAudit(
       transaction,

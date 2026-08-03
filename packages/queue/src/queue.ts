@@ -1,6 +1,7 @@
 import {
   parseQueueJobEnvelope,
   queueDefinitions,
+  queueDeliveryExpirySeconds,
   queueVersionKey,
   type QueueHandler,
   type QueueHandlerRegistration,
@@ -51,7 +52,7 @@ type PgBossQueueOptions = Readonly<{
 
 const queuePolicy = Object.freeze({
   deleteAfterSeconds: 1_209_600,
-  expireInSeconds: 900,
+  expireInSeconds: queueDeliveryExpirySeconds,
   heartbeatSeconds: 60,
   policy: "exclusive" as const,
   retentionSeconds: 1_209_600,

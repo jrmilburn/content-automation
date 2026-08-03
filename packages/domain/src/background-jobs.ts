@@ -12,6 +12,17 @@ export const queueDefinitions = [
 
 export type QueueName = (typeof queueDefinitions)[number]["name"];
 
+/**
+ * How long the queue will hold an undelivered or unfinished message.
+ *
+ * Shared with the reconciler rather than kept inside the queue adapter, because
+ * it is the boundary between "in flight" and "gone". A dispatched job that no
+ * worker has claimed is entirely normal below this age and unrecoverable above
+ * it, and reconciliation that does not know the difference cannot tell a healthy
+ * job from a stranded one.
+ */
+export const queueDeliveryExpirySeconds = 900;
+
 export type VersionedQueue = Readonly<{
   name: QueueName;
   version: number;

@@ -1,5 +1,9 @@
 import { loadDatabaseConfig } from "@studio-parallel/config";
-import { JobHandlerFailure, type QueueJobEnvelope } from "@studio-parallel/domain";
+import {
+  JobHandlerFailure,
+  queueDeliveryExpirySeconds,
+  type QueueJobEnvelope,
+} from "@studio-parallel/domain";
 import {
   createJsonLogger,
   createMetricRecorder,
@@ -769,7 +773,10 @@ describe("redelivery after an expired lease", () => {
       where: { id: envelope.domainJobId },
     });
 
-    const outcome = await reconcile(new Date(strandedAt.getTime() + 60_000));
+    // Past the delivery expiry, so no queue message can still be in flight.
+    const outcome = await reconcile(
+      new Date(strandedAt.getTime() + (queueDeliveryExpirySeconds + 60) * 1_000),
+    );
 
     expect(outcome.repaired).toBeGreaterThanOrEqual(1);
     await expect(
@@ -778,6 +785,26 @@ describe("redelivery after an expired lease", () => {
     await expect(
       database.backgroundJob.findUnique({ where: { id: envelope.domainJobId } }),
     ).resolves.toMatchObject({ dispatchStatus: "PENDING" });
+  });
+
+  it("leaves a job the dispatcher has only just published alone", async () => {
+    // Queued, unleased, outbox dispatched is *also* what a healthy job looks
+    // like between the dispatcher publishing and a worker claiming. An earlier
+    // version of the stranded rule had no age bound and matched this, so it
+    // requeued live work on every tick and reported a repair every time.
+    const envelope = await enqueue("redelivery-in-flight");
+    const dispatchedAt = new Date("2026-07-28T05:20:00.000Z");
+    await markDispatched(envelope.domainJobId, dispatchedAt);
+
+    const outcome = await reconcile(new Date(dispatchedAt.getTime() + 30_000));
+
+    expect(outcome.repaired).toBe(0);
+    await expect(
+      database.jobOutbox.findUnique({ where: { backgroundJobId: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ dispatchedAt });
+    await expect(
+      database.backgroundJob.findUnique({ where: { id: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ dispatchStatus: "DISPATCHED" });
   });
 
   it("does not redeliver a job that has exhausted its attempts", async () => {
