@@ -4,6 +4,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { buildFeatureRequests, loadAnalyticsInputs } from "../../src/analytics-features.js";
 import {
+  listTrendFeaturePaths,
+  loadAccountTrends,
+  loadTrendDetail,
+} from "../../src/analytics-trends.js";
+import {
   activateAnalyticsRun,
   analyticsDebounceMs,
   createRunInputFingerprint,
@@ -409,51 +414,51 @@ describe("reading a run's inputs", () => {
   });
 });
 
+async function seedPosts(): Promise<void> {
+  for (let index = 0; index < 8; index += 1) {
+    await analysedPost({
+      hookCategory: index < 4 ? "question" : "claim",
+      likes: index < 4 ? 200 + index : 100 + index,
+      publishedAt: new Date(Date.UTC(2026, 4, 1 + index * 8)),
+    });
+  }
+}
+
+async function runOnce(now: Date): Promise<Readonly<{ activated: boolean; runId: string }>> {
+  const dirtySince = (
+    await database.instagramAccount.findFirstOrThrow({ where: { id: accountId } })
+  ).analyticsDirtySince as Date;
+
+  const inputs = await loadAnalyticsInputs(database, context, inputRequest());
+  const inputFingerprint = createRunInputFingerprint({
+    analysisIds: inputs.analysisIds,
+    snapshotIds: inputs.snapshotIds,
+  });
+
+  const run = await startAnalyticsRun(database, context, {
+    ageWindow: "day_30",
+    analysisCount: inputs.posts.length,
+    inputFingerprint,
+    instagramAccountId: accountId,
+    now,
+    publishedFrom,
+    publishedTo,
+  });
+
+  const expectedStatisticCount = await calculateInto(run.id);
+  const result = await activateAnalyticsRun(database, context, {
+    dirtySince,
+    expectedStatisticCount,
+    inputFingerprint,
+    instagramAccountId: accountId,
+    now,
+    runId: run.id,
+  });
+
+  return { activated: result.activated, runId: run.id };
+}
+
 describe("publishing a run", () => {
-  async function seedPosts(): Promise<void> {
-    for (let index = 0; index < 8; index += 1) {
-      await analysedPost({
-        hookCategory: index < 4 ? "question" : "claim",
-        likes: index < 4 ? 200 + index : 100 + index,
-        publishedAt: new Date(Date.UTC(2026, 4, 1 + index * 8)),
-      });
-    }
-  }
-
-  async function runOnce(now: Date): Promise<Readonly<{ activated: boolean; runId: string }>> {
-    const dirtySince = (
-      await database.instagramAccount.findFirstOrThrow({ where: { id: accountId } })
-    ).analyticsDirtySince as Date;
-
-    const inputs = await loadAnalyticsInputs(database, context, inputRequest());
-    const inputFingerprint = createRunInputFingerprint({
-      analysisIds: inputs.analysisIds,
-      snapshotIds: inputs.snapshotIds,
-    });
-
-    const run = await startAnalyticsRun(database, context, {
-      ageWindow: "day_30",
-      analysisCount: inputs.posts.length,
-      inputFingerprint,
-      instagramAccountId: accountId,
-      now,
-      publishedFrom,
-      publishedTo,
-    });
-
-    const expectedStatisticCount = await calculateInto(run.id);
-    const result = await activateAnalyticsRun(database, context, {
-      dirtySince,
-      expectedStatisticCount,
-      inputFingerprint,
-      instagramAccountId: accountId,
-      now,
-      runId: run.id,
-    });
-
-    return { activated: result.activated, runId: run.id };
-  }
-
   it("publishes a complete set and clears the marker", async () => {
     await seedPosts();
     await markAnalyticsDirty(database, context, {
@@ -665,5 +670,182 @@ describe("publishing a run", () => {
     await expect(
       findActiveAnalyticsRun(database, createWorkspaceContext(createId()), accountId),
     ).resolves.toBeNull();
+  });
+});
+
+describe("reading published trends", () => {
+  async function publish(now = calculatedAt): Promise<string> {
+    await seedPosts();
+    await markAnalyticsDirty(database, context, { instagramAccountId: accountId, now });
+    const result = await runOnce(now);
+    expect(result.activated).toBe(true);
+
+    return result.runId;
+  }
+
+  it("returns the active run's complete set", async () => {
+    const runId = await publish();
+    const list = await loadAccountTrends(database, context, { instagramAccountId: accountId });
+
+    expect(list.calculation?.id).toBe(runId);
+    expect(list.trends.length).toBe(list.calculation?.statisticCount);
+    expect(list.trends.length).toBeGreaterThan(0);
+  });
+
+  it("shows nothing before anything has been published", async () => {
+    // A newly connected account genuinely has no statistics. That is a state the
+    // screen explains, not an error, so the calculation is null rather than a
+    // throw or an empty run.
+    const list = await loadAccountTrends(database, context, { instagramAccountId: accountId });
+
+    expect(list.calculation).toBeNull();
+    expect(list.trends).toHaveLength(0);
+  });
+
+  it("never mixes a superseded run's statistics into the current set", async () => {
+    // The table holds every row every run ever wrote. Reading it directly would
+    // pair a current statistic with a superseded one and present the two as a
+    // set, which is exactly what atomic publication exists to prevent.
+    const firstRunId = await publish();
+
+    await analysedPost({
+      hookCategory: "story",
+      likes: 900,
+      publishedAt: new Date(Date.UTC(2026, 6, 1)),
+    });
+    await markAnalyticsDirty(database, context, {
+      instagramAccountId: accountId,
+      now: new Date(calculatedAt.getTime() + 60_000),
+    });
+    const second = await runOnce(new Date(calculatedAt.getTime() + 120_000));
+
+    const list = await loadAccountTrends(database, context, { instagramAccountId: accountId });
+    const publishedByFirst = await database.accountAnalyticsRunStatistic.findMany({
+      select: { statisticId: true },
+      where: { runId: firstRunId },
+    });
+    const publishedBySecond = new Set(list.trends.map((trend) => trend.id));
+
+    expect(list.calculation?.id).toBe(second.runId);
+    // Rows the first run published and the second did not must be absent, even
+    // though they are still in the statistics table.
+    const dropped = publishedByFirst.filter((row) => !publishedBySecond.has(row.statisticId));
+    expect(dropped.length).toBeGreaterThan(0);
+    expect(list.trends.length).toBeGreaterThan(0);
+  });
+
+  it("narrows to a metric, a feature and a confidence class", async () => {
+    await publish();
+
+    const byMetric = await loadAccountTrends(database, context, {
+      instagramAccountId: accountId,
+      metric: "like_rate_reach",
+    });
+    expect(byMetric.trends.every((trend) => trend.metric === "like_rate_reach")).toBe(true);
+    expect(byMetric.trends.length).toBeGreaterThan(0);
+
+    const byFeature = await loadAccountTrends(database, context, {
+      featurePath: "content.hook.category",
+      instagramAccountId: accountId,
+    });
+    expect(byFeature.trends.every((trend) => trend.featurePath === "content.hook.category")).toBe(
+      true,
+    );
+
+    const byConfidence = await loadAccountTrends(database, context, {
+      confidence: "insufficient_evidence",
+      instagramAccountId: accountId,
+    });
+    expect(byConfidence.trends.every((trend) => trend.confidence === "insufficient_evidence")).toBe(
+      true,
+    );
+  });
+
+  it("returns an empty set rather than everything for an invalid filter", async () => {
+    await publish();
+
+    const list = await loadAccountTrends(database, context, {
+      instagramAccountId: accountId,
+      matchesNothing: true,
+    });
+
+    expect(list.trends).toHaveLength(0);
+    expect(list.calculation).toBeNull();
+  });
+
+  it("resolves one trend with the posts on both sides", async () => {
+    await publish();
+    const list = await loadAccountTrends(database, context, { instagramAccountId: accountId });
+    const target = list.trends.find((trend) => trend.groupCount > 0 && trend.comparisonCount > 0);
+
+    const detail = await loadTrendDetail(database, context, {
+      instagramAccountId: accountId,
+      statisticId: target?.id as string,
+    });
+
+    expect(detail?.trend.id).toBe(target?.id);
+    expect(detail?.contributors.filter((post) => post.membership === "group")).toHaveLength(
+      target?.groupCount as number,
+    );
+    // Both sides, so a positive claim cannot hide its own counterexamples.
+    expect(detail?.contributors.filter((post) => post.membership === "comparison")).toHaveLength(
+      target?.comparisonCount as number,
+    );
+  });
+
+  it("does not resolve a statistic the active run stopped publishing", async () => {
+    const firstRunId = await publish();
+
+    await analysedPost({
+      hookCategory: "story",
+      likes: 900,
+      publishedAt: new Date(Date.UTC(2026, 6, 1)),
+    });
+    await markAnalyticsDirty(database, context, {
+      instagramAccountId: accountId,
+      now: new Date(calculatedAt.getTime() + 60_000),
+    });
+    await runOnce(new Date(calculatedAt.getTime() + 120_000));
+
+    const current = new Set(
+      (await loadAccountTrends(database, context, { instagramAccountId: accountId })).trends.map(
+        (trend) => trend.id,
+      ),
+    );
+    const superseded = (
+      await database.accountAnalyticsRunStatistic.findMany({
+        select: { statisticId: true },
+        where: { runId: firstRunId },
+      })
+    ).find((row) => !current.has(row.statisticId));
+
+    // A link to a superseded statistic reads as absent rather than silently
+    // showing a reader an old result at a current-looking URL.
+    await expect(
+      loadTrendDetail(database, context, {
+        instagramAccountId: accountId,
+        statisticId: superseded?.statisticId as string,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("is invisible to another workspace", async () => {
+    await publish();
+    const other = createWorkspaceContext(createId());
+
+    await expect(
+      loadAccountTrends(database, other, { instagramAccountId: accountId }),
+    ).resolves.toMatchObject({ calculation: null });
+  });
+
+  it("offers only the feature paths the published run produced", async () => {
+    await publish();
+
+    const paths = await listTrendFeaturePaths(database, context, accountId);
+
+    expect(paths).toContain("content.hook.category");
+    // Every post in the fixture is 30 seconds, so duration has one value and was
+    // never compared. Offering it would lead a reader to an empty screen.
+    expect(paths).not.toContain("content.durationBand");
   });
 });

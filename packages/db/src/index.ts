@@ -183,6 +183,20 @@ export {
   type CohortRequest,
 } from "./analytics-cohorts.js";
 export {
+  isConfidenceClass,
+  isDerivedMetric,
+  listTrendFeaturePaths,
+  loadAccountTrends,
+  loadTrendDetail,
+  trendPageSize,
+  type TrendCalculation,
+  type TrendContributor,
+  type TrendDetail,
+  type TrendList,
+  type TrendListFilters,
+  type TrendListItem,
+} from "./analytics-trends.js";
+export {
   analyticsFeatures,
   analyticsPostLimit,
   buildFeatureRequests,
