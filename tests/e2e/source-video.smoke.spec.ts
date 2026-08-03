@@ -13,8 +13,10 @@ test("the source video upload states the limits and stays usable at the active v
   await expect(page.getByRole("heading", { level: 1, name: "Source video" })).toBeVisible();
 
   // Formats and the ceiling are stated before a file is chosen, so a user is
-  // not told after a long upload that the file was never eligible.
-  await expect(page.getByText(/MP4, MOV or WebM, up to 1 GB/u)).toBeVisible();
+  // not told after a long upload that the file was never eligible. The number
+  // comes from UPLOAD_MAX_BYTES rather than being written into the page, so the
+  // assertion matches any configured size rather than pinning one deployment's.
+  await expect(page.getByText(/MP4, MOV or WebM, up to [\d.]+ (?:KB|MB|GB)/u)).toBeVisible();
   await expect(page.getByText("No video selected")).toBeVisible();
 
   // Upload and validation are named separately, so a finished upload is never
