@@ -11,6 +11,7 @@ import {
   publishPostAnalysis,
   recordAnalysisProviderFile,
 } from "../../src/post-analysis.js";
+import { requestPostAnalysis } from "../../src/analysis-request-command.js";
 import { developmentWorkspace } from "../../src/seed-data.js";
 import { createWorkspaceContext } from "../../src/workspace-context.js";
 
@@ -458,5 +459,76 @@ describe("analysisExistsForJob", () => {
     );
 
     expect(await analysisExistsForJob(database, context, backgroundJobId)).toBe(true);
+  });
+});
+
+describe("requestPostAnalysis", () => {
+  it("freezes the inputs and enqueues one job", async () => {
+    const outcome = await requestPostAnalysis(database, context, {
+      correlationId: createId(),
+      instagramPostId: postId,
+    });
+
+    expect(outcome).toMatchObject({ created: true, requested: true });
+
+    const job = await database.analysisJob.findFirstOrThrow();
+    expect(job).toMatchObject({ instagramPostId: postId, stage: "QUEUED", videoAssetId: assetId });
+    expect(await database.backgroundJob.count({ where: { queueName: "analysis.run" } })).toBe(2);
+  });
+
+  it("collapses a duplicate submit onto one logical request", async () => {
+    // Two people pressing analyse on the same post under the same contract must
+    // produce one job and one provider call.
+    const first = await requestPostAnalysis(database, context, {
+      correlationId: createId(),
+      instagramPostId: postId,
+    });
+    const second = await requestPostAnalysis(database, context, {
+      correlationId: createId(),
+      instagramPostId: postId,
+    });
+
+    expect(second).toMatchObject({ created: false, requested: true });
+    expect(first).toHaveProperty(
+      "backgroundJobId",
+      (second as { backgroundJobId: string }).backgroundJobId,
+    );
+    expect(await database.analysisJob.count()).toBe(1);
+  });
+
+  it("refuses a post whose asset has not been validated", async () => {
+    await database.videoAsset.updateMany({
+      data: { state: "PENDING_VALIDATION" },
+      where: { id: assetId },
+    });
+
+    expect(
+      await requestPostAnalysis(database, context, {
+        correlationId: createId(),
+        instagramPostId: postId,
+      }),
+    ).toEqual({ reason: "asset_not_ready", requested: false });
+    expect(await database.analysisJob.count()).toBe(0);
+  });
+
+  it("refuses a post with no source video", async () => {
+    await database.videoAsset.deleteMany({ where: { id: assetId } });
+
+    expect(
+      await requestPostAnalysis(database, context, {
+        correlationId: createId(),
+        instagramPostId: postId,
+      }),
+    ).toEqual({ reason: "no_source_video", requested: false });
+  });
+
+  it("treats a crafted post identifier exactly like an absent one", async () => {
+    expect(
+      await requestPostAnalysis(database, createWorkspaceContext(createId()), {
+        correlationId: createId(),
+        instagramPostId: postId,
+      }),
+    ).toEqual({ reason: "post_not_found", requested: false });
+    expect(await database.analysisJob.count()).toBe(0);
   });
 });
