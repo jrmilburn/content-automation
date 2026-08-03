@@ -119,6 +119,15 @@ export {
   type InstagramSnapshotValueRow,
 } from "./instagram-insights.js";
 export {
+  calculateFeatureFamily,
+  createStatisticFingerprint,
+  storeFeatureStatistics,
+  type CalculatedComparison,
+  type FeatureComparisonCandidate,
+  type FeatureObservation,
+  type FeatureStatisticRequest,
+} from "./feature-statistics.js";
+export {
   analysisRequestRefusals,
   requestPostAnalysis,
   type AnalysisRequestOutcome,
