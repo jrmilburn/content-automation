@@ -173,6 +173,7 @@ model Workspace {
   analysisJobs   AnalysisJob[]
   auditEvents    AuditEvent[]
   backgroundJobs BackgroundJob[]
+  analyticsRuns         AccountAnalyticsRun[]
   featureStatistics     AccountFeatureStatistic[]
   featureStatisticPosts AccountFeatureStatisticPost[]
   postAnalyses   PostAnalysis[]
@@ -360,8 +361,15 @@ model InstagramAccount {
   workspace               Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   credentials             IntegrationCredential[]
   posts                   InstagramPost[]
+  // Analytics debounce. `analyticsDirtySince` is when the first unprocessed
+  // change arrived and `analyticsDueAt` is when a run becomes due; a later
+  // change moves neither, so a burst of imports produces one run rather than
+  // one per snapshot. Cleared only when a run activates over those inputs.
+  analyticsDirtySince     DateTime?                 @map("analytics_dirty_since") @db.Timestamptz(3)
+  analyticsDueAt          DateTime?                 @map("analytics_due_at") @db.Timestamptz(3)
   syncRuns                SyncRun[]
   featureStatistics       AccountFeatureStatistic[]
+  analyticsRuns           AccountAnalyticsRun[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, providerAccountId])
@@ -879,6 +887,9 @@ model AccountFeatureStatistic {
   id                     String                     @id @db.Uuid
   workspaceId            String                     @map("workspace_id") @db.Uuid
   instagramAccountId     String                     @map("instagram_account_id") @db.Uuid
+  // The run that produced this row. Readers only ever see the statistics of the
+  // one ACTIVE run, which is what makes activation atomic.
+  calculationRunId       String                     @map("calculation_run_id") @db.Uuid
   // Dotted path into the analysis contract, such as `content.hook.category`.
   featurePath            String                     @map("feature_path") @db.VarChar(128)
   featureValue           String                     @map("feature_value") @db.VarChar(64)
@@ -917,6 +928,7 @@ model AccountFeatureStatistic {
   createdAt              DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
   workspace              Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   account                InstagramAccount           @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
+  calculationRun         AccountAnalyticsRun        @relation(fields: [workspaceId, calculationRunId], references: [workspaceId, id], onDelete: Cascade)
   members                AccountFeatureStatisticPost[]
 
   @@unique([workspaceId, id])
@@ -952,4 +964,58 @@ model AccountFeatureStatisticPost {
   @@unique([statisticId, instagramPostId])
   @@index([workspaceId, instagramPostId])
   @@map("account_feature_statistic_posts")
+}
+
+enum AnalyticsRunState {
+  BUILDING
+  ACTIVE
+  SUPERSEDED
+  FAILED
+
+  @@map("analytics_run_state")
+}
+
+// One attempt to rebuild an account's complete statistic set.
+//
+// A run exists so activation can be atomic. Statistics are written while the run
+// is BUILDING and are invisible to readers, who only ever see the statistics of
+// the one ACTIVE run; flipping that pointer is a single statement, so a reader
+// sees the old complete set or the new complete set and never a half-written
+// mixture of both.
+//
+// Superseded runs are kept rather than deleted. A stored strategy cites a
+// specific statistic, and that statistic belongs to the run that produced it —
+// deleting the run would break the evidence link the strategy depends on.
+model AccountAnalyticsRun {
+  id                 String                    @id @db.Uuid
+  workspaceId        String                    @map("workspace_id") @db.Uuid
+  instagramAccountId String                    @map("instagram_account_id") @db.Uuid
+  state              AnalyticsRunState         @default(BUILDING)
+  ageWindow          String                    @map("age_window") @db.VarChar(16)
+  publishedFrom      DateTime                  @map("published_from") @db.Timestamptz(3)
+  publishedTo        DateTime                  @map("published_to") @db.Timestamptz(3)
+  // Hashes the analyses and snapshots the run read. A run whose inputs changed
+  // while it was building is rejected rather than activated, because it would
+  // publish a set that never existed at any single moment.
+  inputFingerprint   String                    @map("input_fingerprint") @db.Char(64)
+  statisticCount     Int                       @default(0) @map("statistic_count")
+  analysisCount      Int                       @default(0) @map("analysis_count")
+  analyticsVersion   String                    @map("analytics_version") @db.VarChar(64)
+  statisticsVersion  String                    @map("statistics_version") @db.VarChar(64)
+  startedAt          DateTime                  @map("started_at") @db.Timestamptz(3)
+  activatedAt        DateTime?                 @map("activated_at") @db.Timestamptz(3)
+  durationMs         Int?                      @map("duration_ms")
+  failureCode        String?                   @map("failure_code") @db.VarChar(64)
+  createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace          Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  account            InstagramAccount          @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
+  statistics         AccountFeatureStatistic[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, instagramAccountId, startedAt(sort: Desc)], map: "analytics_runs_account_started_idx")
+  // One ACTIVE run per account is enforced by a partial unique index in the
+  // migration; Prisma cannot express a filtered unique index.
+  @@index([workspaceId, state], map: "analytics_runs_state_idx")
+  @@map("account_analytics_runs")
 }

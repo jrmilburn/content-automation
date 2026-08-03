@@ -235,6 +235,9 @@ export async function storeFeatureStatistics(
   request: FeatureStatisticRequest,
   calculated: readonly CalculatedComparison[],
   calculatedAt: Date,
+  // The run these belong to. Rows written under a BUILDING run are invisible to
+  // readers until it activates, which is what makes publication atomic.
+  calculationRunId: string,
 ): Promise<Readonly<{ stored: number; skipped: number }>> {
   let stored = 0;
   let skipped = 0;
@@ -265,12 +268,27 @@ export async function storeFeatureStatistics(
     await database.$transaction(async (transaction) => {
       await transaction.accountFeatureStatistic.create({
         data: {
+          // Three relations share `workspaceId`, so Prisma requires the checked
+          // input: each composite key is connected rather than set as a scalar.
+          account: {
+            connect: {
+              workspaceId_id: {
+                id: request.instagramAccountId,
+                workspaceId: context.workspaceId,
+              },
+            },
+          },
           ageWindow: request.ageWindow,
           analysisSchemaVersion,
           analyticsVersion,
           bootstrapResamples: statistic.interval?.resamples ?? null,
           bootstrapSeed: statistic.interval === null ? null : BigInt(statistic.interval.seed),
           calculatedAt,
+          calculationRun: {
+            connect: {
+              workspaceId_id: { id: calculationRunId, workspaceId: context.workspaceId },
+            },
+          },
           classificationReason: statistic.reason,
           cohortVersion: cohortSelectionVersion,
           comparisonCount: statistic.comparisonCount,
@@ -291,7 +309,6 @@ export async function storeFeatureStatistics(
           groupMedian: decimal(statistic.groupSpread.median),
           id,
           inputFingerprint: entry.fingerprint,
-          instagramAccountId: request.instagramAccountId,
           intervalConfidence: decimal(
             statistic.classification === "statistically_supported_association" ? 0.95 : 0.8,
           ),
@@ -310,7 +327,7 @@ export async function storeFeatureStatistics(
           sensitivityHoldsDirection: statistic.sensitivity.preservesDirection,
           statisticsVersion,
           topContributorShare: decimal(statistic.topContributorShare),
-          workspaceId: context.workspaceId,
+          workspace: { connect: { id: context.workspaceId } },
         },
       });
 
