@@ -47,6 +47,11 @@ import {
 } from "./uploads/asset-validate-handler.js";
 import { createFfprobeMediaProbe } from "./uploads/media-probe.js";
 import { createAnalysisRunHandler, analysisRunQueue } from "./analysis/analysis-run-handler.js";
+import {
+  analyticsRecalculateQueue,
+  createAnalyticsRecalculateHandler,
+} from "./analytics/recalculate-handler.js";
+import { createAnalyticsScheduler } from "./analytics/analytics-scheduler.js";
 import { createWorkerGeminiAdapter } from "./analysis/gemini-client.js";
 import { createWorkerObjectStorage } from "./uploads/object-storage.js";
 
@@ -168,12 +173,17 @@ const registry = createQueueHandlerRegistry([
     logger,
     storage: objectStorage,
   }),
+  createAnalyticsRecalculateHandler({
+    database,
+    logger,
+  }),
 ]);
 const workerRuntime = createQueueWorkerRuntime({
   client: queue,
   registry,
   requiredQueues: [
     analysisRunQueue,
+    analyticsRecalculateQueue,
     assetCleanupQueue,
     assetValidateQueue,
     instagramSnapshotQueue,
@@ -209,6 +219,16 @@ const assetCleanup = createAssetCleanupScheduler({
   intervalMs: config.QUEUE_RECONCILE_INTERVAL_SECONDS * 1_000 * 60,
   logger,
 });
+const analyticsScheduler = createAnalyticsScheduler({
+  batchSize: config.QUEUE_DISPATCH_BATCH_SIZE,
+  database,
+  errorMonitor,
+  // The debounce window is five minutes, so sweeping much faster than that only
+  // rediscovers the same accounts; the dirty-anchored idempotency key makes the
+  // exact interval safe either way.
+  intervalMs: config.QUEUE_RECONCILE_INTERVAL_SECONDS * 1_000 * 12,
+  logger,
+});
 const reconciler = createOutboxReconciler({
   batchSize: config.QUEUE_DISPATCH_BATCH_SIZE,
   correlationId: lifecycleCorrelationId,
@@ -234,6 +254,7 @@ async function start(): Promise<void> {
     tokenMaintenance.start();
     syncScheduler.start();
     assetCleanup.start();
+    analyticsScheduler.start();
     server.listen(config.WORKER_HEALTH_PORT, () => {
       logger.info("worker.started", {
         correlationId: lifecycleCorrelationId,
@@ -266,6 +287,7 @@ function shutDown(signal: NodeJS.Signals): Promise<void> {
 
   shutdownPromise = (async () => {
     try {
+      await analyticsScheduler.stop();
       await assetCleanup.stop();
       await syncScheduler.stop();
       await tokenMaintenance.stop();

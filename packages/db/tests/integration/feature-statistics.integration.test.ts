@@ -10,6 +10,7 @@ import {
   type FeatureObservation,
   type FeatureStatisticRequest,
 } from "../../src/feature-statistics.js";
+import { startAnalyticsRun } from "../../src/analytics-runs.js";
 import { createId } from "../../src/id.js";
 import { developmentWorkspace } from "../../src/seed-data.js";
 import { createWorkspaceContext } from "../../src/workspace-context.js";
@@ -28,6 +29,7 @@ let database: DatabaseClient;
 const context = createWorkspaceContext(developmentWorkspace.id);
 const calculatedAt = new Date("2026-08-03T04:00:00.000Z");
 let accountId: string;
+let runId: string;
 
 function observations(count: number, value: number, dayOffset = 0): FeatureObservation[] {
   return Array.from({ length: count }, (_unused, index) => ({
@@ -68,7 +70,12 @@ function request(overrides: Partial<FeatureStatisticRequest> = {}): FeatureStati
 
 async function clear(): Promise<void> {
   await database.accountFeatureStatisticPost.deleteMany();
+  // Publications reference statistics and restrict their deletion, so they go
+  // first — a run must not be able to lose a statistic it published.
+  await database.accountAnalyticsRunStatistic.deleteMany();
   await database.accountFeatureStatistic.deleteMany();
+  // Runs reference the account, so they go before it.
+  await database.accountAnalyticsRun.deleteMany();
   await database.instagramAccount.deleteMany();
 }
 
@@ -90,6 +97,20 @@ beforeEach(async () => {
       workspaceId: developmentWorkspace.id,
     },
   });
+
+  // Statistics belong to a calculation run, and are invisible to readers until
+  // it activates. These tests exercise the write, so the run stays BUILDING.
+  const started = await startAnalyticsRun(database, context, {
+    ageWindow: "day_30",
+    analysisCount: 36,
+    inputFingerprint: "f".repeat(64),
+    instagramAccountId: accountId,
+    now: calculatedAt,
+    publishedFrom: new Date("2026-01-01T00:00:00.000Z"),
+    publishedTo: new Date("2026-07-31T00:00:00.000Z"),
+  });
+
+  runId = started.id;
 });
 
 afterAll(async () => {
@@ -102,7 +123,14 @@ describe("storeFeatureStatistics", () => {
     const input = request();
     const calculated = calculateFeatureFamily(input);
 
-    const result = await storeFeatureStatistics(database, context, input, calculated, calculatedAt);
+    const result = await storeFeatureStatistics(
+      database,
+      context,
+      input,
+      calculated,
+      calculatedAt,
+      runId,
+    );
 
     expect(result).toEqual({ skipped: 0, stored: 1 });
 
@@ -131,13 +159,14 @@ describe("storeFeatureStatistics", () => {
     const input = request();
     const calculated = calculateFeatureFamily(input);
 
-    await storeFeatureStatistics(database, context, input, calculated, calculatedAt);
+    await storeFeatureStatistics(database, context, input, calculated, calculatedAt, runId);
     const second = await storeFeatureStatistics(
       database,
       context,
       input,
       calculated,
       new Date("2026-08-04T00:00:00.000Z"),
+      runId,
     );
 
     expect(second).toEqual({ skipped: 1, stored: 0 });
@@ -152,6 +181,7 @@ describe("storeFeatureStatistics", () => {
       first,
       calculateFeatureFamily(first),
       calculatedAt,
+      runId,
     );
 
     const second = request({ candidates: [candidate({ group: observations(12, 0.25) })] });
@@ -161,6 +191,7 @@ describe("storeFeatureStatistics", () => {
       second,
       calculateFeatureFamily(second),
       calculatedAt,
+      runId,
     );
 
     expect(await database.accountFeatureStatistic.count()).toBe(2);
@@ -174,6 +205,7 @@ describe("storeFeatureStatistics", () => {
       input,
       calculateFeatureFamily(input),
       calculatedAt,
+      runId,
     );
 
     const stored = await database.accountFeatureStatistic.findFirstOrThrow();
@@ -196,6 +228,7 @@ describe("storeFeatureStatistics", () => {
       input,
       calculateFeatureFamily(input),
       calculatedAt,
+      runId,
     );
 
     expect(await database.accountFeatureStatistic.findFirstOrThrow()).toMatchObject({
@@ -212,6 +245,7 @@ describe("storeFeatureStatistics", () => {
       input,
       calculateFeatureFamily(input),
       calculatedAt,
+      runId,
     );
 
     expect(

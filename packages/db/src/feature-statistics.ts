@@ -254,6 +254,9 @@ export async function storeFeatureStatistics(
   request: FeatureStatisticRequest,
   calculated: readonly CalculatedComparison[],
   calculatedAt: Date,
+  // The run these belong to. Rows written under a BUILDING run are invisible to
+  // readers until it activates, which is what makes publication atomic.
+  calculationRunId: string,
 ): Promise<Readonly<{ stored: number; skipped: number }>> {
   let stored = 0;
   let skipped = 0;
@@ -273,6 +276,10 @@ export async function storeFeatureStatistics(
     });
 
     if (existing) {
+      // The row is unchanged, but this run still publishes it. Without the
+      // membership the run's set would contain only what happened to change,
+      // and a reader would see a partial set presented as a complete one.
+      await publishInRun(database, context, calculationRunId, existing.id);
       skipped += 1;
       continue;
     }
@@ -283,12 +290,27 @@ export async function storeFeatureStatistics(
     await database.$transaction(async (transaction) => {
       await transaction.accountFeatureStatistic.create({
         data: {
+          // Three relations share `workspaceId`, so Prisma requires the checked
+          // input: each composite key is connected rather than set as a scalar.
+          account: {
+            connect: {
+              workspaceId_id: {
+                id: request.instagramAccountId,
+                workspaceId: context.workspaceId,
+              },
+            },
+          },
           ageWindow: request.ageWindow,
           analysisSchemaVersion,
           analyticsVersion,
           bootstrapResamples: statistic.interval?.resamples ?? null,
           bootstrapSeed: statistic.interval === null ? null : BigInt(statistic.interval.seed),
           calculatedAt,
+          calculationRun: {
+            connect: {
+              workspaceId_id: { id: calculationRunId, workspaceId: context.workspaceId },
+            },
+          },
           classificationReason: statistic.reason,
           cohortVersion: cohortSelectionVersion,
           comparisonCount: statistic.comparisonCount,
@@ -309,7 +331,6 @@ export async function storeFeatureStatistics(
           groupMedian: decimal(statistic.groupSpread.median),
           id,
           inputFingerprint: entry.fingerprint,
-          instagramAccountId: request.instagramAccountId,
           intervalConfidence: decimal(
             statistic.classification === "statistically_supported_association" ? 0.95 : 0.8,
           ),
@@ -328,7 +349,7 @@ export async function storeFeatureStatistics(
           sensitivityHoldsDirection: statistic.sensitivity.preservesDirection,
           statisticsVersion,
           topContributorShare: decimal(statistic.topContributorShare),
-          workspaceId: context.workspaceId,
+          workspace: { connect: { id: context.workspaceId } },
         },
       });
 
@@ -353,10 +374,30 @@ export async function storeFeatureStatistics(
         })),
         skipDuplicates: true,
       });
+
+      await publishInRun(transaction, context, calculationRunId, id);
     });
 
     stored += 1;
   }
 
   return Object.freeze({ skipped, stored });
+}
+
+/**
+ * Records that a run publishes a statistic.
+ *
+ * Idempotent, because a redelivered job re-walks the same family and must arrive
+ * at the same set rather than failing on the second pass.
+ */
+async function publishInRun(
+  executor: PrismaClient | Prisma.TransactionClient,
+  context: WorkspaceContext,
+  runId: string,
+  statisticId: string,
+): Promise<void> {
+  await executor.accountAnalyticsRunStatistic.createMany({
+    data: [{ runId, statisticId, workspaceId: context.workspaceId }],
+    skipDuplicates: true,
+  });
 }

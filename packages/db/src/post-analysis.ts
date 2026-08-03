@@ -5,6 +5,7 @@ import {
   type PostCreativeAnalysisV1,
 } from "@studio-parallel/domain";
 
+import { markAnalyticsDirty } from "./analytics-runs.js";
 import type { Prisma, PrismaClient } from "./generated/prisma/client.js";
 import { createId } from "./id.js";
 import type { WorkspaceContext } from "./workspace-context.js";
@@ -257,6 +258,22 @@ export async function publishPostAnalysis(
     data: { providerFileName: null, stage: "PUBLISHED" },
     where: { id: input.analysisJobId, workspaceId: context.workspaceId },
   });
+
+  // A newly current analysis changes what every comparison for this account is
+  // grouped by, so the account's statistics are now stale. Marked inside the
+  // same transaction: a marker written afterwards could be lost to a crash,
+  // leaving a published analysis that nothing would ever calculate over.
+  const post = await executor.instagramPost.findFirst({
+    select: { instagramAccountId: true },
+    where: { id: input.instagramPostId, workspaceId: context.workspaceId },
+  });
+
+  if (post) {
+    await markAnalyticsDirty(executor, context, {
+      instagramAccountId: post.instagramAccountId,
+      now: input.analysedAt,
+    });
+  }
 
   return Object.freeze({ analysisId: id, published: true });
 }

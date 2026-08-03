@@ -119,6 +119,22 @@ export {
   type InstagramSnapshotValueRow,
 } from "./instagram-insights.js";
 export {
+  activateAnalyticsRun,
+  analyticsDebounceMs,
+  analyticsRunFailureCodes,
+  createRunInputFingerprint,
+  failAnalyticsRun,
+  findActiveAnalyticsRun,
+  listAccountsDueForAnalytics,
+  markAnalyticsDirty,
+  startAnalyticsRun,
+  type ActivationResult,
+  type ActiveRunSummary,
+  type AnalyticsRunFailureCode,
+  type DueAccount,
+  type StartedRun,
+} from "./analytics-runs.js";
+export {
   grantWorkspaceMember,
   isApprovedWorkspaceEmail,
   memberGrantOutcomes,
@@ -166,6 +182,16 @@ export {
   type CohortMember,
   type CohortRequest,
 } from "./analytics-cohorts.js";
+export {
+  analyticsFeatures,
+  analyticsPostLimit,
+  buildFeatureRequests,
+  loadAnalyticsInputs,
+  type AnalyticsFeature,
+  type AnalyticsInputPost,
+  type AnalyticsInputRequest,
+  type AnalyticsInputSet,
+} from "./analytics-features.js";
 export {
   instagramPostPageSize,
   instagramPostSearchLimit,
