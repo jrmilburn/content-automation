@@ -29,7 +29,7 @@
     "db:generate": "npm run generate -w @studio-parallel/db",
     "db:migrate:deploy": "npm run migrate:deploy -w @studio-parallel/db",
     "db:migrate:dev": "npm run migrate:dev -w @studio-parallel/db --",
-    "db:seed": "npm run build -w @studio-parallel/config && npm run seed -w @studio-parallel/db",
+    "db:seed": "npm run build:packages && npm run seed -w @studio-parallel/db",
     "db:validate": "npm run validate -w @studio-parallel/db",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
