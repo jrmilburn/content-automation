@@ -1,4 +1,4 @@
-import { assertJobTransition } from "@studio-parallel/domain";
+import { assertJobTransition, queueDeliveryExpirySeconds } from "@studio-parallel/domain";
 import {
   OperationalError,
   parseCorrelationId,
@@ -121,6 +121,44 @@ export async function reconcileBackgroundJobs(
         jobId: job.id,
         outcome: "REPAIRED",
         reasonCode: "RETRY_DUE_REQUEUED",
+      });
+    }
+  }
+
+  // A job returned to QUEUED whose outbox row still says it was dispatched will
+  // never be delivered again: the dispatcher only publishes undispatched rows,
+  // and no other rule matches this shape. Jobs stranded before the release path
+  // started resetting the row are recovered here.
+  //
+  // The age bound is the whole rule. QUEUED with no lease and a dispatched
+  // outbox is *also* the state of a perfectly healthy job in the window between
+  // the dispatcher publishing and a worker claiming, so an unbounded version of
+  // this query matches almost every queued job on every tick — requeueing live
+  // work, inflating the dispatch count and making a repair count that should
+  // read zero read permanently non-zero. Past the delivery expiry no message can
+  // still be in flight, so what remains is genuinely stranded.
+  const strandedDelivery = await options.database.backgroundJob.findMany({
+    select: { cancellationRequestedAt: true, id: true, state: true, workspaceId: true },
+    take: batchSize,
+    where: {
+      leaseId: null,
+      outbox: {
+        cancelledAt: null,
+        dispatchedAt: { lte: new Date(now.getTime() - queueDeliveryExpirySeconds * 1_000) },
+      },
+      state: "QUEUED",
+    },
+  });
+  inspected += strandedDelivery.length;
+  for (const job of strandedDelivery) {
+    if (
+      await requeueStrandedDelivery(options.database, job.id, job.workspaceId, correlationId, now)
+    ) {
+      repaired += 1;
+      recordReconciliationTelemetry(options.telemetry, correlationId, job.workspaceId, {
+        jobId: job.id,
+        outcome: "REPAIRED",
+        reasonCode: "STRANDED_DELIVERY_REQUEUED",
       });
     }
   }
@@ -286,6 +324,60 @@ async function requeueDueRetry(
       "RETRY_DUE_REQUEUED",
       now,
     );
+    return true;
+  });
+}
+
+/**
+ * Makes a stranded job deliverable again.
+ *
+ * Clears the delivery record so the dispatcher will publish it, and returns the
+ * job's dispatch status to PENDING to match. The delivery identifier is dropped
+ * rather than reused, because #114 established that reusing one makes the queue
+ * refuse the redelivery.
+ */
+async function requeueStrandedDelivery(
+  database: JobDatabase,
+  jobId: string,
+  workspaceId: string,
+  correlationId: ReturnType<typeof parseCorrelationId> & {},
+  now: Date,
+): Promise<boolean> {
+  return database.$transaction(async (transaction) => {
+    const job = await transaction.backgroundJob.findFirst({
+      where: {
+        id: jobId,
+        leaseId: null,
+        outbox: { cancelledAt: null, dispatchedAt: { not: null } },
+        state: "QUEUED",
+        workspaceId,
+      },
+    });
+    if (!job) return false;
+
+    // The job row goes first, in the order every other repair in this file takes
+    // its locks, and its count is the concurrency guard: a worker that claimed
+    // this job between the scan and here has already moved the version, and
+    // reporting a repair that did not happen would be worse than doing nothing.
+    const claimed = await transaction.backgroundJob.updateMany({
+      data: { dispatchStatus: "PENDING", version: { increment: 1 } },
+      where: { id: job.id, version: job.version, workspaceId },
+    });
+    if (claimed.count !== 1) return false;
+
+    await resetOutbox(transaction, job, now);
+
+    await createServiceAudit(
+      transaction,
+      correlationId,
+      workspaceId,
+      "background_job",
+      job.id,
+      "REPAIRED",
+      "STRANDED_DELIVERY_REQUEUED",
+      now,
+    );
+
     return true;
   });
 }

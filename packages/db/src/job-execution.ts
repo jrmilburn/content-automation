@@ -312,7 +312,15 @@ export async function recoverExpiredBackgroundJobLease(
       const updated = await transaction.backgroundJob.updateMany({
         data: {
           completedAt: exhausted || cancellationRequested ? now : null,
-          dispatchStatus: cancellationRequested ? "CANCELLED" : job.dispatchStatus,
+          // A job going back to QUEUED needs delivering again, so its dispatch
+          // status returns to PENDING alongside the outbox reset below. Leaving
+          // it DISPATCHED left the job claiming RETRY_AUTOMATIC while no rule
+          // in the dispatcher or the reconciler could ever pick it up.
+          dispatchStatus: cancellationRequested
+            ? "CANCELLED"
+            : nextState === "QUEUED"
+              ? "PENDING"
+              : job.dispatchStatus,
           lastErrorClass: cancellationRequested ? null : "TRANSIENT",
           lastErrorCode: cancellationRequested ? null : "JOB_LEASE_EXPIRED",
           leaseExpiresAt: null,
@@ -351,6 +359,24 @@ export async function recoverExpiredBackgroundJobLease(
         await transaction.jobOutbox.updateMany({
           data: { cancelledAt: now, leaseExpiresAt: null, leaseId: null },
           where: { backgroundJobId: job.id },
+        });
+      } else if (nextState === "QUEUED") {
+        // The outbox row is the delivery record, and it is retained after
+        // dispatch. Clearing `dispatchedAt` is what makes the dispatcher pick
+        // this job up again; without it the row says the work was already
+        // handed over and the job is stranded despite reading as retryable.
+        //
+        // A fresh delivery identifier is required rather than tidy: #114
+        // established that reusing one makes the queue refuse the redelivery.
+        await transaction.jobOutbox.updateMany({
+          data: {
+            dispatchedAt: null,
+            leaseExpiresAt: null,
+            leaseId: null,
+            nextAttemptAt: now,
+            queueDeliveryId: null,
+          },
+          where: { backgroundJobId: job.id, cancelledAt: null },
         });
       }
       if (audit && auditCorrelationId) {

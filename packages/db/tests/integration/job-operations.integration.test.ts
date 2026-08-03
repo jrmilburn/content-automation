@@ -1,5 +1,9 @@
 import { loadDatabaseConfig } from "@studio-parallel/config";
-import { JobHandlerFailure, type QueueJobEnvelope } from "@studio-parallel/domain";
+import {
+  JobHandlerFailure,
+  queueDeliveryExpirySeconds,
+  type QueueJobEnvelope,
+} from "@studio-parallel/domain";
 import {
   createJsonLogger,
   createMetricRecorder,
@@ -12,6 +16,7 @@ import { enqueueBackgroundJob } from "../../src/background-jobs.js";
 import { createDatabaseClient, type DatabaseClient } from "../../src/client.js";
 import {
   claimBackgroundJob,
+  recoverExpiredBackgroundJobLease,
   runIdempotentJobHandler,
   type JobDatabaseExecutor,
   type JobHandlerExecutionContext,
@@ -23,6 +28,7 @@ import {
   type JobOperationTelemetry,
   type JobOperatorContext,
 } from "../../src/job-operations.js";
+import { createId } from "../../src/id.js";
 import { reconcileBackgroundJobs } from "../../src/job-reconciliation.js";
 import { createWorkspaceContext } from "../../src/workspace-context.js";
 
@@ -699,3 +705,157 @@ function createTelemetry(): JobOperationTelemetry {
     }),
   };
 }
+
+/**
+ * Delivery after an interrupted attempt.
+ *
+ * The outbox row is the delivery record and is retained after dispatch. A job
+ * returned to QUEUED without resetting it reads as `RETRY_AUTOMATIC` and is
+ * never delivered again — the dispatcher only publishes undispatched rows, and
+ * no reconciliation rule matched that shape. Five jobs sat stranded in
+ * production because of it, and the previous test asserted only the label.
+ */
+describe("redelivery after an expired lease", () => {
+  async function markDispatched(jobId: string, at: Date): Promise<void> {
+    await database.jobOutbox.updateMany({
+      data: { dispatchedAt: at, queueDeliveryId: createId() },
+      where: { backgroundJobId: jobId },
+    });
+    await database.backgroundJob.updateMany({
+      data: { dispatchStatus: "DISPATCHED" },
+      where: { id: jobId },
+    });
+  }
+
+  it("makes an expired lease deliverable again, not merely queued", async () => {
+    const envelope = await enqueue("redelivery-expired");
+    const claimedAt = new Date("2026-07-28T05:00:00.000Z");
+
+    await markDispatched(envelope.domainJobId, claimedAt);
+    await claimBackgroundJob(database, workspaceContext, envelope.domainJobId, {
+      leaseDurationMs: 1_000,
+      now: claimedAt,
+    });
+
+    await recoverExpiredBackgroundJobLease(
+      database,
+      workspaceContext,
+      envelope.domainJobId,
+      new Date(claimedAt.getTime() + 2_000),
+    );
+
+    await expect(
+      database.backgroundJob.findUnique({ where: { id: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ dispatchStatus: "PENDING", state: "QUEUED" });
+
+    // The assertion that actually matters: the dispatcher selects on this.
+    await expect(
+      database.jobOutbox.findUnique({ where: { backgroundJobId: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ dispatchedAt: null, queueDeliveryId: null });
+  });
+
+  it("recovers a job stranded before the release path reset the record", async () => {
+    const envelope = await enqueue("redelivery-stranded");
+    const strandedAt = new Date("2026-07-28T05:05:00.000Z");
+
+    // Exactly the shape found in production: queued, unleased, already
+    // dispatched, and matched by no reconciliation rule.
+    await markDispatched(envelope.domainJobId, strandedAt);
+    await database.backgroundJob.updateMany({
+      data: {
+        // The shape check requires the class alongside the code, which is how
+        // a released lease actually records itself.
+        lastErrorClass: "TRANSIENT",
+        lastErrorCode: "JOB_LEASE_EXPIRED",
+        nextAction: "RETRY_AUTOMATIC",
+        state: "QUEUED",
+      },
+      where: { id: envelope.domainJobId },
+    });
+
+    // Past the delivery expiry, so no queue message can still be in flight.
+    const outcome = await reconcile(
+      new Date(strandedAt.getTime() + (queueDeliveryExpirySeconds + 60) * 1_000),
+    );
+
+    expect(outcome.repaired).toBeGreaterThanOrEqual(1);
+    await expect(
+      database.jobOutbox.findUnique({ where: { backgroundJobId: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ dispatchedAt: null });
+    await expect(
+      database.backgroundJob.findUnique({ where: { id: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ dispatchStatus: "PENDING" });
+  });
+
+  it("leaves a job the dispatcher has only just published alone", async () => {
+    // Queued, unleased, outbox dispatched is *also* what a healthy job looks
+    // like between the dispatcher publishing and a worker claiming. An earlier
+    // version of the stranded rule had no age bound and matched this, so it
+    // requeued live work on every tick and reported a repair every time.
+    const envelope = await enqueue("redelivery-in-flight");
+    const dispatchedAt = new Date("2026-07-28T05:20:00.000Z");
+    await markDispatched(envelope.domainJobId, dispatchedAt);
+
+    const outcome = await reconcile(new Date(dispatchedAt.getTime() + 30_000));
+
+    expect(outcome.repaired).toBe(0);
+    await expect(
+      database.jobOutbox.findUnique({ where: { backgroundJobId: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ dispatchedAt });
+    await expect(
+      database.backgroundJob.findUnique({ where: { id: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ dispatchStatus: "DISPATCHED" });
+  });
+
+  it("does not redeliver a job that has exhausted its attempts", async () => {
+    const envelope = await enqueue("redelivery-exhausted", { maxAttempts: 1 });
+    const claimedAt = new Date("2026-07-28T05:10:00.000Z");
+
+    await markDispatched(envelope.domainJobId, claimedAt);
+    await claimBackgroundJob(database, workspaceContext, envelope.domainJobId, {
+      leaseDurationMs: 1_000,
+      now: claimedAt,
+    });
+
+    await recoverExpiredBackgroundJobLease(
+      database,
+      workspaceContext,
+      envelope.domainJobId,
+      new Date(claimedAt.getTime() + 2_000),
+    );
+
+    // Attention, not another attempt: redelivering an exhausted job would loop.
+    await expect(
+      database.backgroundJob.findUnique({ where: { id: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ state: "FAILED_ATTENTION" });
+    await expect(
+      database.jobOutbox.findUnique({ where: { backgroundJobId: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ dispatchedAt: claimedAt });
+  });
+
+  it("does not redeliver a cancelled job", async () => {
+    const envelope = await enqueue("redelivery-cancelled");
+    const claimedAt = new Date("2026-07-28T05:15:00.000Z");
+
+    await markDispatched(envelope.domainJobId, claimedAt);
+    await claimBackgroundJob(database, workspaceContext, envelope.domainJobId, {
+      leaseDurationMs: 1_000,
+      now: claimedAt,
+    });
+    await cancel(envelope, new Date(claimedAt.getTime() + 500));
+
+    await recoverExpiredBackgroundJobLease(
+      database,
+      workspaceContext,
+      envelope.domainJobId,
+      new Date(claimedAt.getTime() + 2_000),
+    );
+
+    await expect(
+      database.backgroundJob.findUnique({ where: { id: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ state: "CANCELLED" });
+    await expect(
+      database.jobOutbox.findUnique({ where: { backgroundJobId: envelope.domainJobId } }),
+    ).resolves.toMatchObject({ cancelledAt: expect.anything() });
+  });
+});

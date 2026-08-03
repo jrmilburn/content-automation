@@ -277,6 +277,7 @@ export {
   isQueueName,
   parseQueueJobEnvelope,
   queueDefinitions,
+  queueDeliveryExpirySeconds,
   queueVersionKey,
   type QueueHandler,
   type QueueHandlerContext,
