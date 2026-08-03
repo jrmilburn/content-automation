@@ -80,6 +80,27 @@ async function clear(): Promise<void> {
   await database.instagramAccount.deleteMany();
 }
 
+/**
+ * The user an upload intent records.
+ *
+ * Upserted rather than assumed. Several integration files clear
+ * `internal_users` wholesale, so whether the seeded user still exists depends on
+ * the order vitest happens to run files in — and this file sorts after those.
+ * Depending on that order is how a fixture passes locally and fails in CI.
+ */
+async function ensureUploader(): Promise<void> {
+  await database.internalUser.upsert({
+    create: {
+      email: `strategy-${uploaderId}@studioparallel.invalid`,
+      id: uploaderId,
+      role: "ADMIN",
+      workspaceId: developmentWorkspace.id,
+    },
+    update: {},
+    where: { workspaceId_id: { id: uploaderId, workspaceId: developmentWorkspace.id } },
+  });
+}
+
 async function createAccount(): Promise<string> {
   const id = createId();
   await database.instagramAccount.create({
@@ -314,6 +335,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
   await clear();
+  await ensureUploader();
   accountId = await createAccount();
 });
 
