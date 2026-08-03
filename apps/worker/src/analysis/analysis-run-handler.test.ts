@@ -1,8 +1,8 @@
 import { JobHandlerFailure, queueDefinitions } from "@studio-parallel/domain";
 import { GeminiError } from "@studio-parallel/integrations";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { analysisRunQueue, toJobFailure } from "./analysis-run-handler.js";
+import { analysisRunQueue, toJobFailure, withHeartbeat } from "./analysis-run-handler.js";
 
 /**
  * How a provider failure becomes a retry decision.
@@ -93,4 +93,82 @@ describe("toJobFailure", () => {
       ).toBe("SEMANTIC_OUTPUT");
     },
   );
+});
+
+describe("lease survival during provider calls", () => {
+  /**
+   * The defect this covers: the lease is 120 seconds, heartbeating is manual,
+   * and the handler made three provider calls that can each outlast it. No
+   * existing test could catch it, because the Gemini fake returns instantly and
+   * a test run never approaches a lease boundary.
+   */
+  it("extends the lease repeatedly while an operation outlasts it", async () => {
+    vi.useFakeTimers();
+
+    const heartbeat = vi.fn(async () => undefined);
+    let finish: (() => void) | undefined;
+    const operation = new Promise<string>((resolve) => {
+      finish = () => resolve("done");
+    });
+
+    const wrapped = withHeartbeat(
+      { heartbeat } as unknown as Parameters<typeof withHeartbeat>[0],
+      () => operation,
+    );
+
+    // Four minutes of provider work against a two-minute lease.
+    await vi.advanceTimersByTimeAsync(240_000);
+
+    expect(heartbeat.mock.calls.length).toBeGreaterThanOrEqual(7);
+
+    finish?.();
+    await expect(wrapped).resolves.toBe("done");
+
+    // The timer stops when the operation does, so a finished job does not keep
+    // renewing a lease it no longer holds.
+    const afterFinish = heartbeat.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(heartbeat.mock.calls.length).toBe(afterFinish);
+
+    vi.useRealTimers();
+  });
+
+  it("stops heartbeating when the operation fails", async () => {
+    vi.useFakeTimers();
+
+    const heartbeat = vi.fn(async () => undefined);
+    const wrapped = withHeartbeat(
+      { heartbeat } as unknown as Parameters<typeof withHeartbeat>[0],
+      () => Promise.reject(new Error("provider refused")),
+    );
+
+    await expect(wrapped).rejects.toThrow("provider refused");
+
+    const afterFailure = heartbeat.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(heartbeat.mock.calls.length).toBe(afterFailure);
+
+    vi.useRealTimers();
+  });
+
+  it("does not fail the job when a heartbeat fails", async () => {
+    // The work is still progressing; turning a database blip into a failed
+    // analysis would throw away a paid provider call.
+    vi.useFakeTimers();
+
+    const heartbeat = vi.fn(async () => {
+      throw new Error("database unavailable");
+    });
+    const wrapped = withHeartbeat(
+      { heartbeat } as unknown as Parameters<typeof withHeartbeat>[0],
+      async () => {
+        await vi.advanceTimersByTimeAsync(90_000);
+        return "survived";
+      },
+    );
+
+    await expect(wrapped).resolves.toBe("survived");
+
+    vi.useRealTimers();
+  });
 });
