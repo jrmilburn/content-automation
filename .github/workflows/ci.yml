@@ -75,6 +75,9 @@ jobs:
           --health-retries 20
     env:
       DATABASE_URL: postgresql://studio_parallel_test:studio_parallel_test@127.0.0.1:5432/studio_parallel_test
+      # Prisma commands prefer DIRECT_URL; it is pinned to the same service
+      # container so no ambient value can redirect a migration.
+      DIRECT_URL: postgresql://studio_parallel_test:studio_parallel_test@127.0.0.1:5432/studio_parallel_test
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

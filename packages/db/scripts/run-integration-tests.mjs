@@ -10,10 +10,15 @@ if (!npmCliPath) {
 }
 const testDatabaseUrl =
   "postgresql://studio_parallel_test:studio_parallel_test@127.0.0.1:55432/studio_parallel_test";
+// DIRECT_URL is pinned to the same container as DATABASE_URL, not left to be
+// inherited. Prisma commands prefer DIRECT_URL, so a developer who has one
+// exported for a deployed database would otherwise migrate that database from
+// inside the test suite.
 const testEnvironment = {
   ...process.env,
   APP_ENV: "test",
   DATABASE_URL: testDatabaseUrl,
+  DIRECT_URL: testDatabaseUrl,
   PROVIDER_MODE: "fake",
   PUBLIC_ORIGIN: "http://localhost:3000",
 };
