@@ -111,10 +111,36 @@ describe("instagramSnapshotDueFor", () => {
     ).toMatchObject({ ageBucket: "day_1" });
   });
 
-  it("never owes anything for a mature post", () => {
-    // The bucket is unbounded, so treating it as due would re-observe every old
-    // post forever.
-    expect(instagramSnapshotDueFor({ capturedBuckets: [], postAgeSeconds: 40_000_000 })).toBeNull();
+  it("owes a mature post its one observation", () => {
+    // A post already past the closing buckets when its account connected has no
+    // other window it can ever appear in. Refusing this one made an established
+    // account's whole history permanently unmeasurable.
+    expect(
+      instagramSnapshotDueFor({ capturedBuckets: [], postAgeSeconds: 40_000_000 }),
+    ).toMatchObject({ ageBucket: "mature", postAgeSeconds: 40_000_000 });
+  });
+
+  it("owes a mature post nothing once observed, however much older it gets", () => {
+    // What bounds an unbounded bucket is that it has been captured, not that it
+    // was refused. The key carries no timestamp, so one observation is all there
+    // can ever be.
+    expect(
+      instagramSnapshotDueFor({ capturedBuckets: ["mature"], postAgeSeconds: 40_000_000 }),
+    ).toBeNull();
+    expect(
+      instagramSnapshotDueFor({ capturedBuckets: ["mature"], postAgeSeconds: 400_000_000 }),
+    ).toBeNull();
+  });
+
+  it("owes a mature observation even when earlier buckets were captured", () => {
+    // The earlier windows closed while the post was young; having caught some of
+    // them does not settle the one that is open now.
+    expect(
+      instagramSnapshotDueFor({
+        capturedBuckets: ["import", "hour_1", "day_1"],
+        postAgeSeconds: 40_000_000,
+      }),
+    ).toMatchObject({ ageBucket: "mature" });
   });
 
   it("reports the age it was actually asked about, not the bucket's target", () => {

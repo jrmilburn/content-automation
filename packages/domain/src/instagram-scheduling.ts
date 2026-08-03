@@ -53,9 +53,19 @@ export type InstagramSnapshotDue = Readonly<{
 /**
  * The bucket a post is due for now, or null when nothing is owed.
  *
- * `mature` is deliberately excluded: it is unbounded, so treating it as due
- * would re-observe every old post forever. Analytics compares within buckets,
- * and a bucket that never closes cannot be compared against anything.
+ * `mature` is owed like any other bucket, and like any other bucket it is owed
+ * at most once: the captured check below refuses it afterwards, and
+ * `instagramSnapshotKey` carries no timestamp, so the observation is once per
+ * post by construction rather than by a caller remembering to stop.
+ *
+ * Being unbounded does mean a `mature` cohort mixes exposure times — a post
+ * observed at 45 days and one observed at 400 days have not had the same chance
+ * to accumulate. That is a real limitation for a count, and the run reports it.
+ * It is not one for a rate: 10 of the 11 derived metrics divide by reach or by
+ * duration, so numerator and denominator accumulate together and the value
+ * settles early. Refusing the bucket outright cost every post that was already
+ * past 40 days when its account connected — permanently, since no later sweep
+ * can recover a bucket whose window has closed.
  */
 export function instagramSnapshotDueFor(
   input: Readonly<{ capturedBuckets: readonly string[]; postAgeSeconds: number }>,
@@ -69,7 +79,6 @@ export function instagramSnapshotDueFor(
     : Math.max(0, Math.floor(input.postAgeSeconds));
 
   const ageBucket = instagramSnapshotBucketFor(postAgeSeconds);
-  if (ageBucket === "mature") return null;
   if (input.capturedBuckets.includes(ageBucket)) return null;
 
   return Object.freeze({ ageBucket, postAgeSeconds });

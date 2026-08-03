@@ -183,7 +183,7 @@ Account insight limits also matter: Meta states some account metrics are unavail
 
 Insights change after publication. Every successful observation is immutable and records `captured_at`, `post_age_seconds`, requested cadence, API version, raw payload and availability map.
 
-Initial desired targets are import, ~1h, ~24h, ~3d, ~7d and ~30d. Scheduler behaviour:
+Initial desired targets are import, ~1h, ~24h, ~3d, ~7d and ~30d, plus one `mature` observation for a post already past the last of those. Scheduler behaviour:
 
 - enqueue only due, eligible posts;
 - permit a tolerance window rather than promise an exact timestamp;
@@ -191,6 +191,8 @@ Initial desired targets are import, ~1h, ~24h, ~3d, ~7d and ~30d. Scheduler beha
 - avoid backdating a late observation;
 - deduplicate by post/capture bucket/payload hash;
 - select comparable post-age windows in analytics.
+
+The `mature` observation is owed exactly once per post, bounded by having been captured rather than by a deadline, and only for a media kind the capability map can request insights for. Without it a post that was already older than 40 days when its account connected has no window it can ever appear in, which makes an established account's whole history permanently unmeasurable. The earlier buckets it missed are not recoverable and are not backfilled.
 
 The first internal release may guarantee manual sync plus daily scheduling and opportunistically fill finer cadences. The data model supports the full list.
 

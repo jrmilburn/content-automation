@@ -81,6 +81,84 @@ export function snapshotAgeWindowFor(key: SnapshotAgeWindowKey): SnapshotAgeWind
   return windowsByKey[key];
 }
 
+/** How settled a window is. Higher means the numbers have had longer to arrive. */
+export function snapshotAgeWindowMaturity(key: SnapshotAgeWindowKey): number {
+  return snapshotAgeWindows.findIndex((window) => window.key === key);
+}
+
+/**
+ * Windows a recalculation may publish for, least to most mature.
+ *
+ * The earlier windows are absent on purpose. `import`, `hour_1`, `day_1` and
+ * `day_3` observe a post while it is still being distributed, so a difference
+ * between two groups there is as likely to be a difference in how far each has
+ * been carried as one in the posts themselves.
+ *
+ * `mature` is included despite being unbounded, because it is the only window
+ * that can see a post the account already had when it connected. It mixes
+ * exposure times, which a run states as a limitation for count metrics; the
+ * rate metrics that carry a strategy are not affected, since their numerator
+ * and denominator accumulate together.
+ */
+export const recalculationWindowCandidates = Object.freeze([
+  "day_7",
+  "day_30",
+  "mature",
+] as const satisfies readonly SnapshotAgeWindowKey[]);
+
+export type AnalyticsWindowCandidate = Readonly<{
+  ageWindow: SnapshotAgeWindowKey;
+  eligiblePosts: number;
+}>;
+
+function mostMature(candidates: readonly AnalyticsWindowCandidate[]): AnalyticsWindowCandidate {
+  return candidates.reduce((winner, candidate) =>
+    snapshotAgeWindowMaturity(candidate.ageWindow) > snapshotAgeWindowMaturity(winner.ageWindow)
+      ? candidate
+      : winner,
+  );
+}
+
+/**
+ * The window a run should publish for, or null when no window has anything.
+ *
+ * This is the default view the contract already describes: "the most mature
+ * comparable bucket with adequate coverage". Past the coverage floor maturity
+ * leads rather than sample size, because a settled observation is a better
+ * basis for a claim than a larger immature one — a 7-day cohort measures how
+ * far each post has been carried so far as much as it measures the posts.
+ *
+ * `adequateCoverage` is supplied rather than read here. The floor is a sampling
+ * question and the thresholds that answer it are built on this module, so
+ * taking it as an argument keeps the dependency pointing one way and puts the
+ * choice where a reader can see it.
+ *
+ * When nothing clears the floor the floor cannot discriminate, so the largest
+ * sample wins instead — publishing the widest evidence available beats
+ * publishing nothing. The ordering is total and content-derived either way, so
+ * the result cannot depend on the order candidates were assembled in.
+ */
+export function selectAnalyticsAgeWindow(
+  candidates: readonly AnalyticsWindowCandidate[],
+  adequateCoverage: number,
+): SnapshotAgeWindowKey | null {
+  const measured = candidates.filter((candidate) => candidate.eligiblePosts > 0);
+  if (measured.length === 0) return null;
+
+  const covered = measured.filter((candidate) => candidate.eligiblePosts >= adequateCoverage);
+  if (covered.length > 0) return mostMature(covered).ageWindow;
+
+  const widest = measured.reduce((winner, candidate) =>
+    candidate.eligiblePosts > winner.eligiblePosts ||
+    (candidate.eligiblePosts === winner.eligiblePosts &&
+      snapshotAgeWindowMaturity(candidate.ageWindow) > snapshotAgeWindowMaturity(winner.ageWindow))
+      ? candidate
+      : winner,
+  );
+
+  return widest.ageWindow;
+}
+
 /**
  * Which comparison cohort a baseline was drawn from.
  *

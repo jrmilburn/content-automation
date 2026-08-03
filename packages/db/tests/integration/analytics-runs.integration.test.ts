@@ -2,7 +2,11 @@ import { loadDatabaseConfig } from "@studio-parallel/config";
 import type { InstagramMetricObservation } from "@studio-parallel/domain";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { buildFeatureRequests, loadAnalyticsInputs } from "../../src/analytics-features.js";
+import {
+  buildFeatureRequests,
+  loadAnalyticsInputs,
+  loadBestAnalyticsInputs,
+} from "../../src/analytics-features.js";
 import {
   listTrendFeaturePaths,
   loadAccountTrends,
@@ -94,6 +98,8 @@ async function analysedPost(
   input: Readonly<{
     hookCategory: string | null;
     likes: number;
+    /** Age at capture. Defaults inside the 30-day window the tests read. */
+    postAgeSeconds?: number;
     publishedAt: Date;
   }>,
 ): Promise<string> {
@@ -211,13 +217,14 @@ async function analysedPost(
     where: { id: postId, workspaceId: developmentWorkspace.id },
   });
 
-  // Inside the 30-day window the recalculation reads.
+  // Inside the 30-day window the recalculation reads, unless a test says otherwise.
+  const postAgeSeconds = input.postAgeSeconds ?? 30 * 86_400;
   await recordInstagramMetricSnapshot(database, context, {
     apiVersion: "v25.0",
-    capturedAt: new Date(input.publishedAt.getTime() + 30 * 86_400_000),
+    capturedAt: new Date(input.publishedAt.getTime() + postAgeSeconds * 1_000),
     instagramPostId: postId,
     observations: [observation("reach", 1_000), observation("likes", input.likes)],
-    postAgeSeconds: 30 * 86_400,
+    postAgeSeconds,
     rawPayload: { likes: input.likes },
   });
 
@@ -337,6 +344,99 @@ describe("the debounce window", () => {
     await expect(
       listAccountsDueForAnalytics(database, { limit: 10, now: calculatedAt }),
     ).resolves.toHaveLength(0);
+  });
+});
+
+describe("choosing the window a run publishes", () => {
+  function windowRequest() {
+    return { instagramAccountId: accountId, publishedFrom, publishedTo };
+  }
+
+  it("reads a post that only a mature observation can see", async () => {
+    // Already past every closing bucket when the account connected. A pinned
+    // 30-day window returned nothing for posts like this, which is most of an
+    // established account's history.
+    await analysedPost({
+      hookCategory: "question",
+      likes: 200,
+      postAgeSeconds: 200 * 86_400,
+      publishedAt: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    const selection = await loadBestAnalyticsInputs(database, context, windowRequest());
+
+    expect(selection?.ageWindow).toBe("mature");
+    expect(selection?.inputs.posts).toHaveLength(1);
+  });
+
+  it("falls back to the widest sample when no window clears the coverage floor", async () => {
+    for (let index = 0; index < 3; index += 1) {
+      await analysedPost({
+        hookCategory: "question",
+        likes: 100 + index,
+        postAgeSeconds: 30 * 86_400,
+        publishedAt: new Date(Date.UTC(2026, 5, 1 + index * 8)),
+      });
+    }
+    await analysedPost({
+      hookCategory: "claim",
+      likes: 300,
+      postAgeSeconds: 200 * 86_400,
+      publishedAt: new Date("2026-06-02T00:00:00.000Z"),
+    });
+
+    const selection = await loadBestAnalyticsInputs(database, context, windowRequest());
+
+    expect(selection?.ageWindow).toBe("day_30");
+    expect(selection?.inputs.posts).toHaveLength(3);
+  });
+
+  it("reports what every candidate window would have measured", async () => {
+    await analysedPost({
+      hookCategory: "question",
+      likes: 200,
+      postAgeSeconds: 200 * 86_400,
+      publishedAt: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    const selection = await loadBestAnalyticsInputs(database, context, windowRequest());
+
+    // A run that publishes a different window than the last one changes what the
+    // dashboard means, so the alternatives are recorded rather than inferred.
+    expect(selection?.considered).toEqual([
+      { ageWindow: "day_7", eligiblePosts: 0 },
+      { ageWindow: "day_30", eligiblePosts: 0 },
+      { ageWindow: "mature", eligiblePosts: 1 },
+    ]);
+  });
+
+  it("does not carry a snapshot across a window boundary", async () => {
+    // One read spans every candidate, so each window has to reject what falls
+    // outside its own edges rather than trusting the query.
+    await analysedPost({
+      hookCategory: "question",
+      likes: 200,
+      postAgeSeconds: 30 * 86_400,
+      publishedAt: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    const selection = await loadBestAnalyticsInputs(database, context, windowRequest());
+    const mature = selection?.considered.find((entry) => entry.ageWindow === "mature");
+
+    expect(selection?.ageWindow).toBe("day_30");
+    expect(mature?.eligiblePosts).toBe(0);
+  });
+
+  it("returns nothing when no window measures anything", async () => {
+    await analysedPost({
+      hookCategory: "question",
+      likes: 200,
+      // Too young for any candidate window.
+      postAgeSeconds: 3_600,
+      publishedAt: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    await expect(loadBestAnalyticsInputs(database, context, windowRequest())).resolves.toBeNull();
   });
 });
 

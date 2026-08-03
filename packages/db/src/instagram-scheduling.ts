@@ -1,4 +1,6 @@
 import {
+  instagramApiVersion,
+  instagramInsightMediaKinds,
   instagramSnapshotBucketFor,
   instagramSnapshotDueFor,
   type InstagramSnapshotBucket,
@@ -79,12 +81,22 @@ export type InstagramPostDueForSnapshot = Readonly<{
  *
  * Candidates are read newest first and filtered in code rather than in SQL: the
  * bucket boundaries live in the domain contract, and duplicating them as SQL
- * intervals would let the two drift apart silently. The candidate window is
- * bounded by age so the sweep does not rescan a whole account's history — a
- * post older than the last closing bucket can never become due again.
+ * intervals would let the two drift apart silently.
  *
- * A post already in `mature` is never due. That bucket is unbounded, so
- * treating it as owed would re-observe old posts forever.
+ * Two reads rather than one, because the two populations are bounded by
+ * different things. A post inside the closing buckets is bounded by time — it
+ * ages out of contention on its own. A post past them can only ever be owed
+ * `mature`, and nothing ages it out, so it is bounded instead by whether that
+ * one observation exists. Folding both into a single `OR` behind a single
+ * `take` would let an account with enough recent posts fill the batch on every
+ * tick and starve its own back catalogue indefinitely, since settled posts sort
+ * last.
+ *
+ * The settled read converges: a post leaves it the moment its `mature` snapshot
+ * exists. It is narrowed to the media kinds the capability map can actually
+ * request, because the handler writes no row for a kind it cannot ask about —
+ * so without that filter a feed post would remain owed forever and hold a slot
+ * on every sweep. The closing read needs no such filter; time removes those.
  */
 export async function listInstagramPostsDueForSnapshot(
   database: SchedulingDatabase,
@@ -92,27 +104,49 @@ export async function listInstagramPostsDueForSnapshot(
 ): Promise<readonly InstagramPostDueForSnapshot[]> {
   const oldestDueAgeSeconds = 3_456_000;
   const publishedAfter = new Date(input.now.getTime() - oldestDueAgeSeconds * 1000);
+  const take = boundedTake(input.limit);
 
-  const candidates = await database.instagramPost.findMany({
-    orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
-    select: {
-      id: true,
-      publishedAt: true,
-      snapshots: { select: { ageBucket: true } },
-      workspaceId: true,
-    },
-    // Read more candidates than the batch, because most will already have their
-    // current bucket observed and contribute nothing.
-    take: boundedTake(input.limit) * 5,
-    where: {
-      account: { connectionStatus: "ACTIVE" },
-      publishedAt: { gte: publishedAfter },
-    },
-  });
+  const [closing, settled] = await Promise.all([
+    database.instagramPost.findMany({
+      orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        publishedAt: true,
+        snapshots: { select: { ageBucket: true } },
+        workspaceId: true,
+      },
+      // Read more candidates than the batch, because most will already have
+      // their current bucket observed and contribute nothing.
+      take: take * 5,
+      where: {
+        account: { connectionStatus: "ACTIVE" },
+        publishedAt: { gte: publishedAfter },
+      },
+    }),
+    database.instagramPost.findMany({
+      orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        publishedAt: true,
+        snapshots: { select: { ageBucket: true } },
+        workspaceId: true,
+      },
+      // No multiplier here: the absence of the snapshot is the whole condition,
+      // so every row read is genuinely owed.
+      take,
+      where: {
+        account: { connectionStatus: "ACTIVE" },
+        mediaKind: { in: [...instagramInsightMediaKinds(instagramApiVersion)] },
+        publishedAt: { lt: publishedAfter },
+        snapshots: { none: { ageBucket: "MATURE" } },
+      },
+    }),
+  ]);
 
   const due: InstagramPostDueForSnapshot[] = [];
-  for (const post of candidates) {
-    if (due.length >= boundedTake(input.limit)) break;
+  // Closing buckets first. Their window shuts, and a settled post's does not.
+  for (const post of [...closing, ...settled]) {
+    if (due.length >= take) break;
 
     const postAgeSeconds = Math.floor((input.now.getTime() - post.publishedAt.getTime()) / 1000);
     const owed = instagramSnapshotDueFor({
