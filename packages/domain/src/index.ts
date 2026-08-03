@@ -81,6 +81,33 @@ export {
 } from "./analytics-cohorts.js";
 
 export {
+  benjaminiHochberg,
+  bootstrapMedianDifference,
+  bootstrapResamples,
+  calculateFeatureStatistic,
+  classificationReasons,
+  confidenceClasses,
+  createBootstrapSeed,
+  durationBandFor,
+  durationBands,
+  evaluateSensitivity,
+  falseDiscoveryRate,
+  maximumMissingRatio,
+  minimumPublicationDates,
+  practicalEffectThreshold,
+  sampleThresholds,
+  statisticsVersion,
+  topContributorShare,
+  type BootstrapInterval,
+  type ClassificationReason,
+  type ConfidenceClass,
+  type DurationBandKey,
+  type FeatureComparisonInput,
+  type FeatureStatistic,
+  type SensitivityResult,
+} from "./analytics-statistics.js";
+
+export {
   analysisIneligibilityReasons,
   analysisRunKey,
   createAnalysisRequestSignature,
