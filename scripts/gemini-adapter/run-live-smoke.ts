@@ -16,7 +16,9 @@ import { createGeminiHttpAdapter, GeminiError } from "@studio-parallel/integrati
  * It is deliberately not part of `npm run check` or CI: it uploads a video and
  * spends tokens. Run it when the adapter, the model or the host changes.
  *
- *   GEMINI_API_KEY=... npm run gemini:adapter:live -- <path-to-video>
+ *   npm run gemini:adapter:live -- <path-to-video>
+ *
+ * GEMINI_API_KEY is read from .env.worker, .env.vercel or the environment.
  */
 
 function required(value: string | undefined, message: string): string {

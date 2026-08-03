@@ -20,7 +20,9 @@ import {
  * depends on a provider being reachable. Run it when the prompt, the schema or
  * the model changes.
  *
- *   GEMINI_API_KEY=... npm run analysis:contract:live -- <path-to-video>
+ *   npm run analysis:contract:live -- <path-to-video>
+ *
+ * GEMINI_API_KEY is read from .env.worker, .env.vercel or the environment.
  */
 
 const host = "https://generativelanguage.googleapis.com";

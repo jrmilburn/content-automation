@@ -36,7 +36,7 @@ const email = required(argv[2], "usage: npm run workspace:member:add -- <email@d
 const role: MemberRole = argv[3]?.toLowerCase() === "admin" ? "ADMIN" : "MEMBER";
 const approvedDomain = required(
   env["GOOGLE_WORKSPACE_DOMAIN"],
-  "GOOGLE_WORKSPACE_DOMAIN is required. It is in .env.vercel, not .env.worker.",
+  "GOOGLE_WORKSPACE_DOMAIN is required. Add it to .env.vercel or export it.",
 );
 
 async function main(): Promise<void> {
