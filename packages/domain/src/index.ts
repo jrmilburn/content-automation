@@ -108,6 +108,24 @@ export {
 } from "./analytics-statistics.js";
 
 export {
+  explainClassification,
+  formatMetricValue,
+  formatRelativeEffect,
+  isTrendCalculationStale,
+  presentConfidence,
+  presentFeaturePath,
+  presentFeatureValue,
+  presentMetric,
+  trendSectionFor,
+  trendSections,
+  trendStalenessMs,
+  type ConfidencePresentation,
+  type MetricPresentation,
+  type TrendSection,
+  type TrendSectionKey,
+} from "./analytics-trends.js";
+
+export {
   analysisIneligibilityReasons,
   analysisRunKey,
   createAnalysisRequestSignature,

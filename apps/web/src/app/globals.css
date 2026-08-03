@@ -2462,3 +2462,315 @@ h2 {
   border-left-color: var(--color-danger);
   font-weight: 600;
 }
+
+/* Trends.
+
+   The comparison and contributor tables scroll inside their own wrapper rather
+   than widening the document, which is what keeps the 390px viewport free of a
+   page-level horizontal scrollbar while a four-column table stays readable. */
+.trends-freshness {
+  padding: clamp(1rem, 2.5vw, 1.25rem);
+  border: 1px solid var(--color-rule);
+  border-left: 3px solid var(--color-information);
+  border-radius: var(--radius-compact);
+  margin-top: clamp(1.5rem, 3vw, 2rem);
+  background: var(--color-surface);
+}
+
+.trends-freshness__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.trends-freshness__scope {
+  margin: 0.5rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+}
+
+.trends-filters {
+  padding: clamp(1.25rem, 3vw, 1.75rem);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-compact);
+  margin-top: clamp(1.5rem, 3vw, 2rem);
+  background: var(--color-surface);
+}
+
+.trends-filters__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.trends-filters__heading h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.trends-filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 1rem;
+}
+
+.trends-filter-form label {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+}
+
+.trends-filter-form label > span {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  font-weight: 720;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.trends-filter-form select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-compact);
+  background: var(--color-canvas);
+  color: inherit;
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+.trends-count {
+  margin: clamp(1.5rem, 3vw, 2rem) 0 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.trends-group {
+  margin-top: clamp(1.75rem, 4vw, 2.5rem);
+}
+
+.trends-group__header {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.trends-group__header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.trends-group__header p {
+  max-width: 60ch;
+  margin: 0.4rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.trends-group__empty {
+  margin: 1rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.trends-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: clamp(1rem, 2.5vw, 1.5rem);
+  padding: 0;
+  margin: clamp(1.25rem, 3vw, 1.75rem) 0 0;
+  list-style: none;
+}
+
+.trend-card {
+  display: grid;
+  height: 100%;
+  align-content: start;
+  padding: clamp(1rem, 2.5vw, 1.35rem);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-compact);
+  gap: 0.7rem;
+  background: var(--color-surface);
+}
+
+.trend-card__meta {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.trend-card__meta h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.trend-card__metric {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.trend-card__effect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.trend-card__effect-value {
+  color: var(--color-ink);
+  font-size: 1.5rem;
+  font-weight: 680;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-card__claim {
+  max-width: 52ch;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.trend-card__facts,
+.trend-detail__facts {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.trend-card__facts dt,
+.trend-detail__facts dt {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  font-weight: 720;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.trend-card__facts dd,
+.trend-detail__facts dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.88rem;
+}
+
+.trend-card__actions {
+  margin: 0.2rem 0 0;
+}
+
+.trend-detail__back {
+  margin: clamp(1rem, 2.5vw, 1.5rem) 0 0;
+}
+
+.trend-detail__claim,
+.trend-detail__comparison,
+.trend-detail__method,
+.trend-detail__posts {
+  margin-top: clamp(1.75rem, 4vw, 2.5rem);
+}
+
+.trend-detail__claim h2,
+.trend-detail__comparison h2,
+.trend-detail__method h2,
+.trend-detail__posts h2 {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-rule);
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+}
+
+.trend-detail__claim p,
+.trend-detail__posts > p {
+  max-width: 62ch;
+  margin: 0 0 0.65rem;
+}
+
+.trend-detail__difference {
+  margin: 1rem 0 0;
+  font-size: 0.92rem;
+}
+
+.trend-detail__method h3 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.trend-detail__limitations {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+}
+
+.trend-detail__facts {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+}
+
+/* Positioned so an absolutely positioned descendant is contained by it. A
+   visually-hidden caption is position: absolute with left: auto, so without
+   this it resolves against the initial containing block, lands at its static
+   position inside the table's scrolled overflow, and drags the whole document
+   into a horizontal scroll that no visible element accounts for. */
+.trend-table-scroll {
+  position: relative;
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.trend-table-scroll:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.trend-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.trend-table th,
+.trend-table td {
+  padding: 0.65rem 0.8rem;
+  border-bottom: 1px solid var(--color-rule);
+  vertical-align: top;
+}
+
+.trend-table thead th {
+  border-bottom: 1px solid var(--color-ink);
+  color: var(--color-ink);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.trend-table tbody th {
+  min-width: 11rem;
+  color: var(--color-ink);
+  font-weight: 620;
+}
+
+.trend-table td {
+  min-width: 9rem;
+  color: var(--color-muted);
+}
+
+@media (max-width: 799px) {
+  .trends-filter-form {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .trends-filter-form button {
+    width: 100%;
+  }
+}
