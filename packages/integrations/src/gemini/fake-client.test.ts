@@ -16,7 +16,12 @@ function bytes(): Uint8Array {
 }
 
 async function uploadOne(fake: ReturnType<typeof createFakeGemini>) {
-  return fake.adapter.uploadVideo({ body: bytes(), displayName: "probe", mimeType: "video/mp4" });
+  return fake.adapter.uploadVideo({
+    body: bytes(),
+    byteLength: 4,
+    displayName: "probe",
+    mimeType: "video/mp4",
+  });
 }
 
 describe("createFakeGemini", () => {
