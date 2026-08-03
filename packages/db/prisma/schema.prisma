@@ -1289,8 +1289,13 @@ model StrategyEvidence {
   sourceGeneration      StrategyGeneration?         @relation("StrategyEvidenceSource", fields: [workspaceId, sourceGenerationId], references: [workspaceId, id], onDelete: Restrict)
 
   @@unique([workspaceId, id])
-  // One entry per opaque key per generation, and one entry per referenced
-  // record per generation, are both enforced by unique indexes in the migration.
+  // One entry per opaque key per generation. The key is what the model cites,
+  // so two rows sharing one would make a citation ambiguous. Declared here
+  // rather than only in the migration because Prisma can express it, and an
+  // index the schema does not describe reads as drift against the database.
+  @@unique([strategyGenerationId, evidenceKey], map: "strategy_evidence_manifest_key")
+  // One entry per referenced record per generation is enforced by a partial
+  // unique index in the migration; Prisma cannot express a filtered index.
   @@index([workspaceId, strategyGenerationId, category, rank], map: "strategy_evidence_generation_rank_idx")
   @@index([workspaceId, featureStatisticId], map: "strategy_evidence_statistic_idx")
   @@index([workspaceId, instagramPostId], map: "strategy_evidence_post_idx")
