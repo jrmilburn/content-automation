@@ -119,6 +119,12 @@ export {
   type InstagramSnapshotValueRow,
 } from "./instagram-insights.js";
 export {
+  analysisRequestRefusals,
+  requestPostAnalysis,
+  type AnalysisRequestOutcome,
+  type AnalysisRequestRefusal,
+} from "./analysis-request-command.js";
+export {
   analysisExistsForJob,
   analysisJobResourceType,
   createAnalysisJob,
