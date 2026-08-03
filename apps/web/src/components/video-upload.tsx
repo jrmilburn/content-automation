@@ -25,6 +25,7 @@ const initialSnapshot: UploadSnapshot = Object.freeze({
   partsCompleted: 0,
   partsTotal: 0,
   phase: "selecting",
+  resumable: false,
   totalBytes: 0,
 });
 
@@ -46,7 +47,7 @@ const stageDescriptions: Readonly<Record<UploadSnapshot["phase"], string>> = Obj
   uploading: "Uploading",
 });
 
-export function VideoUpload({ postId }: Readonly<{ postId: string }>) {
+export function VideoUpload({ maxBytes, postId }: Readonly<{ maxBytes: number; postId: string }>) {
   const [snapshot, setSnapshot] = useState<UploadSnapshot>(initialSnapshot);
   const [fileName, setFileName] = useState<string | null>(null);
   const sessionRef = useRef<UploadSession | null>(null);
@@ -86,14 +87,16 @@ export function VideoUpload({ postId }: Readonly<{ postId: string }>) {
   );
 
   const isBusy = snapshot.phase === "uploading" || snapshot.phase === "reserving";
-  const canResume = snapshot.phase === "paused" || snapshot.phase === "error";
+  // A refused upload stays stopped. Offering Resume on something storage will
+  // refuse again invites someone to keep pressing a button that cannot work.
+  const canResume = snapshot.resumable;
 
   return (
     <section aria-labelledby="video-upload-heading" className="video-upload">
       <h2 id="video-upload-heading">Source video</h2>
       <p className="video-upload__limits">
-        MP4, MOV or WebM, up to 1 GB. Large uploads need a stable connection and can be resumed if
-        it drops.
+        MP4, MOV or WebM, up to {formatBytes(maxBytes)}. Large uploads need a stable connection and
+        can be resumed if it drops.
       </p>
 
       <label className="video-upload__choose" htmlFor="video-upload-input">

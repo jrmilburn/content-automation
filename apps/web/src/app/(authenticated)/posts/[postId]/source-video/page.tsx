@@ -1,3 +1,4 @@
+import { loadObjectStorageConfig } from "@studio-parallel/config";
 import { notFound } from "next/navigation";
 
 import { SourceVideoStatus } from "../../../../../components/source-video-status";

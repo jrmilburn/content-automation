@@ -25,6 +25,14 @@ export type UploadSnapshot = Readonly<{
   partsCompleted: number;
   partsTotal: number;
   phase: UploadPhase;
+  /**
+   * Whether continuing could succeed.
+   *
+   * A paused upload always can. A failed one only can when the failure was
+   * transport: offering resume after storage refused the object invites someone
+   * to retry something that cannot work.
+   */
+  resumable: boolean;
   totalBytes: number;
 }>;
 
@@ -53,6 +61,23 @@ const defaultRetriesPerPart = 3;
 /** Message shown for any refusal we have no more specific copy for. */
 const genericFailure = "The upload could not be completed.";
 
+/**
+ * Whether a failed storage response is worth another attempt.
+ *
+ * A refused object does not become acceptable by asking again. Retrying one
+ * costs three round trips and then reports a network failure, which sends
+ * someone to check their connection over a provider limit they cannot see. This
+ * mirrors the signature request above, which already refuses to retry a refusal.
+ *
+ * Timeouts and rate limits stay retryable: those are the provider asking for
+ * patience rather than refusing the object.
+ */
+export function isRetryableStorageStatus(status: number): boolean {
+  if (status === 408 || status === 429) return true;
+
+  return status >= 500;
+}
+
 const refusalMessages: Readonly<Record<string, string>> = Object.freeze({
   CONTENT_TYPE_NOT_ACCEPTED: "That file type is not supported. Use MP4, MOV or WebM.",
   DUPLICATE_PART: genericFailure,
@@ -63,13 +88,33 @@ const refusalMessages: Readonly<Record<string, string>> = Object.freeze({
   POST_NOT_FOUND: "This post is no longer available.",
   SIZE_MISMATCH: "The uploaded file did not match the size that was reserved. Try again.",
   STORAGE_UNAVAILABLE: "Storage is temporarily unavailable. Try again shortly.",
-  TOO_LARGE: "That file is larger than the 1 GB limit.",
+  TOO_LARGE: "That file is larger than this workspace's upload limit.",
   UPLOAD_ALREADY_PENDING: "Another upload for this post is already in progress.",
   UPLOAD_EXPIRED: "This upload took too long and expired. Start a new one.",
 });
 
 export function describeRefusal(reason: unknown): string {
   return typeof reason === "string" ? (refusalMessages[reason] ?? genericFailure) : genericFailure;
+}
+
+/**
+ * What to say when storage refuses a part outright.
+ *
+ * 413 is called out by name because it is the one a user can act on: the file is
+ * bigger than the deployment's storage accepts, and no amount of retrying or
+ * resuming changes that. The limit itself is not stated here because the browser
+ * does not know the provider's ceiling — only that this file exceeded it.
+ */
+export function describeStorageRejection(status: number): string {
+  if (status === 413) {
+    return "This video is larger than the storage limit for this workspace. Upload a smaller file, or ask an administrator to raise the limit.";
+  }
+
+  if (status === 401 || status === 403) {
+    return "The upload was not authorised by storage. Start a new upload.";
+  }
+
+  return "Storage refused this upload. Start a new one.";
 }
 
 export function createUploadSession(options: UploadSessionOptions): UploadSession {
@@ -84,6 +129,7 @@ export function createUploadSession(options: UploadSessionOptions): UploadSessio
   let partsTotal = 0;
   let pauseRequested = false;
   let cancelled = false;
+  let resumable = false;
 
   function snapshot(): UploadSnapshot {
     let bytesUploaded = 0;
@@ -101,13 +147,15 @@ export function createUploadSession(options: UploadSessionOptions): UploadSessio
       partsCompleted: parts.size,
       partsTotal,
       phase,
+      resumable: phase === "paused" || resumable,
       totalBytes: options.file.size,
     });
   }
 
-  function transition(next: UploadPhase, message: string | null = null): void {
+  function transition(next: UploadPhase, message: string | null = null, canResume = false): void {
     phase = next;
     error = message;
+    resumable = canResume;
     options.onChange(snapshot());
   }
 
@@ -171,6 +219,14 @@ export function createUploadSession(options: UploadSessionOptions): UploadSessio
         const stored = await doFetch(instruction.url, { body: slice, method: "PUT" });
 
         if (!stored.ok) {
+          // A refused object does not become acceptable by asking again, and
+          // reporting it as a dropped connection sends someone to check their
+          // network over a provider limit they cannot see.
+          if (!isRetryableStorageStatus(stored.status)) {
+            transition("error", describeStorageRejection(stored.status));
+            return false;
+          }
+
           continue;
         }
 
@@ -189,7 +245,9 @@ export function createUploadSession(options: UploadSessionOptions): UploadSessio
       }
     }
 
-    transition("error", "The connection dropped. You can resume this upload.");
+    // Only reached when every attempt failed on transport or a retryable
+    // status, so continuing is genuinely worth offering.
+    transition("error", "The connection dropped. You can resume this upload.", true);
 
     return false;
   }
