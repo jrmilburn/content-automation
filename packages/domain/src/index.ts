@@ -81,6 +81,20 @@ export {
 } from "./analytics-cohorts.js";
 
 export {
+  analysisIneligibilityReasons,
+  analysisRunKey,
+  createAnalysisRequestSignature,
+  evaluateAnalysisEligibility,
+  extractAnalysisFeatures,
+  isAnalyticsEligible,
+  type AnalysisEligibility,
+  type AnalysisEligibilityInput,
+  type AnalysisFeatureColumns,
+  type AnalysisIneligibilityReason,
+  type AnalysisRequestInputs,
+} from "./analysis-request.js";
+
+export {
   classifyGeminiCandidate,
   classifyGeminiFileState,
   classifyGeminiResponse,

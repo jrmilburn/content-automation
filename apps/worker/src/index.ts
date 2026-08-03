@@ -46,6 +46,8 @@ import {
   createAssetValidateHandler,
 } from "./uploads/asset-validate-handler.js";
 import { createFfprobeMediaProbe } from "./uploads/media-probe.js";
+import { createAnalysisRunHandler, analysisRunQueue } from "./analysis/analysis-run-handler.js";
+import { createWorkerGeminiAdapter } from "./analysis/gemini-client.js";
 import { createWorkerObjectStorage } from "./uploads/object-storage.js";
 
 const config = loadRuntimeConfig();
@@ -157,11 +159,21 @@ const registry = createQueueHandlerRegistry([
     storage: objectStorage,
     storageConfig,
   }),
+  createAnalysisRunHandler({
+    // Gemini bills per token, so the budget wraps the whole attempt rather than
+    // just the HTTP call: a video upload holds the slot too.
+    acquireConcurrency: (signal) => providerConcurrency.acquire("gemini", signal),
+    database,
+    gemini: createWorkerGeminiAdapter(config, geminiConfig),
+    logger,
+    storage: objectStorage,
+  }),
 ]);
 const workerRuntime = createQueueWorkerRuntime({
   client: queue,
   registry,
   requiredQueues: [
+    analysisRunQueue,
     assetCleanupQueue,
     assetValidateQueue,
     instagramSnapshotQueue,

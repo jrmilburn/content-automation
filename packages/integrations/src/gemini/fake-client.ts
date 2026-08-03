@@ -135,7 +135,7 @@ export function createFakeGemini(dependencies: FakeGeminiDependencies = {}): Fak
         const name = `files/fake${String(sequence).padStart(6, "0")}`;
         const file = Object.freeze({
           name,
-          sizeBytes: request.body.byteLength,
+          sizeBytes: request.byteLength,
           // Processing first, so a caller that skips the poll fails here rather
           // than in staging.
           state: "PROCESSING" as GeminiFileState,

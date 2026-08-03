@@ -196,6 +196,7 @@ describe("uploadVideo", () => {
 
     const file = await adapter.uploadVideo({
       body: new Uint8Array([1, 2, 3]),
+      byteLength: 3,
       displayName: "probe",
       mimeType: "video/mp4",
     });
@@ -217,6 +218,7 @@ describe("uploadVideo", () => {
     await expect(
       adapter.uploadVideo({
         body: new Uint8Array([1]),
+        byteLength: 1,
         displayName: "probe",
         mimeType: "video/mp4",
       }),

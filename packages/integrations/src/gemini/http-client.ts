@@ -239,7 +239,7 @@ export function createGeminiHttpAdapter(dependencies: GeminiHttpDependencies): G
           headers: authHeaders({
             "Content-Type": "application/json",
             "X-Goog-Upload-Command": "start",
-            "X-Goog-Upload-Header-Content-Length": String(request.body.byteLength),
+            "X-Goog-Upload-Header-Content-Length": String(request.byteLength),
             "X-Goog-Upload-Header-Content-Type": request.mimeType,
             "X-Goog-Upload-Protocol": "resumable",
           }),
@@ -259,13 +259,15 @@ export function createGeminiHttpAdapter(dependencies: GeminiHttpDependencies): G
         uploadUrl as string,
         {
           body: request.body,
+          // `duplex` is required by fetch before it will send a stream body.
+          ...(request.body instanceof Uint8Array ? {} : { duplex: "half" }),
           headers: {
-            "Content-Length": String(request.body.byteLength),
+            "Content-Length": String(request.byteLength),
             "X-Goog-Upload-Command": "upload, finalize",
             "X-Goog-Upload-Offset": "0",
           },
           method: "POST",
-        },
+        } as RequestInit,
         "uploadVideo",
         config.GEMINI_UPLOAD_TIMEOUT_MS,
       );

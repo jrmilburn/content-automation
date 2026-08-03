@@ -170,8 +170,10 @@ model Workspace {
   status         WorkspaceStatus           @default(ACTIVE)
   createdAt      DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  analysisJobs   AnalysisJob[]
   auditEvents    AuditEvent[]
   backgroundJobs BackgroundJob[]
+  postAnalyses   PostAnalysis[]
   credentials    IntegrationCredential[]
   igAccounts     InstagramAccount[]
   igPosts        InstagramPost[]
@@ -224,6 +226,7 @@ model BackgroundJob {
   workspace                Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   outbox                   JobOutbox?
   attempts                 JobAttempt[]
+  analysisJob              AnalysisJob?
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, queueName, handlerVersion, idempotencyKey])
@@ -430,8 +433,17 @@ model InstagramPost {
   snapshots            InstagramMetricSnapshot[]
   videoAssets          VideoAsset[]
   uploadIntents        VideoUploadIntent[]
+  analysisJobs         AnalysisJob[]
+  analyses             PostAnalysis[]            @relation("PostAnalyses")
+  // The analysis a reader should see. Moved transactionally when a new one is
+  // published, so nothing observes a post between two current analyses.
+  currentAnalysisId    String?                   @map("current_analysis_id") @db.Uuid
+  currentAnalysis      PostAnalysis?             @relation("CurrentPostAnalysis", fields: [workspaceId, currentAnalysisId], references: [workspaceId, id], onDelete: Restrict)
 
   @@unique([workspaceId, id])
+  // Required by the current-analysis relation, and true anyway: an analysis is
+  // current for at most one post.
+  @@unique([workspaceId, currentAnalysisId])
   @@unique([instagramAccountId, providerMediaId])
   @@index([workspaceId, instagramAccountId, publishedAt(sort: Desc)])
   @@index([workspaceId, instagramAccountId, mediaKind])
@@ -696,6 +708,7 @@ model VideoAsset {
   workspace        Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   post             InstagramPost            @relation(fields: [workspaceId, instagramPostId], references: [workspaceId, id], onDelete: Restrict)
   uploadIntent     VideoUploadIntent        @relation(fields: [workspaceId, uploadIntentId], references: [workspaceId, id], onDelete: Restrict)
+  analysisJobs     AnalysisJob[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, uploadIntentId])
@@ -705,4 +718,131 @@ model VideoAsset {
   // Drives the purge sweep over rejected objects still holding bytes.
   @@index([state, purgeAfter])
   @@map("video_assets")
+}
+
+enum AnalysisJobStage {
+  QUEUED
+  UPLOADING
+  AWAITING_FILE
+  REQUESTING
+  VALIDATING
+  REPAIRING
+  PUBLISHED
+  ABANDONED
+
+  @@map("analysis_job_stage")
+}
+
+// The durable record of one logical request to analyse one post's input set.
+//
+// This exists alongside `BackgroundJob` rather than inside it because two facts
+// have to survive a crash that the generic job row cannot carry. The fixed
+// inputs are frozen here at request time, so a retry analyses exactly what was
+// asked for even if the post has since gained a newer asset. And
+// `providerFileName` is written the moment the provider accepts an upload, so a
+// worker that dies mid-request can release or reuse that file instead of
+// abandoning paid bytes to their 48-hour expiry.
+//
+// `requestSignature` is the idempotency anchor: it hashes the inputs and the
+// contract versions, so asking twice for the same analysis of the same video
+// under the same contract is one logical request and one provider call.
+model AnalysisJob {
+  id                   String           @id @db.Uuid
+  workspaceId          String           @map("workspace_id") @db.Uuid
+  backgroundJobId      String           @map("background_job_id") @db.Uuid
+  instagramPostId      String           @map("instagram_post_id") @db.Uuid
+  videoAssetId         String           @map("video_asset_id") @db.Uuid
+  // Null until #39 delivers transcripts. Recorded either way so a later
+  // analysis of the same video with a transcript is a different signature.
+  transcriptRevisionId String?          @map("transcript_revision_id") @db.Uuid
+  requestSignature     String           @map("request_signature") @db.Char(64)
+  schemaVersion        String           @map("schema_version") @db.VarChar(64)
+  promptVersion        String           @map("prompt_version") @db.VarChar(64)
+  modelRequested       String           @map("model_requested") @db.VarChar(64)
+  stage                AnalysisJobStage @default(QUEUED)
+  // Provider file lifecycle. Cleared once the file is released, so a non-null
+  // value always means bytes the provider is still holding for us.
+  providerFileName     String?          @map("provider_file_name") @db.VarChar(128)
+  providerFileExpiresAt DateTime?       @map("provider_file_expires_at") @db.Timestamptz(3)
+  repairAttempted      Boolean          @default(false) @map("repair_attempted")
+  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  backgroundJob        BackgroundJob    @relation(fields: [workspaceId, backgroundJobId], references: [workspaceId, id], onDelete: Restrict)
+  post                 InstagramPost    @relation(fields: [workspaceId, instagramPostId], references: [workspaceId, id], onDelete: Restrict)
+  asset                VideoAsset       @relation(fields: [workspaceId, videoAssetId], references: [workspaceId, id], onDelete: Restrict)
+  analysis             PostAnalysis?
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, backgroundJobId])
+  @@index([workspaceId, instagramPostId, createdAt(sort: Desc)])
+  @@index([workspaceId, requestSignature])
+  // Finds jobs still holding a provider file, for cleanup after a crash.
+  @@index([stage, providerFileExpiresAt])
+  @@map("analysis_jobs")
+}
+
+// One immutable, validated creative analysis of one video.
+//
+// Rows are never updated. A re-analysis produces a new row and moves the post's
+// current pointer; the old row stays so a stored strategy that cited it still
+// resolves. `result` is the exact validated object the semantic validator
+// accepted, and the feature columns beside it are extracted copies for querying
+// — analytics groups by them and must not parse JSON per row.
+//
+// The contract versions and hashes are recorded per analysis rather than
+// referenced from a table, because #42 made the schema, prompt and model
+// immutable code values with SHA-256 integrity. Storing the version and hash
+// pins exactly what produced this row without a table that could drift from the
+// constants it mirrors.
+model PostAnalysis {
+  id                 String        @id @db.Uuid
+  workspaceId        String        @map("workspace_id") @db.Uuid
+  instagramPostId    String        @map("instagram_post_id") @db.Uuid
+  analysisJobId      String        @map("analysis_job_id") @db.Uuid
+  videoAssetId       String        @map("video_asset_id") @db.Uuid
+  transcriptRevisionId String?     @map("transcript_revision_id") @db.Uuid
+  requestSignature   String        @map("request_signature") @db.Char(64)
+  schemaVersion      String        @map("schema_version") @db.VarChar(64)
+  schemaSha256       String        @map("schema_sha256") @db.Char(64)
+  promptVersion      String        @map("prompt_version") @db.VarChar(64)
+  promptSha256       String        @map("prompt_sha256") @db.Char(64)
+  modelRequested     String        @map("model_requested") @db.VarChar(64)
+  // What the provider says it actually ran, which is not always what was asked.
+  modelVersion       String?       @map("model_version") @db.VarChar(64)
+  analysedAt         DateTime      @map("analysed_at") @db.Timestamptz(3)
+  result             Json
+  // Extracted for querying. Null means the model reported the field
+  // unavailable, which analytics must treat as absent rather than as a value.
+  contentPillar      String?       @map("content_pillar") @db.VarChar(64)
+  contentFormat      String?       @map("content_format") @db.VarChar(64)
+  hookCategory       String?       @map("hook_category") @db.VarChar(64)
+  presenterMode      String?       @map("presenter_mode") @db.VarChar(64)
+  ctaType            String?       @map("cta_type") @db.VarChar(64)
+  durationSeconds    Decimal?      @map("duration_seconds") @db.Decimal(10, 3)
+  overallConfidence  String        @map("overall_confidence") @db.VarChar(16)
+  validationWarnings Json          @map("validation_warnings")
+  inputTokens        Int?          @map("input_tokens")
+  outputTokens      Int?           @map("output_tokens")
+  totalTokens        Int?          @map("total_tokens")
+  providerLatencyMs  Int?          @map("provider_latency_ms")
+  finishReason       String?       @map("finish_reason") @db.VarChar(64)
+  // False when the analysis is too weak to group by, so analytics can exclude
+  // it and count the exclusion rather than silently dropping the post.
+  analyticsEligible  Boolean       @default(true) @map("analytics_eligible")
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  workspace          Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  post               InstagramPost @relation("PostAnalyses", fields: [workspaceId, instagramPostId], references: [workspaceId, id], onDelete: Restrict)
+  job                AnalysisJob   @relation(fields: [workspaceId, analysisJobId], references: [workspaceId, id], onDelete: Restrict)
+  currentForPost     InstagramPost? @relation("CurrentPostAnalysis")
+
+  @@unique([workspaceId, id])
+  // One analysis per logical request. This is what makes a redelivered job
+  // publish at most one row.
+  @@unique([workspaceId, analysisJobId])
+  @@unique([workspaceId, requestSignature])
+  @@index([workspaceId, instagramPostId, analysedAt(sort: Desc)])
+  @@index([workspaceId, analyticsEligible, contentPillar])
+  @@index([workspaceId, analyticsEligible, hookCategory])
+  @@map("post_analyses")
 }

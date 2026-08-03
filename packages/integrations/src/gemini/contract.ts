@@ -32,7 +32,14 @@ export type GeminiFile = Readonly<{
 }>;
 
 export type GeminiUploadRequest = Readonly<{
-  body: Uint8Array;
+  /**
+   * A stream is accepted so a gigabyte of video never has to be resident.
+   * Object storage hands back a stream and the resumable protocol wants one;
+   * buffering in between would put the whole file in the worker's heap.
+   */
+  body: ReadableStream<Uint8Array> | Uint8Array;
+  /** Required because a resumable upload declares its length before it starts. */
+  byteLength: number;
   /** Recorded by the provider only as a label; never used to address the file. */
   displayName: string;
   mimeType: string;

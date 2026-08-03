@@ -40,6 +40,7 @@ async function main(): Promise<void> {
 
   const uploaded = await adapter.uploadVideo({
     body,
+    byteLength: body.byteLength,
     displayName: "gemini-adapter-live-smoke",
     mimeType: "video/mp4",
   });

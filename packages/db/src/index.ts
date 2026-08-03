@@ -119,6 +119,21 @@ export {
   type InstagramSnapshotValueRow,
 } from "./instagram-insights.js";
 export {
+  analysisExistsForJob,
+  analysisJobResourceType,
+  createAnalysisJob,
+  findAnalysisJobForBackgroundJob,
+  findAnalysisSourceAsset,
+  publishPostAnalysis,
+  recordAnalysisProviderFile,
+  recordAnalysisStage,
+  type AnalysisInputsForRun,
+  type AnalysisJobInputs,
+  type AnalysisJobRecord,
+  type PublishAnalysisInput,
+  type PublishAnalysisResult,
+} from "./post-analysis.js";
+export {
   cohortPostLimit,
   comparePostToCohort,
   loadCohort,
