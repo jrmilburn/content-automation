@@ -49,6 +49,45 @@ import { parseCorrelationId, type JsonLogger } from "@studio-parallel/observabil
 
 export const analysisRunQueue = { name: "analysis.run", version: 1 } as const;
 
+/**
+ * How often the lease is extended during a provider call.
+ *
+ * The lease is 120 seconds and heartbeating is manual. Every provider call this
+ * handler makes can outlast that: the upload timeout alone is ten minutes, the
+ * model request five, and the file poll can add two more. Without this the
+ * attempt is reclaimed mid-upload, the retry fails identically, and the job
+ * burns its whole budget re-uploading a video that never finishes.
+ *
+ * Well inside the lease so a single slow heartbeat cannot lose it.
+ */
+const heartbeatIntervalMs = 30_000;
+
+/**
+ * Keeps the job's lease alive for the duration of one long operation.
+ *
+ * A timer rather than a hook inside the adapter, because the adapter has no
+ * business knowing what a job lease is — and because this way the upload, the
+ * poll and the model request are all covered by the same three lines.
+ *
+ * A failed heartbeat is swallowed: the work is still progressing, and turning a
+ * transient database blip into a failed analysis would throw away a paid
+ * provider call.
+ */
+export async function withHeartbeat<T>(
+  execution: JobHandlerExecutionContext,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const timer = setInterval(() => {
+    void execution.heartbeat().catch(() => undefined);
+  }, heartbeatIntervalMs);
+
+  try {
+    return await operation();
+  } finally {
+    clearInterval(timer);
+  }
+}
+
 export type AnalysisRunDependencies = Readonly<{
   acquireConcurrency?: ((signal: AbortSignal) => Promise<() => void>) | undefined;
   database: DatabaseClient;
@@ -132,13 +171,16 @@ type RunOutcome = Readonly<{
  */
 async function requestAnalysis(
   dependencies: AnalysisRunDependencies,
+  execution: JobHandlerExecutionContext,
   input: Readonly<{ fileUri: string; probedDurationSeconds: number }>,
 ): Promise<RunOutcome> {
-  const response = await dependencies.gemini.generateStructuredText({
-    fileUri: input.fileUri,
-    instruction: createAnalysisInstruction(),
-    mimeType: "video/mp4",
-  });
+  const response = await withHeartbeat(execution, () =>
+    dependencies.gemini.generateStructuredText({
+      fileUri: input.fileUri,
+      instruction: createAnalysisInstruction(),
+      mimeType: "video/mp4",
+    }),
+  );
 
   let parsed: unknown;
 
@@ -251,14 +293,16 @@ export function createAnalysisRunHandler(
                 });
               }
 
-              const uploaded = await dependencies.gemini.uploadVideo({
-                // Streamed straight through: a gigabyte of video never becomes
-                // resident in the worker.
-                body: stored.body,
-                byteLength: Number(stored.metadata.bytes),
-                displayName: `analysis-${job.id}`,
-                mimeType: "video/mp4",
-              });
+              const uploaded = await withHeartbeat(execution, () =>
+                dependencies.gemini.uploadVideo({
+                  // Streamed straight through: a gigabyte of video never becomes
+                  // resident in the worker.
+                  body: stored.body,
+                  byteLength: Number(stored.metadata.bytes),
+                  displayName: `analysis-${job.id}`,
+                  mimeType: "video/mp4",
+                }),
+              );
 
               providerFileName = uploaded.name;
               // Written before the model request: the window that matters is
@@ -275,7 +319,9 @@ export function createAnalysisRunHandler(
               stage: "AWAITING_FILE",
             });
 
-            const file = await dependencies.gemini.waitForActiveFile(providerFileName);
+            const file = await withHeartbeat(execution, () =>
+              dependencies.gemini.waitForActiveFile(providerFileName as string),
+            );
 
             await execution.recordStage("requesting_analysis");
             await recordAnalysisStage(dependencies.database, workspace, {
@@ -283,7 +329,7 @@ export function createAnalysisRunHandler(
               stage: "REQUESTING",
             });
 
-            let outcome = await requestAnalysis(dependencies, {
+            let outcome = await requestAnalysis(dependencies, execution, {
               fileUri: file.uri,
               probedDurationSeconds,
             });
@@ -299,7 +345,7 @@ export function createAnalysisRunHandler(
                 stage: "REPAIRING",
               });
 
-              outcome = await requestAnalysis(dependencies, {
+              outcome = await requestAnalysis(dependencies, execution, {
                 fileUri: file.uri,
                 probedDurationSeconds,
               });
