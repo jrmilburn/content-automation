@@ -119,6 +119,15 @@ export {
   type InstagramSnapshotValueRow,
 } from "./instagram-insights.js";
 export {
+  grantWorkspaceMember,
+  isApprovedWorkspaceEmail,
+  memberGrantOutcomes,
+  normaliseMemberEmail,
+  type GrantMemberResult,
+  type MemberGrantOutcome,
+  type MemberRole,
+} from "./workspace-members.js";
+export {
   calculateFeatureFamily,
   createStatisticFingerprint,
   storeFeatureStatistics,

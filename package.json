@@ -61,7 +61,8 @@
     "test:storage:integration:existing": "vitest run --config packages/integrations/vitest.integration.config.ts",
     "test:watch": "vitest",
     "typecheck": "npm run build:packages && tsc -p tsconfig.tools.json --noEmit && npm run typecheck --workspaces --if-present",
-    "validate:local": "npm run check && npm run security:dependencies && npm run security:secrets && npm run security:supply-chain && npm run test:db:integration && npm run test:storage:integration && npm run test:media:integration && npm run test:e2e"
+    "validate:local": "npm run check && npm run security:dependencies && npm run security:secrets && npm run security:supply-chain && npm run test:db:integration && npm run test:storage:integration && npm run test:media:integration && npm run test:e2e",
+    "workspace:member:add": "tsx scripts/workspace/add-member.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
