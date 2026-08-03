@@ -1,0 +1,96 @@
+import { JobHandlerFailure, queueDefinitions } from "@studio-parallel/domain";
+import { GeminiError } from "@studio-parallel/integrations";
+import { describe, expect, it } from "vitest";
+
+import { analysisRunQueue, toJobFailure } from "./analysis-run-handler.js";
+
+/**
+ * How a provider failure becomes a retry decision.
+ *
+ * This matters more than most classification because the retry is expensive:
+ * every attempt re-uploads and re-reads a video. A transient class that should
+ * have been terminal spends money learning the same thing eight times.
+ */
+
+describe("analysisRunQueue", () => {
+  it("matches a declared queue definition", () => {
+    expect(queueDefinitions).toContainEqual({
+      name: analysisRunQueue.name,
+      version: analysisRunQueue.version,
+    });
+  });
+});
+
+describe("toJobFailure", () => {
+  it.each([
+    ["rate_limit", "RATE_LIMIT", "ANALYSIS_PROVIDER_RATE_LIMITED"],
+    ["transient", "TRANSIENT", "ANALYSIS_PROVIDER_UNAVAILABLE"],
+    ["timeout", "TRANSIENT", "ANALYSIS_PROVIDER_UNAVAILABLE"],
+    ["file_failed", "TRANSIENT", "ANALYSIS_PROVIDER_FILE_FAILED"],
+    ["safety_blocked", "SEMANTIC_OUTPUT", "ANALYSIS_RESPONSE_BLOCKED"],
+    ["no_candidate", "SEMANTIC_OUTPUT", "ANALYSIS_RESPONSE_EMPTY"],
+    ["authorisation", "UNKNOWN", "ANALYSIS_PROVIDER_UNAUTHORISED"],
+    ["invalid_request", "INVALID_INPUT", "ANALYSIS_REQUEST_REJECTED"],
+  ] as const)("maps a %s response to %s", (responseClass, errorClass, errorCode) => {
+    const failure = toJobFailure(
+      new GeminiError({ operation: "generateStructuredText", responseClass }),
+    );
+
+    expect(failure).toBeInstanceOf(JobHandlerFailure);
+    expect(failure.failure.errorClass).toBe(errorClass);
+    expect(failure.failure.errorCode).toBe(errorCode);
+  });
+
+  it("carries the provider retry hint into the retry decision", () => {
+    const failure = toJobFailure(
+      new GeminiError({
+        operation: "generateStructuredText",
+        responseClass: "rate_limit",
+        retryAfterMs: 45_000,
+      }),
+    );
+
+    expect(failure.failure.providerRetryAfterMs).toBe(45_000);
+  });
+
+  it("omits an absent retry hint rather than sending zero", () => {
+    const failure = toJobFailure(
+      new GeminiError({ operation: "generateStructuredText", responseClass: "rate_limit" }),
+    );
+
+    expect(failure.failure.providerRetryAfterMs).toBeUndefined();
+  });
+
+  it("treats a failed provider file as worth another upload", () => {
+    // The provider could not process what it received. A fresh upload may
+    // succeed, so this is not a verdict about the video.
+    expect(
+      toJobFailure(
+        new GeminiError({ operation: "waitForActiveFile", responseClass: "file_failed" }),
+      ).failure.errorClass,
+    ).toBe("TRANSIENT");
+  });
+
+  it("does not ask a user to reconnect a project API key", () => {
+    // No user action fixes a rejected project key, so classifying it as a
+    // credential problem would send someone to a reconnect button that cannot
+    // help.
+    expect(
+      toJobFailure(
+        new GeminiError({ operation: "generateStructuredText", responseClass: "authorisation" }),
+      ).failure.errorClass,
+    ).not.toBe("CREDENTIAL");
+  });
+
+  it.each(["safety_blocked", "no_candidate"] as const)(
+    "stops retrying a %s response rather than paying to re-read the video",
+    (responseClass) => {
+      // SEMANTIC_OUTPUT gets two attempts, not eight. A blocked or empty
+      // response is about this video and this contract.
+      expect(
+        toJobFailure(new GeminiError({ operation: "generateStructuredText", responseClass }))
+          .failure.errorClass,
+      ).toBe("SEMANTIC_OUTPUT");
+    },
+  );
+});

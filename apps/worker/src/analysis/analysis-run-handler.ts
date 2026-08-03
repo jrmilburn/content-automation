@@ -58,8 +58,14 @@ export type AnalysisRunDependencies = Readonly<{
   storage: ObjectStorageAdapter;
 }>;
 
-/** Maps a provider failure onto the retry policy. */
-function toJobFailure(error: GeminiError): JobHandlerFailure {
+/**
+ * Maps a provider failure onto the retry policy.
+ *
+ * Exported so the whole matrix is testable without a provider: the switch is
+ * exhaustive over `GeminiResponseClass`, so a new class added to the adapter
+ * becomes a type error here rather than a silently unclassified failure.
+ */
+export function toJobFailure(error: GeminiError): JobHandlerFailure {
   switch (error.responseClass) {
     case "rate_limit":
       return new JobHandlerFailure({
