@@ -26,13 +26,21 @@ const baseSnapshot: UploadSnapshot = Object.freeze({
   partsCompleted: 0,
   partsTotal: 0,
   phase: "selecting",
+  resumable: false,
   totalBytes: 0,
 });
 
 const { VideoUpload } = await import("./video-upload");
 
 function snapshot(overrides: Partial<UploadSnapshot> = {}): UploadSnapshot {
-  return Object.freeze({ ...baseSnapshot, ...overrides });
+  return Object.freeze({
+    ...baseSnapshot,
+    // Mirrors the session: a paused upload is always resumable, and an error is
+    // only resumable when the session says so. A fixture that claimed otherwise
+    // would test a state the session cannot produce.
+    resumable: overrides.resumable ?? overrides.phase === "paused",
+    ...overrides,
+  });
 }
 
 async function selectFile() {
@@ -53,14 +61,14 @@ beforeEach(() => {
 
 describe("VideoUpload before selection", () => {
   it("states the accepted formats and the maximum before anything is chosen", () => {
-    render(<VideoUpload postId="019a0000-0000-7000-8000-000000000401" />);
+    render(<VideoUpload maxBytes={1_073_741_824} postId="019a0000-0000-7000-8000-000000000401" />);
 
-    expect(screen.getByText(/MP4, MOV or WebM, up to 1 GB/u)).toBeVisible();
+    expect(screen.getByText(/MP4, MOV or WebM, up to 1.00 GB/u)).toBeVisible();
     expect(screen.getByText("No video selected")).toBeVisible();
   });
 
   it("restricts the picker to the accepted containers", () => {
-    render(<VideoUpload postId="019a0000-0000-7000-8000-000000000401" />);
+    render(<VideoUpload maxBytes={1_073_741_824} postId="019a0000-0000-7000-8000-000000000401" />);
 
     const accept = screen.getByLabelText("Choose a video").getAttribute("accept") ?? "";
 
@@ -71,7 +79,7 @@ describe("VideoUpload before selection", () => {
   });
 
   it("names upload and validation as separate stages from the start", () => {
-    render(<VideoUpload postId="019a0000-0000-7000-8000-000000000401" />);
+    render(<VideoUpload maxBytes={1_073_741_824} postId="019a0000-0000-7000-8000-000000000401" />);
 
     expect(screen.getByText("1. Upload")).toBeVisible();
     expect(screen.getByText("2. Validation")).toBeVisible();
@@ -80,7 +88,7 @@ describe("VideoUpload before selection", () => {
 
 describe("VideoUpload during an upload", () => {
   it("starts a session and shows the chosen filename", async () => {
-    render(<VideoUpload postId="019a0000-0000-7000-8000-000000000401" />);
+    render(<VideoUpload maxBytes={1_073_741_824} postId="019a0000-0000-7000-8000-000000000401" />);
 
     await selectFile();
 
@@ -89,7 +97,7 @@ describe("VideoUpload during an upload", () => {
   });
 
   it("reports progress from stored bytes with an accessible value", async () => {
-    render(<VideoUpload postId="019a0000-0000-7000-8000-000000000401" />);
+    render(<VideoUpload maxBytes={1_073_741_824} postId="019a0000-0000-7000-8000-000000000401" />);
     await selectFile();
 
     emit?.(
@@ -109,7 +117,7 @@ describe("VideoUpload during an upload", () => {
   });
 
   it("offers pause while uploading and resume once paused", async () => {
-    render(<VideoUpload postId="019a0000-0000-7000-8000-000000000401" />);
+    render(<VideoUpload maxBytes={1_073_741_824} postId="019a0000-0000-7000-8000-000000000401" />);
     await selectFile();
 
     emit?.(snapshot({ partsTotal: 2, phase: "uploading", totalBytes: 12 }));
@@ -124,7 +132,7 @@ describe("VideoUpload during an upload", () => {
   });
 
   it("offers resume rather than a restart after a dropped connection", async () => {
-    render(<VideoUpload postId="019a0000-0000-7000-8000-000000000401" />);
+    render(<VideoUpload maxBytes={1_073_741_824} postId="019a0000-0000-7000-8000-000000000401" />);
     await selectFile();
 
     emit?.(
@@ -133,6 +141,7 @@ describe("VideoUpload during an upload", () => {
         partsCompleted: 1,
         partsTotal: 4,
         phase: "error",
+        resumable: true,
         totalBytes: 12,
       }),
     );
@@ -141,8 +150,29 @@ describe("VideoUpload during an upload", () => {
     expect(screen.getByRole("button", { name: "Resume upload" })).toBeVisible();
   });
 
+  it("does not offer resume when storage refused the upload", async () => {
+    // Resuming re-sends the same part to the same provider. Offering it after a
+    // refusal invites someone to keep pressing a button that cannot work.
+    render(<VideoUpload maxBytes={1_073_741_824} postId="019a0000-0000-7000-8000-000000000401" />);
+    await selectFile();
+
+    emit?.(
+      snapshot({
+        error: "This video is larger than the storage limit for this workspace.",
+        partsCompleted: 6,
+        partsTotal: 12,
+        phase: "error",
+        resumable: false,
+        totalBytes: 12,
+      }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("larger than the storage limit");
+    expect(screen.queryByRole("button", { name: "Resume upload" })).toBeNull();
+  });
+
   it("cancels and clears the selection", async () => {
-    render(<VideoUpload postId="019a0000-0000-7000-8000-000000000401" />);
+    render(<VideoUpload maxBytes={1_073_741_824} postId="019a0000-0000-7000-8000-000000000401" />);
     await selectFile();
 
     emit?.(snapshot({ partsTotal: 2, phase: "uploading", totalBytes: 12 }));
@@ -155,7 +185,7 @@ describe("VideoUpload during an upload", () => {
 
 describe("VideoUpload after upload", () => {
   it("does not imply the video is ready when only the upload finished", async () => {
-    render(<VideoUpload postId="019a0000-0000-7000-8000-000000000401" />);
+    render(<VideoUpload maxBytes={1_073_741_824} postId="019a0000-0000-7000-8000-000000000401" />);
     await selectFile();
 
     emit?.(
@@ -175,7 +205,7 @@ describe("VideoUpload after upload", () => {
   });
 
   it("shows a refusal without offering a resume that cannot work", async () => {
-    render(<VideoUpload postId="019a0000-0000-7000-8000-000000000401" />);
+    render(<VideoUpload maxBytes={1_073_741_824} postId="019a0000-0000-7000-8000-000000000401" />);
     await selectFile();
 
     emit?.(

@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createUploadSession, describeRefusal, type UploadSnapshot } from "./upload-client";
+import {
+  createUploadSession,
+  describeRefusal,
+  describeStorageRejection,
+  isRetryableStorageStatus,
+  type UploadSnapshot,
+} from "./upload-client";
 
 const postId = "019a0000-0000-7000-8000-000000000401";
 const intentId = "019a0000-0000-7000-8000-000000000501";
@@ -227,7 +233,7 @@ describe("upload session refusals", () => {
     await session.start();
 
     expect(session.snapshot()).toMatchObject({
-      error: "That file is larger than the 1 GB limit.",
+      error: "That file is larger than this workspace's upload limit.",
       phase: "error",
     });
     expect(calls).toEqual(["POST /api/uploads"]);
@@ -289,5 +295,104 @@ describe("describeRefusal", () => {
     for (const reason of ["SOMETHING_NEW", undefined, null, 42]) {
       expect(describeRefusal(reason)).toBe("The upload could not be completed.");
     }
+  });
+});
+
+describe("storage rejection", () => {
+  it("stops immediately on a refused object instead of reporting a dropped connection", async () => {
+    // Reproduces the live failure: Supabase answers 413 EntityTooLarge on the
+    // part that would take the object past the project's size limit.
+    const { attempts, stub } = createFetchStub({
+      partCount: 3,
+      onPut: (partNumber) =>
+        partNumber === 2 ? new Response(null, { status: 413 }) : partResponse(`etag-${partNumber}`),
+    });
+    const { session } = createSession(stub, 20, { retriesPerPart: 3 });
+
+    await session.start();
+
+    const snapshot = session.snapshot();
+
+    expect(snapshot.phase).toBe("error");
+    expect(snapshot.error).toContain("larger than the storage limit");
+    expect(snapshot.error).not.toContain("connection dropped");
+    expect(snapshot.resumable).toBe(false);
+    // One attempt, not three: asking again cannot make the object acceptable.
+    expect(attempts.get(2)).toBe(1);
+  });
+
+  it.each([401, 403, 400, 404])("stops without retrying on status %d", async (status) => {
+    const { attempts, stub } = createFetchStub({
+      partCount: 2,
+      onPut: (partNumber) =>
+        partNumber === 1 ? new Response(null, { status }) : partResponse("etag-2"),
+    });
+    const { session } = createSession(stub, 12, { retriesPerPart: 3 });
+
+    await session.start();
+
+    expect(session.snapshot().resumable).toBe(false);
+    expect(attempts.get(1)).toBe(1);
+  });
+
+  it.each([408, 429, 500, 503])(
+    "keeps retrying status %d and then offers resume",
+    async (status) => {
+      const { attempts, stub } = createFetchStub({
+        partCount: 2,
+        onPut: (partNumber) =>
+          partNumber === 1 ? new Response(null, { status }) : partResponse("etag-2"),
+      });
+      const { session } = createSession(stub, 12, { retriesPerPart: 3 });
+
+      await session.start();
+
+      const snapshot = session.snapshot();
+
+      expect(snapshot.phase).toBe("error");
+      expect(snapshot.error).toContain("connection dropped");
+      expect(snapshot.resumable).toBe(true);
+      expect(attempts.get(1)).toBe(3);
+    },
+  );
+
+  it("reports a paused upload as resumable", async () => {
+    const { stub } = createFetchStub({ partCount: 3 });
+    const { session } = createSession(stub, 20);
+
+    const original = stub.getMockImplementation();
+    stub.mockImplementation(async (input: string, init?: RequestInit) => {
+      if (String(input).includes("/parts/") && init?.method === "PUT") session.pause();
+
+      return original!(input, init);
+    });
+
+    await session.start();
+
+    expect(session.snapshot()).toMatchObject({ phase: "paused", resumable: true });
+  });
+});
+
+describe("isRetryableStorageStatus", () => {
+  it.each([408, 429, 500, 502, 503, 504])("retries %d", (status) => {
+    expect(isRetryableStorageStatus(status)).toBe(true);
+  });
+
+  it.each([400, 401, 403, 404, 409, 413])("refuses to retry %d", (status) => {
+    expect(isRetryableStorageStatus(status)).toBe(false);
+  });
+});
+
+describe("describeStorageRejection", () => {
+  it("names the size limit for 413, which is the one a user can act on", () => {
+    expect(describeStorageRejection(413)).toContain("larger than the storage limit");
+  });
+
+  it("distinguishes an authorisation refusal", () => {
+    expect(describeStorageRejection(403)).toContain("not authorised");
+  });
+
+  it("falls back without claiming a cause it does not know", () => {
+    expect(describeStorageRejection(400)).toBe("Storage refused this upload. Start a new one.");
   });
 });

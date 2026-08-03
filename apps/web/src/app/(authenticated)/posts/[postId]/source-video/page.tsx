@@ -1,3 +1,4 @@
+import { loadObjectStorageConfig } from "@studio-parallel/config";
 import { notFound } from "next/navigation";
 
 import { VideoUpload } from "../../../../../components/video-upload";
@@ -34,7 +35,10 @@ export default async function SourceVideoPage({
           be analysed. Instagram does not provide the original file.
         </p>
       </header>
-      <VideoUpload postId={post.id} />
+      {/* The limit is read from configuration rather than written into the
+          control, so the advertised number cannot drift from the one the
+          server enforces. */}
+      <VideoUpload maxBytes={loadObjectStorageConfig().UPLOAD_MAX_BYTES} postId={post.id} />
     </>
   );
 }
