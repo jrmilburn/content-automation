@@ -125,6 +125,33 @@ export async function reconcileBackgroundJobs(
     }
   }
 
+  // A job returned to QUEUED whose outbox row still says it was dispatched will
+  // never be delivered again: the dispatcher only publishes undispatched rows,
+  // and no other rule matches this shape. Jobs stranded before the release path
+  // started resetting the row are recovered here.
+  const strandedDelivery = await options.database.backgroundJob.findMany({
+    select: { cancellationRequestedAt: true, id: true, state: true, workspaceId: true },
+    take: batchSize,
+    where: {
+      leaseId: null,
+      outbox: { cancelledAt: null, dispatchedAt: { not: null } },
+      state: "QUEUED",
+    },
+  });
+  inspected += strandedDelivery.length;
+  for (const job of strandedDelivery) {
+    if (
+      await requeueStrandedDelivery(options.database, job.id, job.workspaceId, correlationId, now)
+    ) {
+      repaired += 1;
+      recordReconciliationTelemetry(options.telemetry, correlationId, job.workspaceId, {
+        jobId: job.id,
+        outcome: "REPAIRED",
+        reasonCode: "STRANDED_DELIVERY_REQUEUED",
+      });
+    }
+  }
+
   const missingOutbox = await options.database.backgroundJob.findMany({
     select: { cancellationRequestedAt: true, id: true, state: true, workspaceId: true },
     take: batchSize,
@@ -286,6 +313,65 @@ async function requeueDueRetry(
       "RETRY_DUE_REQUEUED",
       now,
     );
+    return true;
+  });
+}
+
+/**
+ * Makes a stranded job deliverable again.
+ *
+ * Clears the delivery record so the dispatcher will publish it, and returns the
+ * job's dispatch status to PENDING to match. The delivery identifier is dropped
+ * rather than reused, because #114 established that reusing one makes the queue
+ * refuse the redelivery.
+ */
+async function requeueStrandedDelivery(
+  database: JobDatabase,
+  jobId: string,
+  workspaceId: string,
+  correlationId: ReturnType<typeof parseCorrelationId> & {},
+  now: Date,
+): Promise<boolean> {
+  return database.$transaction(async (transaction) => {
+    const job = await transaction.backgroundJob.findFirst({
+      where: {
+        id: jobId,
+        leaseId: null,
+        outbox: { cancelledAt: null, dispatchedAt: { not: null } },
+        state: "QUEUED",
+        workspaceId,
+      },
+    });
+    if (!job) return false;
+
+    const reset = await transaction.jobOutbox.updateMany({
+      data: {
+        dispatchedAt: null,
+        leaseExpiresAt: null,
+        leaseId: null,
+        nextAttemptAt: now,
+        queueDeliveryId: null,
+      },
+      where: { backgroundJobId: job.id, cancelledAt: null, dispatchedAt: { not: null } },
+    });
+    if (reset.count !== 1) return false;
+
+    await transaction.backgroundJob.updateMany({
+      data: { dispatchStatus: "PENDING", version: { increment: 1 } },
+      where: { id: job.id, version: job.version, workspaceId },
+    });
+
+    await createServiceAudit(
+      transaction,
+      correlationId,
+      workspaceId,
+      "background_job",
+      job.id,
+      "REPAIRED",
+      "STRANDED_DELIVERY_REQUEUED",
+      now,
+    );
+
     return true;
   });
 }
