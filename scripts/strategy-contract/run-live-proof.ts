@@ -22,7 +22,9 @@ import {
  * depends on a provider being reachable. Run it when the prompt, the schema or
  * the model changes.
  *
- *   GEMINI_API_KEY=... npm run strategy:contract:live -- [evidence_led|exploratory]
+ *   npm run strategy:contract:live -- [evidence_led|exploratory]
+ *
+ * GEMINI_API_KEY is read from .env.worker, .env.vercel or the environment.
  *
  * The manifest below is synthetic. Production account content, identifiers and
  * transcripts are prohibited in contract fixtures.

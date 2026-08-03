@@ -34,10 +34,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",
-    "analysis:contract:live": "tsx scripts/analysis-contract/run-live-proof.ts",
-    "strategy:contract:live": "tsx scripts/strategy-contract/run-live-proof.ts",
-    "gemini:adapter:live": "tsx scripts/gemini-adapter/run-live-smoke.ts",
-    "meta:contract:live": "tsx scripts/meta-contract/run-live-proof.ts",
+    "analysis:contract:live": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.vercel --env-file-if-exists=.env.worker scripts/analysis-contract/run-live-proof.ts",
+    "strategy:contract:live": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.vercel --env-file-if-exists=.env.worker scripts/strategy-contract/run-live-proof.ts",
+    "gemini:adapter:live": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.vercel --env-file-if-exists=.env.worker scripts/gemini-adapter/run-live-smoke.ts",
+    "meta:contract:live": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.vercel --env-file-if-exists=.env.worker scripts/meta-contract/run-live-proof.ts",
     "queue:migrate": "npm run build:packages && npm run migrate -w @studio-parallel/queue",
     "security:dependencies": "npm audit --audit-level=high",
     "security:direct-dependencies": "tsx scripts/security/check-direct-dependencies.ts",
@@ -62,7 +62,7 @@
     "test:watch": "vitest",
     "typecheck": "npm run build:packages && tsc -p tsconfig.tools.json --noEmit && npm run typecheck --workspaces --if-present",
     "validate:local": "npm run check && npm run security:dependencies && npm run security:secrets && npm run security:supply-chain && npm run test:db:integration && npm run test:storage:integration && npm run test:media:integration && npm run test:e2e",
-    "workspace:member:add": "tsx scripts/workspace/add-member.ts"
+    "workspace:member:add": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.vercel --env-file-if-exists=.env.worker scripts/workspace/add-member.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
