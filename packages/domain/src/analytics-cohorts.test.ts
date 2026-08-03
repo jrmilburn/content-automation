@@ -6,14 +6,17 @@ import {
   createCohortFingerprint,
   excludeFocalPost,
   median,
+  recalculationWindowCandidates,
   recentCohortDays,
   recentCohortPostLimit,
+  selectAnalyticsAgeWindow,
   selectComparableSnapshot,
   selectComparableSnapshots,
   snapshotAgeWindowFor,
   snapshotAgeWindows,
   summariseCoverage,
   summariseSpread,
+  type AnalyticsWindowCandidate,
   type ComparableSnapshotCandidate,
   type SnapshotAgeWindowKey,
 } from "./analytics-cohorts.js";
@@ -89,6 +92,78 @@ describe("snapshot age windows", () => {
 
     expect(selectComparableSnapshot(fortyDays, "day_30")?.snapshotId).toBe("snap_1");
     expect(selectComparableSnapshot(fortyDays, "mature")?.snapshotId).toBe("snap_1");
+  });
+});
+
+describe("recalculation window selection", () => {
+  function offered(counts: Readonly<Record<string, number>>): AnalyticsWindowCandidate[] {
+    return Object.entries(counts).map(([ageWindow, eligiblePosts]) => ({
+      ageWindow: ageWindow as SnapshotAgeWindowKey,
+      eligiblePosts,
+    }));
+  }
+
+  it("offers only windows whose numbers have had time to arrive", () => {
+    // The early windows observe a post while it is still being distributed, so a
+    // difference between two groups there can be a difference in reach rather
+    // than in the posts.
+    expect([...recalculationWindowCandidates]).toEqual(["day_7", "day_30", "mature"]);
+  });
+
+  it("takes the most mature window that clears the coverage floor", () => {
+    // The documented default view. A larger day_7 sample does not beat an
+    // adequately covered mature one: the earlier window measures how far each
+    // post has been carried so far as much as it measures the posts.
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 40, day_30: 25, mature: 20 }), 20)).toBe(
+      "mature",
+    );
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 40, day_30: 25, mature: 19 }), 20)).toBe(
+      "day_30",
+    );
+  });
+
+  it("falls back to the widest sample when nothing clears the floor", () => {
+    // The floor cannot discriminate here, and publishing the widest evidence
+    // available beats publishing nothing.
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 4, day_30: 6, mature: 11 }), 20)).toBe(
+      "mature",
+    );
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 15, day_30: 6, mature: 11 }), 20)).toBe(
+      "day_7",
+    );
+  });
+
+  it("breaks a tie below the floor toward the settled window", () => {
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 9, day_30: 9, mature: 9 }), 20)).toBe(
+      "mature",
+    );
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 9, day_30: 9 }), 20)).toBe("day_30");
+  });
+
+  it("ignores a window that measures nothing", () => {
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 0, day_30: 0, mature: 3 }), 20)).toBe(
+      "mature",
+    );
+    // A zero never clears the floor, even when the floor is zero.
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 0, mature: 0 }), 0)).toBeNull();
+  });
+
+  it("returns null when no window measures anything", () => {
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 0, day_30: 0, mature: 0 }), 20)).toBeNull();
+    expect(selectAnalyticsAgeWindow([], 20)).toBeNull();
+  });
+
+  it("does not depend on the order candidates were assembled in", () => {
+    const forwards = offered({ day_30: 6, day_7: 6, mature: 6 });
+    const backwards = [...forwards].reverse();
+
+    expect(selectAnalyticsAgeWindow(forwards, 20)).toBe(selectAnalyticsAgeWindow(backwards, 20));
+    expect(selectAnalyticsAgeWindow(backwards, 20)).toBe("mature");
+
+    const covered = offered({ day_30: 30, day_7: 30, mature: 30 });
+    expect(selectAnalyticsAgeWindow(covered, 20)).toBe(
+      selectAnalyticsAgeWindow([...covered].reverse(), 20),
+    );
   });
 });
 

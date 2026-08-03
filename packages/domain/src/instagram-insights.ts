@@ -151,6 +151,26 @@ export function instagramInsightGroups(
   return instagramInsightCapabilityMap[input.apiVersion]?.[input.mediaKind] ?? Object.freeze([]);
 }
 
+/**
+ * Every media kind this version can request insights for.
+ *
+ * A sweep that has to narrow candidates in SQL reads this rather than naming the
+ * kinds itself. The handler already refuses an unsupported kind, so a scheduler
+ * filter is an optimisation — but one that writes the capability map's contents
+ * into a query, where it would drift the moment a proof adds a kind here.
+ */
+export function instagramInsightMediaKinds(apiVersion: string): readonly InstagramMediaKind[] {
+  const supported = instagramInsightCapabilityMap[apiVersion];
+  if (!supported) return Object.freeze([]);
+
+  return Object.freeze(
+    Object.entries(supported)
+      .filter(([, groups]) => (groups?.length ?? 0) > 0)
+      .map(([kind]) => kind as InstagramMediaKind)
+      .sort(),
+  );
+}
+
 /** Every canonical metric the map requests for this version and media kind. */
 export function instagramRequestedMetrics(
   input: Readonly<{ apiVersion: string; mediaKind: InstagramMediaKind }>,

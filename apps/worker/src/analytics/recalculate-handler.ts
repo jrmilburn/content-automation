@@ -5,7 +5,7 @@ import {
   createRunInputFingerprint,
   createWorkspaceContext,
   failAnalyticsRun,
-  loadAnalyticsInputs,
+  loadBestAnalyticsInputs,
   runIdempotentJobHandler,
   startAnalyticsRun,
   storeFeatureStatistics,
@@ -16,6 +16,7 @@ import {
 } from "@studio-parallel/db";
 import {
   JobHandlerFailure,
+  recalculationWindowCandidates,
   type QueueHandlerRegistration,
   type QueueJobEnvelope,
   type SnapshotAgeWindowKey,
@@ -48,13 +49,17 @@ export const analyticsRecalculateQueue = {
 const accountResourceType = "instagram_account";
 
 /**
- * The window statistics are published for.
+ * The windows a run may publish for, in the order they are offered.
  *
- * One window rather than all of them: the 30-day window is the one the trends
- * dashboard reads, and calculating every window per run would multiply the work
- * by the number of windows for output nothing displays yet.
+ * Still one window per run — the dashboard reads a single active set, and
+ * publishing several would multiply the work for output nothing displays. The
+ * choice is made per run rather than pinned, because a pinned `day_30` could
+ * never see a post that was already older than that when its account connected,
+ * and those are most of an established account's history. Offering the windows
+ * costs one extra read in total, not one per window.
  */
-export const recalculationAgeWindow: SnapshotAgeWindowKey = "day_30";
+export const recalculationAgeWindows: readonly SnapshotAgeWindowKey[] =
+  recalculationWindowCandidates;
 
 /** How far back a run reads. Bounds the work as history accumulates. */
 export const recalculationHistoryDays = 365;
@@ -158,8 +163,7 @@ async function recalculate(input: {
   }
 
   const startedAt = now();
-  const request: AnalyticsInputRequest = Object.freeze({
-    ageWindow: recalculationAgeWindow,
+  const window = Object.freeze({
     instagramAccountId: account.id,
     publishedFrom: new Date(startedAt.getTime() - recalculationHistoryDays * 24 * 60 * 60 * 1_000),
     publishedTo: startedAt,
@@ -167,9 +171,14 @@ async function recalculate(input: {
 
   await execution.recordStage("reading_inputs");
 
-  const inputs = await loadAnalyticsInputs(database, workspace, request);
+  const selection = await loadBestAnalyticsInputs(
+    database,
+    workspace,
+    window,
+    recalculationAgeWindows,
+  );
 
-  if (inputs.posts.length === 0) {
+  if (selection === null) {
     // Nothing analysed yet is a normal state for a new account, not a failure.
     // The marker is cleared so the sweep stops rediscovering it every window;
     // the next analysis or snapshot dirties it again.
@@ -194,6 +203,28 @@ async function recalculate(input: {
       },
     });
   }
+
+  const { inputs } = selection;
+  const request: AnalyticsInputRequest = Object.freeze({
+    ageWindow: selection.ageWindow,
+    ...window,
+  });
+
+  // Which window won and what the others would have measured. A run that
+  // publishes a different window than the last one is a change in what the
+  // dashboard means, so the reason is recorded rather than inferred later.
+  logger.info("analytics.recalculate.window", {
+    correlationId,
+    jobId: envelope.domainJobId,
+    outcome: selection.ageWindow,
+    reasonCode: "WINDOW_SELECTED",
+    source: selection.considered
+      .map((candidate) => `${candidate.ageWindow}=${String(candidate.eligiblePosts)}`)
+      .join(","),
+    stage: "reading_inputs",
+    value: inputs.posts.length,
+    workspaceId: workspace.workspaceId,
+  });
 
   const inputFingerprint = createRunInputFingerprint({
     analysisIds: inputs.analysisIds,

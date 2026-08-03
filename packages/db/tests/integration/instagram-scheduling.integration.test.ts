@@ -1,4 +1,5 @@
 import { loadDatabaseConfig } from "@studio-parallel/config";
+import type { InstagramMediaKind } from "@studio-parallel/domain";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createDatabaseClient, type DatabaseClient } from "../../src/client.js";
@@ -51,17 +52,22 @@ async function createAccount(
   return id;
 }
 
-async function createPost(accountId: string, publishedAt: Date): Promise<string> {
+async function createPost(
+  accountId: string,
+  publishedAt: Date,
+  overrides: Readonly<{ mediaKind?: InstagramMediaKind }> = {},
+): Promise<string> {
   const id = createId();
+  const mediaKind = overrides.mediaKind ?? "REEL";
   await database.instagramPost.create({
     data: {
       firstImportedAt: now,
       id,
       instagramAccountId: accountId,
       lastImportedAt: now,
-      mediaKind: "REEL",
-      mediaProductType: "REELS",
-      mediaType: "VIDEO",
+      mediaKind,
+      mediaProductType: mediaKind === "REEL" ? "REELS" : "FEED",
+      mediaType: mediaKind === "REEL" ? "VIDEO" : "IMAGE",
       providerMediaId: `media-${id.slice(-12)}`,
       publishedAt,
       rawApiVersion: "v25.0",
@@ -213,13 +219,53 @@ describe("listInstagramPostsDueForSnapshot", () => {
     expect(due[0]).toMatchObject({ ageBucket: "day_1", postId });
   });
 
-  it("owes nothing for a mature post", async () => {
+  it("owes a mature observation to a post older than the closing buckets", async () => {
+    // The post was already past every closing bucket when the account connected.
+    // This is the only window it can ever appear in, so refusing it made the
+    // account's existing history permanently unmeasurable.
     const accountId = await createAccount();
-    await createPost(accountId, new Date(now.getTime() - hours(24 * 60)));
+    const postId = await createPost(accountId, new Date(now.getTime() - hours(24 * 60)));
+
+    const due = await listInstagramPostsDueForSnapshot(database, { limit: 10, now });
+    expect(due).toMatchObject([{ ageBucket: "mature", postId }]);
+  });
+
+  it("stops owing a mature post once it has been observed", async () => {
+    // What bounds the unbounded bucket. Without this the sweep would return the
+    // same settled posts on every tick and never converge.
+    const accountId = await createAccount();
+    const postId = await createPost(accountId, new Date(now.getTime() - hours(24 * 60)));
+    await snapshot(postId, 24 * 60 * 3_600);
 
     await expect(listInstagramPostsDueForSnapshot(database, { limit: 10, now })).resolves.toEqual(
       [],
     );
+  });
+
+  it("owes no mature observation to a media kind it cannot request insights for", async () => {
+    // The handler writes no row for a kind the capability map cannot ask about,
+    // so a feed post would otherwise stay owed forever and hold a slot on every
+    // sweep — the settled read would never converge.
+    const accountId = await createAccount();
+    await createPost(accountId, new Date(now.getTime() - hours(24 * 60)), { mediaKind: "IMAGE" });
+
+    await expect(listInstagramPostsDueForSnapshot(database, { limit: 10, now })).resolves.toEqual(
+      [],
+    );
+  });
+
+  it("does not let recent posts starve the settled back catalogue", async () => {
+    // Recent posts sort first and settled ones last. Behind a single take they
+    // would fill the batch on every tick, so the two populations are read
+    // separately.
+    const accountId = await createAccount();
+    const settledId = await createPost(accountId, new Date(now.getTime() - hours(24 * 60)));
+    for (let index = 0; index < 6; index += 1) {
+      await createPost(accountId, new Date(now.getTime() - hours(24) - index * 60_000));
+    }
+
+    const due = await listInstagramPostsDueForSnapshot(database, { limit: 10, now });
+    expect(due.map((entry) => entry.postId)).toContain(settledId);
   });
 
   it("excludes posts whose account is no longer connected", async () => {

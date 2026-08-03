@@ -4,8 +4,12 @@ import {
   derivedMetricDefinitions,
   derivedMetrics,
   durationBandFor,
+  recalculationWindowCandidates,
+  sampleThresholds,
+  selectAnalyticsAgeWindow,
   selectComparableSnapshots,
   snapshotAgeWindowFor,
+  type AnalyticsWindowCandidate,
   type DerivedMetric,
   type SnapshotAgeWindowKey,
 } from "@studio-parallel/domain";
@@ -107,19 +111,34 @@ export type AnalyticsInputRequest = Readonly<{
   publishedTo: Date;
 }>;
 
+const emptyAnalyticsInputSet: AnalyticsInputSet = Object.freeze({
+  analysisIds: Object.freeze([]),
+  posts: Object.freeze([]),
+  snapshotIds: Object.freeze([]),
+});
+
+type AnalyticsPostRow = Readonly<{
+  currentAnalysis: (AnalysisFeatureRow & Readonly<{ id: string }>) | null;
+  id: string;
+  publishedAt: Date;
+}>;
+
+type AnalyticsSnapshotRow = Parameters<typeof readInstagramSnapshotObservations>[0] &
+  Readonly<{ capturedAt: Date; id: string; instagramPostId: string; postAgeSeconds: number }>;
+
 /**
- * Reads every post a run will measure, with its features and its values.
+ * Posts a run may measure.
  *
  * Only posts carrying a current analysis marked analytics-eligible are read. An
  * analysis the model was not confident enough to group by is excluded here
  * rather than filtered later, so it never reaches a comparison at all.
  */
-export async function loadAnalyticsInputs(
+async function readAnalyticsPosts(
   database: PrismaClient,
   context: WorkspaceContext,
-  request: AnalyticsInputRequest,
-): Promise<AnalyticsInputSet> {
-  const posts = await database.instagramPost.findMany({
+  request: Omit<AnalyticsInputRequest, "ageWindow">,
+): Promise<readonly AnalyticsPostRow[]> {
+  return database.instagramPost.findMany({
     orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
     select: {
       currentAnalysis: {
@@ -144,17 +163,14 @@ export async function loadAnalyticsInputs(
       workspaceId: context.workspaceId,
     },
   });
+}
 
-  if (posts.length === 0) {
-    return Object.freeze({
-      analysisIds: Object.freeze([]),
-      posts: Object.freeze([]),
-      snapshotIds: Object.freeze([]),
-    });
-  }
-
-  const window = snapshotAgeWindowFor(request.ageWindow);
-  const snapshots = await database.instagramMetricSnapshot.findMany({
+async function readAnalyticsSnapshots(
+  database: PrismaClient,
+  context: WorkspaceContext,
+  input: Readonly<{ maximumSeconds: number; minimumSeconds: number; postIds: readonly string[] }>,
+): Promise<readonly AnalyticsSnapshotRow[]> {
+  return database.instagramMetricSnapshot.findMany({
     select: {
       ...instagramSnapshotValueSelect,
       capturedAt: true,
@@ -163,28 +179,50 @@ export async function loadAnalyticsInputs(
       postAgeSeconds: true,
     },
     where: {
-      instagramPostId: { in: posts.map((post) => post.id) },
+      instagramPostId: { in: [...input.postIds] },
       // Bounded in SQL as well as in selection, so the row set stays
       // proportional to the posts rather than to how often they were captured.
       postAgeSeconds: {
-        gte: window.minimumSeconds,
-        ...(Number.isFinite(window.maximumSeconds) ? { lte: window.maximumSeconds } : {}),
+        gte: input.minimumSeconds,
+        ...(Number.isFinite(input.maximumSeconds) ? { lte: input.maximumSeconds } : {}),
       },
       workspaceId: context.workspaceId,
     },
   });
+}
+
+/**
+ * Places each post in one window, with the value that window observed.
+ *
+ * Pure over rows already read, so asking the same question of several windows
+ * costs no further queries. The age filter is applied again here rather than
+ * trusted from the query, because a caller comparing windows reads one span
+ * covering all of them and each window still has to reject what falls outside
+ * its own edges.
+ */
+function measureAnalyticsInputs(
+  posts: readonly AnalyticsPostRow[],
+  snapshots: readonly AnalyticsSnapshotRow[],
+  ageWindow: SnapshotAgeWindowKey,
+): AnalyticsInputSet {
+  const window = snapshotAgeWindowFor(ageWindow);
+  const inWindow = snapshots.filter(
+    (row) =>
+      row.postAgeSeconds >= window.minimumSeconds &&
+      (!Number.isFinite(window.maximumSeconds) || row.postAgeSeconds <= window.maximumSeconds),
+  );
 
   const chosen = selectComparableSnapshots(
-    snapshots.map((row) => ({
+    inWindow.map((row) => ({
       capturedAt: row.capturedAt,
       postAgeSeconds: row.postAgeSeconds,
       postId: row.instagramPostId,
       snapshotId: row.id,
     })),
-    request.ageWindow,
+    ageWindow,
   );
 
-  const rowsById = new Map(snapshots.map((row) => [row.id, row]));
+  const rowsById = new Map(inWindow.map((row) => [row.id, row]));
   const measured: AnalyticsInputPost[] = [];
 
   for (const post of posts) {
@@ -236,6 +274,80 @@ export async function loadAnalyticsInputs(
     posts: Object.freeze(measured),
     snapshotIds: Object.freeze(measured.map((post) => post.snapshotId)),
   });
+}
+
+/** Reads every post a run will measure in one named window. */
+export async function loadAnalyticsInputs(
+  database: PrismaClient,
+  context: WorkspaceContext,
+  request: AnalyticsInputRequest,
+): Promise<AnalyticsInputSet> {
+  const posts = await readAnalyticsPosts(database, context, request);
+  if (posts.length === 0) return emptyAnalyticsInputSet;
+
+  const window = snapshotAgeWindowFor(request.ageWindow);
+  const snapshots = await readAnalyticsSnapshots(database, context, {
+    maximumSeconds: window.maximumSeconds,
+    minimumSeconds: window.minimumSeconds,
+    postIds: posts.map((post) => post.id),
+  });
+
+  return measureAnalyticsInputs(posts, snapshots, request.ageWindow);
+}
+
+export type AnalyticsWindowSelection = Readonly<{
+  ageWindow: SnapshotAgeWindowKey;
+  /** Every window offered and what it would have measured, for the run's log. */
+  considered: readonly AnalyticsWindowCandidate[];
+  inputs: AnalyticsInputSet;
+}>;
+
+/**
+ * Reads the inputs for whichever candidate window measures the most posts.
+ *
+ * One post read and one snapshot read regardless of how many windows are
+ * offered: the span between the least and most mature candidate is read once
+ * and each window filters it in memory. Pinning a single window instead is what
+ * left an account's existing posts unmeasurable — they can only ever appear in
+ * `mature`, and nothing was asking for it.
+ *
+ * Null when no candidate window measures anything, which is the same "nothing
+ * to publish" a caller already handles for an account with no analyses.
+ */
+export async function loadBestAnalyticsInputs(
+  database: PrismaClient,
+  context: WorkspaceContext,
+  request: Omit<AnalyticsInputRequest, "ageWindow">,
+  candidates: readonly SnapshotAgeWindowKey[] = recalculationWindowCandidates,
+): Promise<AnalyticsWindowSelection | null> {
+  const posts = await readAnalyticsPosts(database, context, request);
+  if (posts.length === 0) return null;
+
+  const windows = candidates.map((key) => snapshotAgeWindowFor(key));
+  const snapshots = await readAnalyticsSnapshots(database, context, {
+    maximumSeconds: Math.max(...windows.map((window) => window.maximumSeconds)),
+    minimumSeconds: Math.min(...windows.map((window) => window.minimumSeconds)),
+    postIds: posts.map((post) => post.id),
+  });
+
+  const measuredByWindow = new Map<SnapshotAgeWindowKey, AnalyticsInputSet>();
+  const considered: AnalyticsWindowCandidate[] = [];
+
+  for (const ageWindow of candidates) {
+    const inputs = measureAnalyticsInputs(posts, snapshots, ageWindow);
+    measuredByWindow.set(ageWindow, inputs);
+    considered.push(Object.freeze({ ageWindow, eligiblePosts: inputs.posts.length }));
+  }
+
+  // The floor a window has to clear to be preferred for being settled rather
+  // than large. The moderate class is the point at which a comparison is worth
+  // presenting at all, so a window that reaches it is covered enough to choose
+  // on maturity.
+  const ageWindow = selectAnalyticsAgeWindow(considered, sampleThresholds.moderate.total);
+  const inputs = ageWindow === null ? undefined : measuredByWindow.get(ageWindow);
+  if (ageWindow === null || !inputs) return null;
+
+  return Object.freeze({ ageWindow, considered: Object.freeze(considered), inputs });
 }
 
 /**

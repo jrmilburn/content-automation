@@ -201,10 +201,12 @@ export {
   analyticsPostLimit,
   buildFeatureRequests,
   loadAnalyticsInputs,
+  loadBestAnalyticsInputs,
   type AnalyticsFeature,
   type AnalyticsInputPost,
   type AnalyticsInputRequest,
   type AnalyticsInputSet,
+  type AnalyticsWindowSelection,
 } from "./analytics-features.js";
 export {
   instagramPostPageSize,
