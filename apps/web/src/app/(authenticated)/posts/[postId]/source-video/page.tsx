@@ -41,7 +41,10 @@ export default async function SourceVideoPage({
           video that is validating or ready does not: replacing one is a
           separate outcome with its own cleanup. */}
       {post.asset === null || post.asset.state === "REJECTED" ? (
-        <VideoUpload postId={post.id} />
+        // The limit is read from configuration rather than written into the
+        // control, so the advertised number cannot drift from the one the
+        // server enforces.
+        <VideoUpload maxBytes={loadObjectStorageConfig().UPLOAD_MAX_BYTES} postId={post.id} />
       ) : null}
     </>
   );
