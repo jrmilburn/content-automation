@@ -85,6 +85,26 @@ function distinct(values: readonly string[]): number {
 }
 
 /**
+ * Share of the eligible posts that could not be classified for this feature.
+ *
+ * The population is every eligible post, which is both sides of the comparison
+ * plus the ones with no usable value. Measuring it against the group alone
+ * would make the ratio a function of how rare the feature value is: five
+ * unclassifiable posts out of a hundred would read as 5% for a common value and
+ * 50% for a group of five, and the rare value would be discarded for a reason
+ * that has nothing to do with it.
+ *
+ * Small groups are already excluded by the sample thresholds. This rule exists
+ * to catch a feature the model rarely reports at all, and that is an
+ * account-wide question.
+ */
+function missingRatioOf(candidate: FeatureComparisonCandidate): number {
+  const eligible = candidate.group.length + candidate.comparison.length + candidate.missingCount;
+
+  return eligible === 0 ? 0 : candidate.missingCount / eligible;
+}
+
+/**
  * Fingerprints exactly what produced a statistic.
  *
  * Covers the contributing posts, snapshots and analyses plus every version that
@@ -145,7 +165,6 @@ export function calculateFeatureFamily(
     survivesMultipleTesting: boolean | null,
   ): FeatureStatistic => {
     const groupValues = candidate.group.map((observation) => observation.value);
-    const eligible = candidate.group.length + candidate.missingCount;
 
     return calculateFeatureStatistic({
       comparison: candidate.comparison.map((observation) => observation.value),
@@ -158,7 +177,7 @@ export function calculateFeatureFamily(
       group: groupValues,
       key: `${candidate.featurePath}=${candidate.featureValue}|${request.metric}|${request.ageWindow}`,
       metricIsCount: request.metricIsCount,
-      missingRatio: eligible === 0 ? 0 : candidate.missingCount / eligible,
+      missingRatio: missingRatioOf(candidate),
       survivesMultipleTesting,
     });
   };
@@ -259,7 +278,6 @@ export async function storeFeatureStatistics(
     }
 
     const { statistic } = entry;
-    const eligible = entry.candidate.group.length + entry.candidate.missingCount;
     const id = createId();
 
     await database.$transaction(async (transaction) => {
@@ -298,9 +316,9 @@ export async function storeFeatureStatistics(
           intervalLower: decimal(statistic.interval?.lower),
           intervalUpper: decimal(statistic.interval?.upper),
           metric: request.metric,
-          missingRatio: decimal(
-            eligible === 0 ? 0 : entry.candidate.missingCount / eligible,
-          ) as Prisma.Decimal,
+          // The same ratio the classification used, so a reader cannot be shown
+          // a missingness that disagrees with the verdict beside it.
+          missingRatio: decimal(missingRatioOf(entry.candidate)) as Prisma.Decimal,
           multipleTestingApplied:
             statistic.classification === "statistically_supported_association" ||
             statistic.reason === "multiple_testing_rejected",

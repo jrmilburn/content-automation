@@ -270,6 +270,34 @@ describe("calculateFeatureFamily", () => {
       reason: "missingness_too_high",
     });
   });
+
+  it("measures missingness against every eligible post, not just the group", async () => {
+    // Ten unclassifiable posts out of eighty-two is low missingness whether the
+    // value under test is common or rare. Measuring against the group alone made
+    // the ratio a function of rarity — the same ten posts read as 45% here — and
+    // discarded a legitimate finding for a reason that had nothing to do with it.
+    const input = request({
+      candidates: [
+        candidate({
+          comparison: observations(60, 0.1, 1),
+          group: observations(12, 0.2),
+          missingCount: 10,
+        }),
+      ],
+    });
+
+    const calculated = calculateFeatureFamily(input);
+
+    expect(calculated[0]?.statistic.reason).not.toBe("missingness_too_high");
+    expect(calculated[0]?.statistic.classification).toBe("statistically_supported_association");
+
+    // What the classification used is what a reader is shown beside it.
+    await storeFeatureStatistics(database, context, input, calculated, calculatedAt);
+    const stored = await database.accountFeatureStatistic.findFirstOrThrow();
+    // The column rounds, so this is the stored precision rather than the exact
+    // quotient. It is nowhere near the 0.4545 the group-only denominator gave.
+    expect(Number(stored.missingRatio)).toBeCloseTo(10 / 82, 4);
+  });
 });
 
 describe("multiple-testing ranking", () => {
