@@ -173,6 +173,8 @@ model Workspace {
   analysisJobs   AnalysisJob[]
   auditEvents    AuditEvent[]
   backgroundJobs BackgroundJob[]
+  featureStatistics     AccountFeatureStatistic[]
+  featureStatisticPosts AccountFeatureStatisticPost[]
   postAnalyses   PostAnalysis[]
   credentials    IntegrationCredential[]
   igAccounts     InstagramAccount[]
@@ -359,6 +361,7 @@ model InstagramAccount {
   credentials             IntegrationCredential[]
   posts                   InstagramPost[]
   syncRuns                SyncRun[]
+  featureStatistics       AccountFeatureStatistic[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, providerAccountId])
@@ -845,4 +848,108 @@ model PostAnalysis {
   @@index([workspaceId, analyticsEligible, contentPillar])
   @@index([workspaceId, analyticsEligible, hookCategory])
   @@map("post_analyses")
+}
+
+enum FeatureStatisticConfidence {
+  INSUFFICIENT_EVIDENCE
+  SINGLE_POST_OUTLIER
+  WEAK_DIRECTIONAL_SIGNAL
+  MODERATE_ASSOCIATION
+  STATISTICALLY_SUPPORTED_ASSOCIATION
+
+  @@map("feature_statistic_confidence")
+}
+
+// One immutable statement about one feature value against one metric.
+//
+// Rows are never updated. A recalculation writes a new row with a new input
+// fingerprint and leaves the old one, because a stored strategy that cited a
+// statistic must still resolve exactly what it cited — rewriting the number
+// under it would silently change what a published claim meant.
+//
+// `inputFingerprint` covers the posts, snapshots and analyses that produced the
+// result, so #52 can tell whether a recalculation could change anything before
+// spending a run. It is what makes "nothing has changed" cheap to answer.
+//
+// Every field a reader needs to judge the claim is stored beside it: both
+// sample sizes, both medians and spreads, the effect, the uncertainty, the
+// sensitivity outcome and the reason for the classification. A trend that
+// cannot show its own working is not evidence.
+model AccountFeatureStatistic {
+  id                     String                     @id @db.Uuid
+  workspaceId            String                     @map("workspace_id") @db.Uuid
+  instagramAccountId     String                     @map("instagram_account_id") @db.Uuid
+  // Dotted path into the analysis contract, such as `content.hook.category`.
+  featurePath            String                     @map("feature_path") @db.VarChar(128)
+  featureValue           String                     @map("feature_value") @db.VarChar(64)
+  metric                 String                     @db.VarChar(64)
+  ageWindow              String                     @map("age_window") @db.VarChar(16)
+  publishedFrom          DateTime                   @map("published_from") @db.Timestamptz(3)
+  publishedTo            DateTime                   @map("published_to") @db.Timestamptz(3)
+  groupCount             Int                        @map("group_count")
+  comparisonCount        Int                        @map("comparison_count")
+  groupMedian            Decimal?                   @map("group_median") @db.Decimal(20, 8)
+  groupIqr               Decimal?                   @map("group_iqr") @db.Decimal(20, 8)
+  comparisonMedian       Decimal?                   @map("comparison_median") @db.Decimal(20, 8)
+  comparisonIqr          Decimal?                   @map("comparison_iqr") @db.Decimal(20, 8)
+  differenceOfMedians    Decimal?                   @map("difference_of_medians") @db.Decimal(20, 8)
+  relativeEffect         Decimal?                   @map("relative_effect") @db.Decimal(20, 8)
+  intervalLower          Decimal?                   @map("interval_lower") @db.Decimal(20, 8)
+  intervalUpper          Decimal?                   @map("interval_upper") @db.Decimal(20, 8)
+  intervalConfidence     Decimal?                   @map("interval_confidence") @db.Decimal(4, 3)
+  bootstrapSeed          BigInt?                    @map("bootstrap_seed")
+  bootstrapResamples     Int?                       @map("bootstrap_resamples")
+  confidence             FeatureStatisticConfidence
+  classificationReason   String                     @map("classification_reason") @db.VarChar(64)
+  topContributorShare    Decimal?                   @map("top_contributor_share") @db.Decimal(6, 5)
+  sensitivityHoldsDirection Boolean?                @map("sensitivity_holds_direction")
+  missingRatio           Decimal                    @map("missing_ratio") @db.Decimal(6, 5)
+  distinctPublicationDates Int                      @map("distinct_publication_dates")
+  distinctPublicationWeeks Int                      @map("distinct_publication_weeks")
+  multipleTestingApplied  Boolean                   @default(false) @map("multiple_testing_applied")
+  // Every version that could change this number, so a stale row is detectable.
+  analyticsVersion       String                     @map("analytics_version") @db.VarChar(64)
+  statisticsVersion      String                     @map("statistics_version") @db.VarChar(64)
+  cohortVersion          String                     @map("cohort_version") @db.VarChar(64)
+  analysisSchemaVersion  String                     @map("analysis_schema_version") @db.VarChar(64)
+  inputFingerprint       String                     @map("input_fingerprint") @db.Char(64)
+  calculatedAt           DateTime                   @map("calculated_at") @db.Timestamptz(3)
+  createdAt              DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  workspace              Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  account                InstagramAccount           @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
+  members                AccountFeatureStatisticPost[]
+
+  @@unique([workspaceId, id])
+  // One row per identical question and identical inputs. A repeat calculation
+  // over unchanged data collapses instead of accumulating duplicates.
+  @@unique([workspaceId, instagramAccountId, featurePath, featureValue, metric, ageWindow, inputFingerprint], map: "account_feature_statistics_question_inputs_key")
+  // Explicit names: the generated ones truncate to the same string.
+  @@index([workspaceId, instagramAccountId, calculatedAt(sort: Desc)], map: "account_feature_statistics_account_calculated_at_idx")
+  @@index([workspaceId, instagramAccountId, confidence], map: "account_feature_statistics_account_confidence_idx")
+  @@index([workspaceId, instagramAccountId, featurePath, metric], map: "account_feature_statistics_account_feature_metric_idx")
+  @@map("account_feature_statistics")
+}
+
+// Which posts contributed to a statistic, and on which side.
+//
+// Stored rather than recomputed because the contract requires every claim to
+// link to the exact posts behind it, and because a later recalculation must not
+// change what an already-published claim was based on.
+model AccountFeatureStatisticPost {
+  id                 String                  @id @db.Uuid
+  workspaceId        String                  @map("workspace_id") @db.Uuid
+  statisticId        String                  @map("statistic_id") @db.Uuid
+  instagramPostId    String                  @map("instagram_post_id") @db.Uuid
+  metricSnapshotId   String                  @map("metric_snapshot_id") @db.Uuid
+  postAnalysisId     String                  @map("post_analysis_id") @db.Uuid
+  // Which side of the comparison this post sat on.
+  membership         String                  @db.VarChar(16)
+  value              Decimal                 @db.Decimal(20, 8)
+  workspace          Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  statistic          AccountFeatureStatistic @relation(fields: [workspaceId, statisticId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, id])
+  @@unique([statisticId, instagramPostId])
+  @@index([workspaceId, instagramPostId])
+  @@map("account_feature_statistic_posts")
 }
