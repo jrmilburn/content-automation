@@ -257,6 +257,10 @@ export async function storeFeatureStatistics(
     });
 
     if (existing) {
+      // The row is unchanged, but this run still publishes it. Without the
+      // membership the run's set would contain only what happened to change,
+      // and a reader would see a partial set presented as a complete one.
+      await publishInRun(database, context, calculationRunId, existing.id);
       skipped += 1;
       continue;
     }
@@ -352,10 +356,30 @@ export async function storeFeatureStatistics(
         })),
         skipDuplicates: true,
       });
+
+      await publishInRun(transaction, context, calculationRunId, id);
     });
 
     stored += 1;
   }
 
   return Object.freeze({ skipped, stored });
+}
+
+/**
+ * Records that a run publishes a statistic.
+ *
+ * Idempotent, because a redelivered job re-walks the same family and must arrive
+ * at the same set rather than failing on the second pass.
+ */
+async function publishInRun(
+  executor: PrismaClient | Prisma.TransactionClient,
+  context: WorkspaceContext,
+  runId: string,
+  statisticId: string,
+): Promise<void> {
+  await executor.accountAnalyticsRunStatistic.createMany({
+    data: [{ runId, statisticId, workspaceId: context.workspaceId }],
+    skipDuplicates: true,
+  });
 }

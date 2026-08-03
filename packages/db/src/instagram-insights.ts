@@ -6,6 +6,7 @@ import {
 } from "@studio-parallel/domain";
 import { OperationalError } from "@studio-parallel/observability";
 
+import { markAnalyticsDirty } from "./analytics-runs.js";
 import type { Prisma, PrismaClient } from "./generated/prisma/client.js";
 import { createId } from "./id.js";
 import type { WorkspaceContext } from "./workspace-context.js";
@@ -172,8 +173,28 @@ export async function recordInstagramMetricSnapshot(
     },
   });
 
+  const created = stored.id === snapshotId;
+
+  if (created) {
+    // A genuinely new observation changes the values every comparison for this
+    // account is calculated over. A collapsed duplicate does not, so it must not
+    // dirty the account — a capture that observed nothing new would otherwise
+    // keep restarting the debounce window and the recalculation would never run.
+    const post = await database.instagramPost.findFirst({
+      select: { instagramAccountId: true },
+      where: { id: input.instagramPostId, workspaceId: context.workspaceId },
+    });
+
+    if (post) {
+      await markAnalyticsDirty(database, context, {
+        instagramAccountId: post.instagramAccountId,
+        now: input.capturedAt,
+      });
+    }
+  }
+
   return Object.freeze({
-    created: stored.id === snapshotId,
+    created,
     payloadHash,
     snapshotId: stored.id,
   });

@@ -70,6 +70,9 @@ function request(overrides: Partial<FeatureStatisticRequest> = {}): FeatureStati
 
 async function clear(): Promise<void> {
   await database.accountFeatureStatisticPost.deleteMany();
+  // Publications reference statistics and restrict their deletion, so they go
+  // first — a run must not be able to lose a statistic it published.
+  await database.accountAnalyticsRunStatistic.deleteMany();
   await database.accountFeatureStatistic.deleteMany();
   // Runs reference the account, so they go before it.
   await database.accountAnalyticsRun.deleteMany();

@@ -72,3 +72,41 @@ CREATE UNIQUE INDEX "account_analytics_runs_one_active_per_account"
 ALTER TABLE "instagram_accounts"
     ADD CONSTRAINT "instagram_accounts_analytics_debounce_pair"
     CHECK (("analytics_dirty_since" IS NULL) = ("analytics_due_at" IS NULL));
+
+-- Which statistics a run published, as opposed to which it wrote.
+--
+-- A recalculation over unchanged inputs collapses onto the existing statistic
+-- row, so a run's set is mostly rows an earlier run wrote. Reading the set
+-- through `calculation_run_id` would return only the ones that changed, which
+-- is a partial set presented as a complete one.
+CREATE TABLE "account_analytics_run_statistics" (
+    "workspace_id" UUID NOT NULL,
+    "run_id" UUID NOT NULL,
+    "statistic_id" UUID NOT NULL,
+    "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "account_analytics_run_statistics_pkey" PRIMARY KEY ("workspace_id", "run_id", "statistic_id")
+);
+
+-- CreateIndex
+CREATE INDEX "analytics_run_statistics_statistic_idx" ON "account_analytics_run_statistics"("workspace_id", "statistic_id");
+
+-- AddForeignKey
+ALTER TABLE "account_analytics_run_statistics" ADD CONSTRAINT "account_analytics_run_statistics_workspace_id_fkey" FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "account_analytics_run_statistics" ADD CONSTRAINT "account_analytics_run_statistics_workspace_id_run_id_fkey" FOREIGN KEY ("workspace_id", "run_id") REFERENCES "account_analytics_runs"("workspace_id", "id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "account_analytics_run_statistics" ADD CONSTRAINT "account_analytics_run_statistics_workspace_id_statistic_id_fkey" FOREIGN KEY ("workspace_id", "statistic_id") REFERENCES "account_feature_statistics"("workspace_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Deleting the run that first wrote a statistic must not take the row with it:
+-- a later run may be publishing it. Cleanup removes the statistic explicitly.
+ALTER TABLE "account_feature_statistics"
+    DROP CONSTRAINT "account_feature_statistics_workspace_id_calculation_run_id_fkey";
+
+ALTER TABLE "account_feature_statistics"
+    ADD CONSTRAINT "account_feature_statistics_workspace_id_calculation_run_id_fkey"
+    FOREIGN KEY ("workspace_id", "calculation_run_id")
+    REFERENCES "account_analytics_runs"("workspace_id", "id")
+    ON DELETE RESTRICT ON UPDATE CASCADE;

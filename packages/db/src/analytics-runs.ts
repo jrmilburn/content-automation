@@ -27,6 +27,7 @@ type Executor = PrismaClient | Prisma.TransactionClient;
 export const analyticsDebounceMs = 5 * 60 * 1_000;
 
 export const analyticsRunFailureCodes = [
+  "CALCULATION_FAILED",
   "INPUTS_CHANGED",
   "NO_ELIGIBLE_ANALYSES",
   "STATISTIC_COUNT_MISMATCH",
@@ -195,8 +196,11 @@ export async function activateAnalyticsRun(
     return Object.freeze({ activated: false, reason: "INPUTS_CHANGED" as const });
   }
 
-  const written = await executor.accountFeatureStatistic.count({
-    where: { calculationRunId: input.runId, workspaceId: context.workspaceId },
+  // Membership, not authorship. Most of a run's statistics were written by an
+  // earlier run and collapsed onto here unchanged; counting what this run wrote
+  // would fail every run after the first.
+  const written = await executor.accountAnalyticsRunStatistic.count({
+    where: { runId: input.runId, workspaceId: context.workspaceId },
   });
 
   // A run that produced fewer statistics than it calculated would publish an

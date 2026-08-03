@@ -183,6 +183,16 @@ export {
   type CohortRequest,
 } from "./analytics-cohorts.js";
 export {
+  analyticsFeatures,
+  analyticsPostLimit,
+  buildFeatureRequests,
+  loadAnalyticsInputs,
+  type AnalyticsFeature,
+  type AnalyticsInputPost,
+  type AnalyticsInputRequest,
+  type AnalyticsInputSet,
+} from "./analytics-features.js";
+export {
   instagramPostPageSize,
   instagramPostSearchLimit,
   isInstagramMediaKind,
