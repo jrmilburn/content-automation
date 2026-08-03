@@ -31,6 +31,8 @@ export type SourceVideoAsset = Readonly<{
   durationMs: number | null;
   heightPx: number | null;
   id: string;
+  /** Carried so the analyse control can name the post without a second query. */
+  instagramPostId: string;
   rejectionCode: string | null;
   state: "PENDING_VALIDATION" | "READY" | "REJECTED";
   uploadedAt: string;
@@ -114,6 +116,7 @@ export async function loadSourceVideoPost(
             durationMs: asset.durationMs,
             heightPx: asset.heightPx,
             id: asset.id,
+            instagramPostId: post.id,
             rejectionCode: asset.rejectionCode,
             state: asset.state,
             uploadedAt: asset.createdAt.toISOString(),

@@ -1,5 +1,7 @@
 import type { SourceVideoAsset } from "../lib/server/source-video-data";
 
+import { AnalysisRequestControl } from "./analysis-request-control";
+
 /**
  * What happened to the video that was uploaded.
  *
@@ -70,9 +72,12 @@ export function SourceVideoStatus({ asset }: Readonly<{ asset: SourceVideoAsset 
       ) : null}
 
       {asset.state === "READY" ? (
-        <p className="source-video-status__state" data-state="ready" role="status">
-          Checked and ready to analyse.
-        </p>
+        <>
+          <p className="source-video-status__state" data-state="ready" role="status">
+            Checked and ready to analyse.
+          </p>
+          <AnalysisRequestControl postId={asset.instagramPostId} />
+        </>
       ) : null}
 
       {asset.state === "REJECTED" ? (

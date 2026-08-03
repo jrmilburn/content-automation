@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { SourceVideoAsset } from "../lib/server/source-video-data";
 
-import { SourceVideoStatus } from "./source-video-status";
+// The control reaches the server action, and through it next-auth, which does
+// not load under jsdom. Its own behaviour is tested separately.
+vi.mock("./analysis-request-control", () => ({
+  AnalysisRequestControl: ({ postId }: Readonly<{ postId: string }>) => (
+    <button data-post={postId} type="button">
+      Analyse this video
+    </button>
+  ),
+}));
+
+const { SourceVideoStatus } = await import("./source-video-status");
 
 /**
  * What an uploader can learn about their video.
@@ -21,6 +31,7 @@ function asset(overrides: Partial<SourceVideoAsset> = {}): SourceVideoAsset {
     durationMs: null,
     heightPx: null,
     id: "019fc538-493b-71f8-9c49-b9dfa1803503",
+    instagramPostId: "019fb5f6-1ad8-75f9-9320-59b589b45581",
     rejectionCode: null,
     state: "PENDING_VALIDATION",
     uploadedAt: "2026-08-03T01:23:48.157Z",
@@ -109,5 +120,30 @@ describe("SourceVideoStatus", () => {
     for (const secret of ["objectKey", "bucket", "etag", "checksum", "source-video/"]) {
       expect(text).not.toContain(secret);
     }
+  });
+});
+
+describe("analyse control placement", () => {
+  it("offers analysis only once the video has been checked", () => {
+    // Asking to analyse a file that failed its probe would spend money on a
+    // video the product already knows it cannot read.
+    render(<SourceVideoStatus asset={asset({ state: "READY" })} />);
+    expect(screen.getByRole("button", { name: "Analyse this video" })).toBeVisible();
+  });
+
+  it.each(["PENDING_VALIDATION", "REJECTED"] as const)(
+    "does not offer analysis for a %s asset",
+    (state) => {
+      render(<SourceVideoStatus asset={asset({ rejectionCode: "UNDECODABLE", state })} />);
+      expect(screen.queryByRole("button", { name: "Analyse this video" })).toBeNull();
+    },
+  );
+
+  it("names the post the analysis is for", () => {
+    render(<SourceVideoStatus asset={asset({ state: "READY" })} />);
+    expect(screen.getByRole("button", { name: "Analyse this video" })).toHaveAttribute(
+      "data-post",
+      "019fb5f6-1ad8-75f9-9320-59b589b45581",
+    );
   });
 });

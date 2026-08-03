@@ -2440,3 +2440,25 @@ h2 {
 .source-video-status__details dd {
   margin: 0;
 }
+
+/* Requesting an analysis. Sits inside the attached-video card, so it carries no
+   surface of its own; only the status line needs colour. */
+.analysis-request {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.analysis-request__status {
+  margin: 0;
+  padding-left: 0.875rem;
+  border-left: 3px solid var(--color-rule);
+}
+
+.analysis-request__status--success {
+  border-left-color: var(--color-success);
+}
+
+.analysis-request__status--error {
+  border-left-color: var(--color-danger);
+  font-weight: 600;
+}
