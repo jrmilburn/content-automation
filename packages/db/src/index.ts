@@ -197,6 +197,24 @@ export {
   type TrendListItem,
 } from "./analytics-trends.js";
 export {
+  buildStrategyManifest,
+  loadStrategyEvidenceCandidates,
+  strategyContractColumns,
+  writeStrategyEvidence,
+  type FrozenStrategyManifest,
+  type StrategyEvidenceCandidates,
+  type StrategyEvidenceCounts,
+  type StrategyEvidenceRequest,
+} from "./strategy-evidence.js";
+export {
+  previewStrategyRequest,
+  requestStrategyGeneration,
+  strategyDefaultPeriodDays,
+  type StrategyRequestInput,
+  type StrategyRequestOutcome,
+  type StrategyRequestPreview,
+} from "./strategy-request-command.js";
+export {
   analyticsFeatures,
   analyticsPostLimit,
   buildFeatureRequests,
