@@ -1,6 +1,34 @@
-import "dotenv/config";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
+import dotenv from "dotenv";
 import { defineConfig } from "prisma/config";
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/**
+ * The same environment files the worker loads.
+ *
+ * Without this a Prisma command run from a plain shell found no URL at all and
+ * fell back to localhost, so a migration meant for the deployed database went
+ * nowhere near it. `dev:worker` has loaded these since #134; the Prisma commands
+ * did not, and the two disagreeing about where configuration comes from is what
+ * made a production migration silently local.
+ *
+ * The order is the reverse of the worker's script on purpose. dotenv keeps the
+ * **first** value it sees, where node's `--env-file` keeps the **last**, so
+ * loading the worker file first here produces the same effective precedence:
+ * `.env.worker` over `.env`. Both implementations leave an already-exported
+ * variable alone, which is what keeps CI and the disposable-Postgres runner
+ * unaffected — they export real values.
+ *
+ * Paths resolve from this file rather than the working directory, because a
+ * workspace script runs from `packages/db` and a root invocation does not.
+ */
+dotenv.config({
+  path: [resolve(repositoryRoot, ".env.worker"), resolve(repositoryRoot, ".env")],
+  quiet: true,
+});
 
 /**
  * Which database a Prisma command talks to.

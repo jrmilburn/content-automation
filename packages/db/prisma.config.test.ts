@@ -82,3 +82,48 @@ describe("describeDatasource", () => {
     );
   });
 });
+
+describe("environment file precedence", () => {
+  /**
+   * The load order in `prisma.config.ts` is only correct because dotenv keeps
+   * the first value it sees, where node's `--env-file` keeps the last. If
+   * dotenv ever changed that, `.env` would start winning over `.env.worker`
+   * and a migration would quietly target the wrong database again.
+   */
+  it("keeps the first file's value and never overrides an exported variable", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dotenv = (await import("dotenv")).default;
+
+    const directory = mkdtempSync(join(tmpdir(), "prisma-config-"));
+    const first = join(directory, "first.env");
+    const second = join(directory, "second.env");
+
+    writeFileSync(first, "PRISMA_CONFIG_ORDER=from_first\nPRISMA_CONFIG_EXPORTED=from_file\n");
+    writeFileSync(second, "PRISMA_CONFIG_ORDER=from_second\n");
+
+    process.env["PRISMA_CONFIG_EXPORTED"] = "from_shell";
+    delete process.env["PRISMA_CONFIG_ORDER"];
+
+    try {
+      dotenv.config({ path: [first, second], quiet: true });
+
+      expect(process.env["PRISMA_CONFIG_ORDER"]).toBe("from_first");
+      expect(process.env["PRISMA_CONFIG_EXPORTED"]).toBe("from_shell");
+    } finally {
+      delete process.env["PRISMA_CONFIG_ORDER"];
+      delete process.env["PRISMA_CONFIG_EXPORTED"];
+    }
+  });
+
+  it("tolerates an absent file rather than throwing", async () => {
+    const dotenv = (await import("dotenv")).default;
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+
+    expect(() =>
+      dotenv.config({ path: join(tmpdir(), "prisma-config-absent.env"), quiet: true }),
+    ).not.toThrow();
+  });
+});
