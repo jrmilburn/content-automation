@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { queueDefinitions } from "@studio-parallel/domain";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -26,9 +27,15 @@ const migrationsDirectory = join(
 );
 
 function migrationFiles(): readonly string[] {
-  return readdirSync(migrationsDirectory, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => join(migrationsDirectory, entry.name, "migration.sql"));
+  return (
+    readdirSync(migrationsDirectory, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      // Prisma applies migrations in name order, so the last definition of a
+      // constraint in this order is the one the database ends up with.
+      .sort()
+      .map((name) => join(migrationsDirectory, name, "migration.sql"))
+  );
 }
 
 /** A statement, a comment, or nothing. Anything else is not SQL. */
@@ -54,4 +61,47 @@ describe("migration files", () => {
     // version control if one ever reached a later line.
     expect(readFileSync(file, "utf8")).not.toMatch(/^Prisma target:/mu);
   });
+});
+
+/**
+ * The queue allowlist is written down twice, so the two copies are compared.
+ *
+ * `queueDefinitions` is what application code validates against; these check
+ * constraints are what the database enforces. A queue added to the first and
+ * not the second passes every in-process guard and then fails the insert, which
+ * the enqueue reports as a generic dependency failure with the constraint name
+ * discarded. That is what happened to `instagram.media.import`: the request
+ * surfaced as "the video could not be requested", nothing was written, and
+ * nothing pointed at the schema.
+ *
+ * Checked here rather than only against a live database because Prisma cannot
+ * express a check constraint, so `db:drift:check` is structurally blind to it,
+ * and because this is the copy a reviewer is least likely to remember.
+ */
+const queueNameConstraints = ["background_jobs_queue_name_check", "job_outbox_queue_name_check"];
+
+/** The names in the last definition of one constraint, in migration order. */
+function constrainedQueueNames(constraint: string): readonly string[] {
+  const definition = new RegExp(
+    `ADD CONSTRAINT "${constraint}" CHECK \\("queue_name" IN \\(([^)]*)\\)\\)`,
+    "gu",
+  );
+  let latest: string | undefined;
+
+  for (const file of migrationFiles()) {
+    for (const match of readFileSync(file, "utf8").matchAll(definition)) latest = match[1];
+  }
+
+  return [...(latest ?? "").matchAll(/'([^']+)'/gu)].map((match) => match[1] ?? "");
+}
+
+describe("background queue names", () => {
+  it.each(queueNameConstraints)(
+    "%s allows every declared queue, and nothing else",
+    (constraint) => {
+      // Order is compared as well as membership: the two lists are read side by
+      // side when a queue is added, and one that reorders is harder to check.
+      expect(constrainedQueueNames(constraint)).toEqual(queueDefinitions.map(({ name }) => name));
+    },
+  );
 });
