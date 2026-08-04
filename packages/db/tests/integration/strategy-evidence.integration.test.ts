@@ -258,7 +258,20 @@ async function analysedPost(
     apiVersion: "v25.0",
     capturedAt: new Date(input.publishedAt.getTime() + 30 * 86_400_000),
     instagramPostId: postId,
-    observations: [observation("reach", 1_000), observation("likes", input.likes)],
+    // All four engagement components, not just likes. The primary metric here is
+    // `engagement_rate_reach`, whose numerator is likes + comments + shares +
+    // saves, and the contract forbids calling a partial sum engagement — so one
+    // absent component makes the whole metric unavailable rather than smaller.
+    // Recording only reach and likes published statistics for `like_rate_reach`
+    // and none at all for the metric the manifest was asked to argue from, which
+    // is why this file's frozen manifest cited no statistic.
+    observations: [
+      observation("reach", 1_000),
+      observation("likes", input.likes),
+      observation("comments", Math.max(1, Math.round(input.likes / 20))),
+      observation("shares", Math.max(1, Math.round(input.likes / 40))),
+      observation("saves", Math.max(1, Math.round(input.likes / 10))),
+    ],
     postAgeSeconds: 30 * 86_400,
     rawPayload: { likes: input.likes },
   });
@@ -607,13 +620,25 @@ describe("the frozen manifest's own guarantees", () => {
     const outcome = await requestStrategyGeneration(database, context, requestInput());
     if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
 
-    const cited = await database.strategyEvidence.findFirst({
-      where: {
-        featureStatisticId: { not: null },
-        strategyGenerationId: outcome.strategyGenerationId,
-      },
+    // Asserted with the published metrics beside it, rather than thrown. The
+    // previous message named the symptom and nothing else, and the real cause —
+    // no statistic published for the requested metric at all — took several
+    // rounds to find from the outside.
+    const frozen = await database.strategyEvidence.findMany({
+      select: { evidenceType: true, featureStatisticId: true },
+      where: { strategyGenerationId: outcome.strategyGenerationId },
     });
-    if (!cited?.featureStatisticId) throw new Error("expected a cited statistic");
+    const published = await database.accountFeatureStatistic.findMany({
+      select: { metric: true },
+    });
+
+    expect({
+      citedTypes: [...new Set(frozen.map((row) => row.evidenceType))].sort(),
+      publishedMetrics: [...new Set(published.map((row) => row.metric))].sort(),
+    }).toMatchObject({ citedTypes: expect.arrayContaining(["FEATURE_STATISTIC"]) });
+
+    const cited = frozen.find((row) => row.featureStatisticId !== null);
+    if (!cited?.featureStatisticId) throw new Error("unreachable: asserted above");
 
     // Removal must not silently retarget the evidence link a strategy depends on.
     await expect(
