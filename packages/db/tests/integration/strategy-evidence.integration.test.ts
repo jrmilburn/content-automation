@@ -21,6 +21,11 @@ import {
   loadStrategyEvidenceCandidates,
 } from "../../src/strategy-evidence.js";
 import {
+  listStrategyGenerations,
+  loadCurrentStrategy,
+  loadStrategyGeneration,
+} from "../../src/strategy-read.js";
+import {
   previewStrategyRequest,
   requestStrategyGeneration,
 } from "../../src/strategy-request-command.js";
@@ -253,7 +258,20 @@ async function analysedPost(
     apiVersion: "v25.0",
     capturedAt: new Date(input.publishedAt.getTime() + 30 * 86_400_000),
     instagramPostId: postId,
-    observations: [observation("reach", 1_000), observation("likes", input.likes)],
+    // All four engagement components, not just likes. The primary metric here is
+    // `engagement_rate_reach`, whose numerator is likes + comments + shares +
+    // saves, and the contract forbids calling a partial sum engagement — so one
+    // absent component makes the whole metric unavailable rather than smaller.
+    // Recording only reach and likes published statistics for `like_rate_reach`
+    // and none at all for the metric the manifest was asked to argue from, which
+    // is why this file's frozen manifest cited no statistic.
+    observations: [
+      observation("reach", 1_000),
+      observation("likes", input.likes),
+      observation("comments", Math.max(1, Math.round(input.likes / 20))),
+      observation("shares", Math.max(1, Math.round(input.likes / 40))),
+      observation("saves", Math.max(1, Math.round(input.likes / 10))),
+    ],
     postAgeSeconds: 30 * 86_400,
     rawPayload: { likes: input.likes },
   });
@@ -602,18 +620,47 @@ describe("the frozen manifest's own guarantees", () => {
     const outcome = await requestStrategyGeneration(database, context, requestInput());
     if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
 
-    const cited = await database.strategyEvidence.findFirst({
-      where: {
-        featureStatisticId: { not: null },
-        strategyGenerationId: outcome.strategyGenerationId,
-      },
+    // Asserted with the published metrics beside it, rather than thrown. The
+    // previous message named the symptom and nothing else, and the real cause —
+    // no statistic published for the requested metric at all — took several
+    // rounds to find from the outside.
+    const frozen = await database.strategyEvidence.findMany({
+      select: { evidenceType: true, featureStatisticId: true },
+      where: { strategyGenerationId: outcome.strategyGenerationId },
     });
-    if (!cited?.featureStatisticId) throw new Error("expected a cited statistic");
+    const published = await database.accountFeatureStatistic.findMany({
+      select: { metric: true },
+    });
+
+    expect({
+      citedTypes: [...new Set(frozen.map((row) => row.evidenceType))].sort(),
+      publishedMetrics: [...new Set(published.map((row) => row.metric))].sort(),
+    }).toMatchObject({ citedTypes: expect.arrayContaining(["FEATURE_STATISTIC"]) });
+
+    const cited = frozen.find((row) => row.featureStatisticId !== null);
+    if (!cited?.featureStatisticId) throw new Error("unreachable: asserted above");
 
     // Removal must not silently retarget the evidence link a strategy depends on.
     await expect(
       database.accountFeatureStatistic.delete({ where: { id: cited.featureStatisticId } }),
     ).rejects.toThrow();
+  });
+
+  it("hands the reader the manifest a generation was frozen against", async () => {
+    await seedComparableAccount();
+    const outcome = await requestStrategyGeneration(database, context, requestInput());
+    if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
+
+    const generation = await database.strategyGeneration.findFirstOrThrow({
+      where: { id: outcome.strategyGenerationId },
+    });
+    const detail = await loadStrategyGeneration(database, context, outcome.strategyGenerationId);
+
+    // The screen resolves a cited id through this list, so an entry missing here
+    // renders as a tombstone on a claim whose evidence is in fact still there.
+    expect(detail?.evidence.length).toBe(generation.evidenceCount);
+    const statistic = detail?.evidence.find((entry) => entry.evidenceType === "feature_statistic");
+    expect(statistic?.referenceId).not.toBeNull();
   });
 
   it("carries no caption or object key into the frozen summaries", async () => {
@@ -629,5 +676,81 @@ describe("the frozen manifest's own guarantees", () => {
     for (const row of evidence) {
       expect(row.summaryText).not.toMatch(/source-video|production\/|caption/iu);
     }
+  });
+});
+
+/**
+ * What a reader of another workspace sees, which must be nothing.
+ *
+ * Every case pairs a real id with a foreign workspace context. That is the shape
+ * a crafted identifier actually takes: the attacker has a valid id — from a
+ * screenshot, a shared link, a former membership — and the only thing standing
+ * between them and the row is the `where` clause.
+ */
+describe("reading a strategy from another workspace", () => {
+  it("returns nothing for a real generation id under a foreign workspace", async () => {
+    await seedComparableAccount();
+    const outcome = await requestStrategyGeneration(database, context, requestInput());
+    if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
+
+    const intruder = createWorkspaceContext(createId());
+
+    // Null rather than a thrown error, so a crafted id cannot be told apart from
+    // one that never existed by watching which failure comes back.
+    await expect(
+      loadStrategyGeneration(database, intruder, outcome.strategyGenerationId),
+    ).resolves.toBeNull();
+    await expect(
+      loadStrategyGeneration(database, context, outcome.strategyGenerationId),
+    ).resolves.not.toBeNull();
+  });
+
+  it("returns no history for a real account id under a foreign workspace", async () => {
+    await seedComparableAccount();
+    const outcome = await requestStrategyGeneration(database, context, requestInput());
+    if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
+
+    const intruder = createWorkspaceContext(createId());
+
+    await expect(
+      listStrategyGenerations(database, intruder, { instagramAccountId: accountId }),
+    ).resolves.toEqual([]);
+    await expect(
+      listStrategyGenerations(database, context, { instagramAccountId: accountId }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("returns no current strategy for a real account id under a foreign workspace", async () => {
+    await seedComparableAccount();
+    const outcome = await requestStrategyGeneration(database, context, requestInput());
+    if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
+
+    await database.instagramAccount.updateMany({
+      data: { currentStrategyId: outcome.strategyGenerationId },
+      where: { id: accountId, workspaceId: developmentWorkspace.id },
+    });
+    const intruder = createWorkspaceContext(createId());
+
+    await expect(loadCurrentStrategy(database, intruder, accountId)).resolves.toBeNull();
+    await expect(loadCurrentStrategy(database, context, accountId)).resolves.not.toBeNull();
+  });
+
+  it("does not read a foreign workspace's evidence onto a strategy it can see", async () => {
+    // The manifest is a second query. Scoping the generation but not its
+    // evidence would leak the summaries while the strategy itself stayed hidden.
+    await seedComparableAccount();
+    const outcome = await requestStrategyGeneration(database, context, requestInput());
+    if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
+
+    const intruder = createWorkspaceContext(createId());
+
+    await expect(
+      database.strategyEvidence.count({
+        where: {
+          strategyGenerationId: outcome.strategyGenerationId,
+          workspaceId: intruder.workspaceId,
+        },
+      }),
+    ).resolves.toBe(0);
   });
 });

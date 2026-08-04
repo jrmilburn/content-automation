@@ -1,14 +1,25 @@
-import { SectionPlaceholder } from "../../../components/section-placeholder";
+import { createWebRequestContext, reportError } from "@studio-parallel/observability";
+import { headers } from "next/headers";
 
-export default function StrategyPage() {
-  return (
-    <SectionPlaceholder
-      actionHref="/trends"
-      actionLabel="Review trends"
-      description="Inspect current and historical evidence-linked strategy."
-      emptyDescription="A strategy can be generated after the workspace has a bounded set of eligible evidence."
-      emptyTitle="No strategy generated"
-      title="Strategy"
-    />
-  );
+import { StrategyError, StrategyScreen } from "../../../components/strategy";
+import { webErrorMonitor, webLogger } from "../../../lib/server/observability";
+import { loadStrategySnapshot } from "../../../lib/server/strategy-data";
+
+export default async function StrategyPage() {
+  try {
+    const snapshot = await loadStrategySnapshot();
+    return <StrategyScreen snapshot={snapshot} />;
+  } catch (error) {
+    const requestContext = createWebRequestContext(await headers());
+    reportError(
+      error,
+      {
+        correlationId: requestContext.correlationId,
+        event: "strategy.load.failed",
+        stage: "strategy",
+      },
+      { logger: webLogger, monitor: webErrorMonitor },
+    );
+    return <StrategyError reference={requestContext.correlationId} />;
+  }
 }
