@@ -64,7 +64,7 @@ function analysis(overrides: Record<string, unknown> = {}): PostCreativeAnalysis
     contract: {
       modelRequested: "gemini-3.6-flash",
       promptVersion: "post-creative-analysis-prompt-v1.1.0",
-      schemaVersion: "post-creative-analysis-v1.0.0",
+      schemaVersion: "post-creative-analysis-v1.1.0",
     },
     quality: { overallConfidence: "high" },
     ...overrides,
@@ -221,7 +221,7 @@ async function createJob(): Promise<string> {
     modelRequested: "gemini-3.6-flash",
     promptVersion: "post-creative-analysis-prompt-v1.1.0",
     requestSignature: "c".repeat(64),
-    schemaVersion: "post-creative-analysis-v1.0.0",
+    schemaVersion: "post-creative-analysis-v1.1.0",
     transcriptRevisionId: null,
     videoAssetId: assetId,
   });
@@ -371,7 +371,7 @@ describe("publishPostAnalysis", () => {
       modelRequested: "gemini-3.6-flash",
       promptVersion: "post-creative-analysis-prompt-v1.2.0",
       requestSignature: "f".repeat(64),
-      schemaVersion: "post-creative-analysis-v1.0.0",
+      schemaVersion: "post-creative-analysis-v1.1.0",
       transcriptRevisionId: null,
       videoAssetId: assetId,
     });
@@ -434,7 +434,7 @@ describe("publishPostAnalysis", () => {
       modelRequested: "gemini-3.6-flash",
       promptVersion: "post-creative-analysis-prompt-v1.1.0",
       requestSignature: "c".repeat(64),
-      schemaVersion: "post-creative-analysis-v1.0.0",
+      schemaVersion: "post-creative-analysis-v1.1.0",
       transcriptRevisionId: null,
       videoAssetId: assetId,
     });
