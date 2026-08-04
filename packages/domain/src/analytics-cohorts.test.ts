@@ -141,6 +141,16 @@ describe("recalculation window selection", () => {
     expect(selectAnalyticsAgeWindow(offered({ day_7: 8, lifetime: 30 }), 20, 8)).toBe("day_7");
   });
 
+  it("keeps the matched window when the unmatched one sees no more than it does", () => {
+    // Both hold the same posts, so falling back buys nothing and costs the
+    // matched age. An established account whose history is all mature reads
+    // through `mature`, not through a window that compares nothing.
+    expect(selectAnalyticsAgeWindow(offered({ mature: 1, lifetime: 1 }), 20, 8)).toBe("mature");
+    expect(selectAnalyticsAgeWindow(offered({ day_30: 5, mature: 2, lifetime: 5 }), 20, 8)).toBe(
+      "day_30",
+    );
+  });
+
   it("returns null when nothing was measured, including unmatched", () => {
     expect(selectAnalyticsAgeWindow(offered({ day_7: 0, lifetime: 0 }), 20, 8)).toBeNull();
   });

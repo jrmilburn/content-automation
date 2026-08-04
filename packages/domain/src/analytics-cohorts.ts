@@ -198,7 +198,16 @@ export function selectAnalyticsAgeWindow(
   // No matched window can compare anything. Reading every observation together
   // is weaker than comparing at one age, and it is what the account has.
   const unmatched = measured.find((candidate) => candidate.ageWindow === unmatchedAgeWindow);
-  return unmatched ? unmatched.ageWindow : widest(measured).ageWindow;
+  if (!unmatched) return widest(measured).ageWindow;
+
+  // Only when it actually sees more. An established account whose history is
+  // entirely mature offers the same posts through `mature` and through
+  // `lifetime`; taking the unmatched one there would drop the matched age for
+  // nothing, which is the opposite of what the fallback is for.
+  const best = matched.length > 0 ? widest(matched) : null;
+  return best !== null && best.eligiblePosts >= unmatched.eligiblePosts
+    ? best.ageWindow
+    : unmatched.ageWindow;
 }
 
 function widest(candidates: readonly AnalyticsWindowCandidate[]): AnalyticsWindowCandidate {
