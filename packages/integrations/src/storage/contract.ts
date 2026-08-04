@@ -75,6 +75,22 @@ export type CreateMultipartUploadRequest = Readonly<{
   objectKey: string;
 }>;
 
+/**
+ * One object written by the server from a stream it is already reading.
+ *
+ * The body is a web stream for the same reason `StoredObjectBody` returns one:
+ * a source video must never be held in memory in order to be stored. There is
+ * deliberately no byte ceiling here. The ceiling is policy, it belongs to the
+ * caller that knows what it is fetching, and the caller enforces it by handing
+ * over a stream that errors once the ceiling is passed — at which point this
+ * write must leave nothing behind.
+ */
+export type PutObjectStreamRequest = Readonly<{
+  body: ReadableStream<Uint8Array>;
+  contentType: string;
+  objectKey: string;
+}>;
+
 export type ListAbandonedUploadsRequest = Readonly<{
   initiatedBefore: Date;
   limit: number;
@@ -126,5 +142,18 @@ export type ObjectStorageAdapter = Readonly<{
   /** Returns null when the object does not exist, rather than throwing. */
   headObject(objectKey: string): Promise<StoredObjectMetadata | null>;
   listAbandonedUploads(request: ListAbandonedUploadsRequest): Promise<readonly AbandonedUpload[]>;
+  /**
+   * Writes one object from a server-held stream, returning server-observed
+   * metadata.
+   *
+   * This is the only creation path that does not involve a browser. It exists
+   * for content the server fetches itself, where there is no client to sign
+   * parts for and no upload intent describing what a client was told to do.
+   *
+   * A failed or aborted stream must leave no object addressable at the key and
+   * no upload in flight: the caller is expected to retry, and a half-written
+   * object that a later read could find is worse than no object at all.
+   */
+  putObjectStream(request: PutObjectStreamRequest): Promise<StoredObjectMetadata>;
   signPartUpload(handle: MultipartUploadHandle, partNumber: number): Promise<SignedPartInstruction>;
 }>;

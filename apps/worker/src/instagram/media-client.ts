@@ -3,6 +3,7 @@ import {
   instagramApiVersion,
   instagramGraphHost,
   instagramMediaFields,
+  instagramMediaImportFields,
   instagramMediaPageSize,
   parseInstagramRetryAfterMs,
   readInstagramMediaPage,
@@ -50,6 +51,7 @@ export type InstagramMediaFetch = Readonly<{
 }>;
 
 const providerAccountIdPattern = /^[0-9]{5,32}$/u;
+const providerMediaIdPattern = /^[0-9]{5,32}$/u;
 const cursorPattern = /^[A-Za-z0-9_-]{1,512}$/u;
 const defaultTimeoutMs = 15_000;
 
@@ -59,6 +61,99 @@ async function readJsonBody(response: Response): Promise<unknown> {
   } catch {
     return null;
   }
+}
+
+export type InstagramMediaItemFetch = Readonly<{
+  mediaProductType: string | null;
+  mediaType: string | null;
+  /**
+   * The signed CDN URL, freshly issued for this request.
+   *
+   * It is returned rather than stored because Meta re-signs it every time it is
+   * asked: a value kept for later is a URL that starts refusing, and the
+   * refusal looks like a provider fault rather than the expiry it is.
+   */
+  mediaUrl: string | null;
+  usage: readonly InstagramUsageObservation[];
+}>;
+
+/**
+ * Reads one media node, for the fresh `media_url` an import needs.
+ *
+ * Only fields the pinned media contract already documents are requested, so
+ * this adds an endpoint without changing the field set the sanitised proof
+ * covers. The media id is validated before it reaches the path, for the same
+ * reason the account id is on the edge below: a value that arrived from the
+ * database must not be able to redirect the request at another endpoint.
+ */
+export async function fetchInstagramMediaItem(input: {
+  accessToken: string;
+  fetchImplementation?: FetchLike | undefined;
+  providerMediaId: string;
+  timeoutMs?: number | undefined;
+}): Promise<InstagramMediaItemFetch> {
+  const {
+    accessToken,
+    fetchImplementation = fetch,
+    providerMediaId,
+    timeoutMs = defaultTimeoutMs,
+  } = input;
+
+  if (!providerMediaIdPattern.test(providerMediaId)) {
+    throw new InstagramMediaError("invalid_request", "MEDIA_ID_INVALID");
+  }
+
+  const url = new URL(`https://${instagramGraphHost}/${instagramApiVersion}/${providerMediaId}`);
+  url.searchParams.set("fields", instagramMediaImportFields.join(","));
+
+  let response: Response;
+  try {
+    response = await fetchImplementation(url, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "User-Agent": "StudioParallelInstagramSync/1.0",
+      },
+      method: "GET",
+      redirect: "error",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch {
+    throw new InstagramMediaError("transient", "MEDIA_ITEM_UNREACHABLE");
+  }
+
+  const usage = summariseInstagramUsage((header) => response.headers.get(header));
+
+  if (!response.ok) {
+    const responseClass = classifyInstagramResponse({
+      body: await readJsonBody(response),
+      status: response.status,
+    });
+    throw new InstagramMediaError(
+      responseClass,
+      "MEDIA_ITEM_REJECTED",
+      parseInstagramRetryAfterMs(response.headers.get("retry-after")),
+    );
+  }
+
+  const body = await readJsonBody(response);
+  if (body === null || typeof body !== "object") {
+    throw new InstagramMediaError("transient", "MEDIA_ITEM_NOT_JSON");
+  }
+
+  const item = body as Record<string, unknown>;
+
+  return Object.freeze({
+    mediaProductType: readOptionalString(item, "media_product_type"),
+    mediaType: readOptionalString(item, "media_type"),
+    mediaUrl: readOptionalString(item, "media_url"),
+    usage,
+  });
+}
+
+function readOptionalString(item: Record<string, unknown>, key: string): string | null {
+  const value = item[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 /**

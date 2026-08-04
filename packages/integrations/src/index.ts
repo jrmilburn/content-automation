@@ -25,7 +25,9 @@ export {
   type MultipartUploadHandle,
   type ObjectStorageAdapter,
   ObjectStorageError,
+  type PutObjectStreamRequest,
   type SignedPartInstruction,
+  type StoredObjectBody,
   type StoredObjectMetadata,
 } from "./storage/contract.js";
 export {
@@ -34,6 +36,7 @@ export {
   type FakeObjectStorageDependencies,
 } from "./storage/fake-adapter.js";
 export {
+  createDerivedSourceVideoObjectKey,
   createSourceVideoObjectKey,
   isSourceVideoObjectKeyFor,
   type SourceVideoKeyParts,

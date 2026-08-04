@@ -27,6 +27,12 @@ test("the source video upload states the limits and stays usable at the active v
   const chooser = page.getByLabel("Choose a video");
   await expect(chooser).toBeVisible();
 
+  // Copying the post's own video is offered beside uploading, as an
+  // alternative rather than a step, and says plainly that the copy is the
+  // version Instagram serves rather than the original file.
+  await expect(page.getByRole("button", { name: "Use the Instagram video" })).toBeVisible();
+  await expect(page.getByText(/re-encoded for playback/u)).toBeVisible();
+
   const accept = await page.locator("#video-upload-input").getAttribute("accept");
   expect(accept).toContain("video/mp4");
   expect(accept).not.toContain("video/x-msvideo");
@@ -55,7 +61,20 @@ test("an unknown post does not reveal whether it exists elsewhere", async ({ pag
     await expect(page.getByRole("heading", { name: "Post not found" })).toBeVisible();
     await expect(page.getByText(/No post data was disclosed/u)).toBeVisible();
 
-    // No upload may be startable for a post the caller cannot see.
+    // Neither route to attaching a video may be startable for a post the caller
+    // cannot see.
     await expect(page.getByLabel("Choose a video")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Use the Instagram video" })).toHaveCount(0);
   }
+});
+
+test("a post with no video to copy is not offered the Instagram control", async ({ page }) => {
+  // Fixture 403 is an image post. Offering the control there would produce a
+  // refusal, which is a worse answer than not offering it at all.
+  await page.goto("/posts/019a0000-0000-7000-8000-000000000403/source-video");
+
+  await expect(page.getByLabel("Choose a video")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Use the Instagram video" })).toHaveCount(0);
+
+  await expectAccessible(page);
 });

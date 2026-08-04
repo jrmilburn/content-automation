@@ -77,7 +77,7 @@ Use resource UUIDs, correlation/provider request IDs, stage, safe error class/st
 - One active logical operation per idempotency signature; cooldowns/daily budgets protect paid/provider actions.
 - Strict JSON/form body schemas, length/range limits and safe pagination caps.
 - Same-origin/CORS allowlist, security headers (CSP, HSTS, frame-ancestors, referrer policy, nosniff) and dependency-safe rendering.
-- SSRF protection: server fetches only provider endpoints and known object-store locations; user-supplied URLs are not fetched in v1.
+- SSRF protection: the server fetches only pinned provider endpoints, known object-store locations, and Meta's media CDN under a host allowlist. A user-supplied URL is never fetched. The one path that reads media bytes is the source-video import, and the operator names a post rather than a URL: the address comes from a Graph response for media the workspace already owns, is checked against the allowlist before the request and again on every redirect hop, and carries no credential.
 - Database parameterisation/ORM, escaped text rendering, no raw HTML from provider/model/user.
 - OAuth/webhook signatures and replay timestamps are verified if webhooks are added.
 - Audit connect/disconnect, secret/config changes, deletes, retries, analysis activation, strategy/recommendation state and resulting-post links.

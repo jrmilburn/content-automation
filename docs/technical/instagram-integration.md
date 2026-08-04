@@ -160,7 +160,9 @@ Use the authorised account’s owned-media edge with cursor pagination. Request 
 
 A published Reel may report `media_type=VIDEO`; use `media_product_type=REELS` to classify it, as Meta’s [official Reels publishing documentation](https://www.postman.com/meta/instagram/request/23987686-f1c081c0-be35-4ffa-84bb-2c1726860c2b) notes. Unknown product/media values are stored and shown as unsupported rather than discarded.
 
-Store raw response, response hash, provider API version, retrieval time and normalised fields. Do not download or retain Instagram CDN media as the original source; URLs can expire and are not the user-supplied durable asset.
+Store raw response, response hash, provider API version, retrieval time and normalised fields. A CDN URL is never retained and never treated as a durable location, because Meta re-signs it on every request.
+
+Media bytes may be copied into private storage, but only on explicit request for one post, and only through the import path in `docs/technical/video-ingestion.md`. Such a copy is recorded as `PROVIDER_IMPORT` and is never presented as the user-supplied master: it is the file Instagram serves, re-encoded for delivery. Nothing reads a stored `media_url` — the import re-fetches one at the moment of use, which is the only way the value is ever valid.
 
 As implemented, `instagram_posts` holds the normalised fields plus the raw item
 in a restricted `raw_payload` column that no ordinary read projects. Two
@@ -168,8 +170,9 @@ consequences of the expiring URLs are worth stating explicitly:
 
 - `media_url` is given **no column at all**. It survives only inside the raw
   payload, so there is no field a later feature could mistake for a stored
-  source asset. `provider_thumbnail_url` exists for display and is documented as
-  non-durable.
+  source asset, and the media import deliberately does not read it back — it
+  asks the provider for a fresh one. `provider_thumbnail_url` exists for display
+  and is documented as non-durable.
 - `raw_payload_hash` is computed over a key-ordered copy of the item with
   `media_url` and `thumbnail_url` removed. Meta re-signs those URLs on every
   request, so hashing them would report every unchanged post as modified on

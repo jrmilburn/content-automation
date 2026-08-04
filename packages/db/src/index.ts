@@ -274,6 +274,7 @@ export {
   failInstagramSyncRun,
   findInstagramPostByProviderMediaId,
   findInstagramSyncRun,
+  instagramPostResourceType,
   instagramPostSafeSelect,
   instagramSyncRunSucceededForJob,
   listInstagramPosts,
@@ -291,9 +292,11 @@ export {
 } from "./repositories.js";
 export {
   closeVideoUploadIntent,
+  createImportedVideoAsset,
   createVideoAsset,
   createVideoUploadIntent,
   findPendingVideoUploadIntentForPost,
+  findVideoAssetForImportJob,
   findVideoAssetForIntent,
   findVideoAssetForValidation,
   findVideoUploadIntent,
@@ -307,6 +310,7 @@ export {
   uploadIntentInitiatedAction,
   videoAssetResourceType,
   videoUploadIntentResourceType,
+  type CreateImportedVideoAssetInput,
   type CreateUploadIntentInput,
   type CreateVideoAssetInput,
   type ExpiredUploadIntent,

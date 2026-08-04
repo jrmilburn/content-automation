@@ -26,6 +26,9 @@ const safeFailureClassPattern = /^[A-Z][A-Z0-9_]{0,31}$/u;
 const safeFailureCodePattern = /^[A-Z][A-Z0-9_]{0,63}$/u;
 const safeIdempotencyKeyPattern = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,254}$/u;
 
+/** The resource an imported post is identified as on a job or an audit row. */
+export const instagramPostResourceType = "instagram_post";
+
 /**
  * The only supported read projection. `rawPayload` is restricted provenance and
  * is deliberately absent so a caption or provider payload cannot reach a

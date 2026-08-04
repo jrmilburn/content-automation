@@ -8,6 +8,11 @@ import {
   requestAnalysisForPost,
   type AnalysisRequestResult,
 } from "../../../../../lib/server/analysis-request";
+import {
+  requestInstagramMediaImport,
+  type MediaImportRefusalReason,
+  type MediaImportResult,
+} from "../../../../../lib/server/instagram-media-import";
 import { webErrorMonitor, webLogger } from "../../../../../lib/server/observability";
 import { requireShellActor } from "../../../../../lib/server/shell-session";
 
@@ -68,6 +73,73 @@ export async function requestAnalysisAction(
       status: "error" as const,
     });
   }
+}
+
+const importRefusalMessages: Readonly<Record<MediaImportRefusalReason, string>> = Object.freeze({
+  ALREADY_HAS_SOURCE: "This post already has a source video. Replacing it is a separate action.",
+  NOT_A_VIDEO: "This post is not a video, so there is nothing to bring across.",
+  POST_NOT_FOUND: "This post is unavailable in the current workspace.",
+  RATE_LIMITED: "Too many videos have been requested recently. Wait a few minutes and try again.",
+});
+
+/**
+ * Bringing the post's own Instagram video across as its source.
+ *
+ * Says "queued" for the same reason every other control on this page does: the
+ * worker owns the transfer and may not be running, so claiming the video had
+ * arrived would be the one misleading thing this control could say.
+ */
+export async function importInstagramVideoAction(
+  _previous: AnalysisActionState,
+  formData: FormData,
+): Promise<AnalysisActionState> {
+  const requestContext = createWebRequestContext(await headers());
+  const rawPostId = formData.get("postId");
+  const postId = typeof rawPostId === "string" ? rawPostId : "";
+
+  try {
+    const actor = await requireShellActor();
+    const result = await requestInstagramMediaImport({
+      actor,
+      correlationId: requestContext.correlationId,
+      postId,
+    });
+
+    revalidatePath(`/posts/${postId}/source-video`);
+    return describeImport(result);
+  } catch (error) {
+    reportError(
+      error,
+      {
+        correlationId: requestContext.correlationId,
+        event: "instagram.media_import.request_failed",
+        stage: "media_import_request",
+      },
+      { logger: webLogger, monitor: webErrorMonitor },
+    );
+
+    return Object.freeze({
+      message:
+        "The video could not be requested. Nothing was changed. Try again, and contact an administrator if it keeps failing.",
+      reference: requestContext.correlationId,
+      status: "error" as const,
+    });
+  }
+}
+
+function describeImport(result: MediaImportResult): AnalysisActionState {
+  if (!result.queued) {
+    return Object.freeze({
+      message: importRefusalMessages[result.reason],
+      status: "error" as const,
+    });
+  }
+
+  return Object.freeze({
+    message:
+      "Getting the video from Instagram. It is copied in the background and then checked, which usually takes a minute. Reload this page to see it.",
+    status: "success" as const,
+  });
 }
 
 function describeResult(result: AnalysisRequestResult): AnalysisActionState {

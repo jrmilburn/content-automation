@@ -33,6 +33,11 @@ export type SourceVideoAsset = Readonly<{
   id: string;
   /** Carried so the analyse control can name the post without a second query. */
   instagramPostId: string;
+  /**
+   * Where the bytes came from. Safe to expose — it names a route, not a
+   * location, so it adds no storage provenance to what the browser can see.
+   */
+  origin: "PROVIDER_IMPORT" | "USER_UPLOAD";
   rejectionCode: string | null;
   state: "PENDING_VALIDATION" | "READY" | "REJECTED";
   uploadedAt: string;
@@ -90,6 +95,7 @@ export async function loadSourceVideoPost(
           durationMs: true,
           heightPx: true,
           id: true,
+          origin: true,
           rejectionCode: true,
           state: true,
           validatedAt: true,
@@ -117,6 +123,7 @@ export async function loadSourceVideoPost(
             heightPx: asset.heightPx,
             id: asset.id,
             instagramPostId: post.id,
+            origin: asset.origin,
             rejectionCode: asset.rejectionCode,
             state: asset.state,
             uploadedAt: asset.createdAt.toISOString(),

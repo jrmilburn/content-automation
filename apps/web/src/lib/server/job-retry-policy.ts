@@ -42,6 +42,10 @@ const policies = {
   "analytics.recalculate": foundationPolicy,
   "asset.cleanup": foundationPolicy,
   "asset.validate": foundationPolicy,
+  // An import that already produced its asset is refused a retry by the
+  // handler's own unique anchor, so the foundation policy is enough here: a
+  // retry that reaches the handler re-reads that anchor before downloading.
+  "instagram.media.import": foundationPolicy,
   // Snapshots stay on the foundation policy deliberately: a snapshot is
   // content-addressed, so re-running either collapses onto the existing row or
   // records a genuinely changed observation. Refusing on a prior result would

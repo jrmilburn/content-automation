@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 /**
  * Object keys are built by the server and never supplied by a client.
@@ -20,6 +20,30 @@ export type SourceVideoKeyParts = Readonly<{
 
 export function createSourceVideoObjectKey(parts: SourceVideoKeyParts): string {
   const suffix = randomBytes(randomSuffixBytes).toString("hex");
+
+  return `${parts.environment}/${parts.workspaceId}/${sourceVideoSegment}/${suffix}`;
+}
+
+/**
+ * The key one server-side transfer writes to, derived from the work that is
+ * doing the writing.
+ *
+ * A server transfer writes the object before any row exists to point at it, so
+ * a key minted afresh on each attempt would leave the previous attempt's bytes
+ * in the bucket with nothing referencing them and no purge sweep able to find
+ * them. Deriving the key means a retry overwrites its own earlier attempt.
+ *
+ * The seed is hashed rather than used directly: it is a UUIDv7, and putting one
+ * in the key would leak creation time and ordering, which is precisely what the
+ * random suffix above exists to avoid.
+ */
+export function createDerivedSourceVideoObjectKey(
+  parts: SourceVideoKeyParts & Readonly<{ seed: string }>,
+): string {
+  const suffix = createHash("sha256")
+    .update(`source-video:${parts.workspaceId}:${parts.seed}`, "utf8")
+    .digest("hex")
+    .slice(0, randomSuffixBytes * 2);
 
   return `${parts.environment}/${parts.workspaceId}/${sourceVideoSegment}/${suffix}`;
 }
