@@ -29,8 +29,16 @@ import { getDatabase } from "./database";
 
 export const mediaImportRequestAction = "instagram.media.import.requested";
 
-/** Bounds how often one user may start an import. */
-export const mediaImportRequestLimit = 20;
+/**
+ * Bounds how often one user may start an import.
+ *
+ * Sized for the work rather than for the control: an operator clearing a
+ * backlog from the posts list presses this once per post in a short burst, and
+ * a limit that stopped them partway through would read as a failure rather than
+ * as a bound. It is still a bound — each request costs a provider read and a
+ * download — but one an account's whole backlog fits inside.
+ */
+export const mediaImportRequestLimit = 60;
 export const mediaImportRequestWindowSeconds = 300;
 
 export type MediaImportRefusalReason =

@@ -54,6 +54,9 @@ export async function requestAnalysisAction(
     });
 
     revalidatePath(`/posts/${postId}/source-video`);
+    // The list offers the same action per row, so it has the same stale badge
+    // to correct after one is taken.
+    revalidatePath("/posts");
     return describeResult(result);
   } catch (error) {
     reportError(
@@ -106,6 +109,7 @@ export async function importInstagramVideoAction(
     });
 
     revalidatePath(`/posts/${postId}/source-video`);
+    revalidatePath("/posts");
     return describeImport(result);
   } catch (error) {
     reportError(

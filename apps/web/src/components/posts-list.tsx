@@ -3,6 +3,8 @@ import Link from "next/link";
 
 import {
   buildPostsHref,
+  canAnalyseSourceVideo,
+  canImportInstagramVideo,
   captionExcerpt,
   formatPublishedAt,
   hasActiveFilters,
@@ -14,6 +16,8 @@ import {
   type PostsFilterValues,
 } from "../lib/posts-list";
 import type { PostsSnapshot } from "../lib/server/posts-data";
+import { AnalysisRequestControl } from "./analysis-request-control";
+import { InstagramVideoImportButton } from "./instagram-video-import-button";
 import { PageHeader } from "./page-header";
 import { PostThumbnail } from "./post-thumbnail";
 import { EmptyState, ErrorSummary } from "./states";
@@ -26,6 +30,11 @@ import { StatusBadge } from "./status-badge";
  * metric state are still named as pending rather than shown as empty values:
  * there is no stored data behind either, and a blank or a zero would read as
  * "checked, nothing wrong" instead of "not captured".
+ *
+ * Each card offers the one action its post is waiting on, so a backlog can be
+ * worked from this screen instead of opening every post in turn. Offering the
+ * action is not the same as showing analysis state, which is still not stored
+ * per post and is still named below as missing.
  */
 
 const description = "Find imported posts and triage what still needs work.";
@@ -209,6 +218,9 @@ function PostCard({
   const sourceVideo = presentSourceVideo(post);
   const published = formatPublishedAt(post.publishedAt);
   const headingId = `post-${post.id}`;
+  // Every card repeats the same action wording, so each control needs the post's
+  // own identity to be distinguishable out of context.
+  const context = `for the ${kind.label} published ${published}${accountLabel ? ` on ${accountLabel}` : ""}`;
 
   return (
     <li>
@@ -233,13 +245,7 @@ function PostCard({
           <p className="post-card__actions">
             <Link href={sourceVideoHref(post.id)}>
               {sourceVideo.action}
-              {/* Every card repeats the same action text, so the link needs the
-                  post's own identity to be distinguishable out of context. */}
-              <span className="visually-hidden">
-                {" "}
-                for the {kind.label} published {published}
-                {accountLabel ? ` on ${accountLabel}` : ""}
-              </span>
+              <span className="visually-hidden"> {context}</span>
             </Link>
             {post.permalink ? (
               <a href={post.permalink} rel="noreferrer noopener" target="_blank">
@@ -248,6 +254,21 @@ function PostCard({
               </a>
             ) : null}
           </p>
+          {/* The same gates the source-video page applies, for the same reason:
+              an image has no video to copy and an unchecked one cannot be
+              analysed, and having the control refuse is a worse answer than not
+              offering it. A separate element from the links above because a
+              form cannot live inside a paragraph. */}
+          {canImportInstagramVideo(post) ? (
+            <div className="post-card__controls">
+              <InstagramVideoImportButton context={context} postId={post.id} />
+            </div>
+          ) : null}
+          {canAnalyseSourceVideo(post) ? (
+            <div className="post-card__controls">
+              <AnalysisRequestControl context={context} postId={post.id} />
+            </div>
+          ) : null}
         </div>
       </article>
     </li>

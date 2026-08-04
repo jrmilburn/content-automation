@@ -1,14 +1,4 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
-
-import {
-  importInstagramVideoAction,
-  type AnalysisActionState,
-} from "../app/(authenticated)/posts/[postId]/source-video/actions";
-
-const initialState: AnalysisActionState = Object.freeze({ message: "", status: "idle" });
+import { InstagramVideoImportButton } from "./instagram-video-import-button";
 
 /**
  * Brings the post's own Instagram video across as its source video.
@@ -19,15 +9,12 @@ const initialState: AnalysisActionState = Object.freeze({ message: "", status: "
  * version Instagram serves, because that file has been re-encoded for delivery
  * and is not the master the account owner filmed — a reader comparing quality
  * later needs to know which one they are looking at.
+ *
+ * Only the framing lives here. The button itself is separate because the posts
+ * list repeats it per row, where this heading and copy would be repeated with
+ * it.
  */
 export function InstagramVideoImportControl({ postId }: Readonly<{ postId: string }>) {
-  const router = useRouter();
-  const [state, action, isPending] = useActionState(importInstagramVideoAction, initialState);
-
-  useEffect(() => {
-    if (state.status !== "idle") router.refresh();
-  }, [router, state]);
-
   return (
     <section aria-labelledby="video-import-heading" className="video-import">
       {/* A level 2 heading because the page heading is the only one above it
@@ -38,27 +25,7 @@ export function InstagramVideoImportControl({ postId }: Readonly<{ postId: strin
         It copies the version Instagram serves, which has been re-encoded for playback, so it may
         not match the quality of your original.
       </p>
-      <form action={action}>
-        <input name="postId" type="hidden" value={postId} />
-        <button className="button button--secondary" disabled={isPending} type="submit">
-          {isPending ? "Requesting video…" : "Use the Instagram video"}
-        </button>
-      </form>
-      {state.status === "idle" ? null : (
-        <p
-          aria-atomic="true"
-          aria-live="polite"
-          className={`video-import__status video-import__status--${state.status}`}
-        >
-          {state.message}
-          {state.reference ? (
-            <span>
-              {" "}
-              Reference <code>{state.reference}</code>
-            </span>
-          ) : null}
-        </p>
-      )}
+      <InstagramVideoImportButton postId={postId} />
     </section>
   );
 }

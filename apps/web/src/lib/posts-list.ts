@@ -3,7 +3,11 @@ import type {
   InstagramPostListItem,
   SourceVideoState,
 } from "@studio-parallel/db";
-import { instagramMediaKinds, type InstagramMediaKind } from "@studio-parallel/domain";
+import {
+  instagramMediaKinds,
+  isImportableInstagramMediaKind,
+  type InstagramMediaKind,
+} from "@studio-parallel/domain";
 
 import type { StatusTone } from "../components/status-badge";
 
@@ -193,6 +197,37 @@ export function presentSourceVideo(
 /** The in-application route to one post's source video. */
 export function sourceVideoHref(postId: string): string {
   return `/posts/${postId}/source-video`;
+}
+
+/**
+ * Which of the two per-row actions a card can offer.
+ *
+ * These mirror the gates on the source-video page rather than adding new ones:
+ * a post with no video or a rejected one can be given the Instagram copy, and
+ * only a video that has been checked can be analysed. The server decides again
+ * either way — all these do is keep a card from offering an action that would
+ * come back refused, which is a worse answer than not offering it.
+ *
+ * They read the list's collapsed state rather than the newest asset, which the
+ * request paths use. The two cannot disagree while a ready video is
+ * unreplaceable: no asset can be added once one is READY, so the only histories
+ * reachable are none, rejected, rejected-then-checking and rejected-then-ready,
+ * and both rules answer those the same way. Offering replacement would change
+ * that, and this would then need the newest asset.
+ */
+export function canImportInstagramVideo(
+  post: Readonly<{ mediaKind: InstagramMediaKind; sourceVideoState: SourceVideoState }>,
+): boolean {
+  return (
+    isImportableInstagramMediaKind(post.mediaKind) &&
+    (post.sourceVideoState === "NONE" || post.sourceVideoState === "REJECTED")
+  );
+}
+
+export function canAnalyseSourceVideo(
+  post: Readonly<{ sourceVideoState: SourceVideoState }>,
+): boolean {
+  return post.sourceVideoState === "READY";
 }
 
 function parseDate(value: string, endOfDay = false): Date | undefined {

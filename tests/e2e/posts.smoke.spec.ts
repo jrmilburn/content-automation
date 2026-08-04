@@ -124,3 +124,31 @@ test("a keyboard user can reach and submit the filter form", async ({ page }) =>
 
   await expectAccessible(page);
 });
+
+test("a post is linked to its Instagram video and queued for analysis from the list", async ({
+  page,
+}) => {
+  await page.goto("/posts");
+
+  const results = page.getByRole("region", { name: "Imported posts" });
+
+  // Only the reel with no video can be copied, and only the checked one can be
+  // analysed. The image being checked and the rejected unsupported post offer
+  // neither, because both would be refused.
+  const link = results.getByRole("button", { name: /Use the Instagram video/u });
+  const analyse = results.getByRole("button", { name: /Analyse this video/u });
+  await expect(link).toHaveCount(1);
+  await expect(analyse).toHaveCount(1);
+
+  // Each button names its own post, which is what keeps twenty-four identical
+  // labels distinguishable to a screen reader.
+  await expect(link).toHaveAccessibleName(/for the Reel published/u);
+
+  await link.click();
+  await expect(page.getByText(/Getting the video from Instagram/u)).toBeVisible();
+
+  await analyse.click();
+  await expect(page.getByText(/Analysis queued/u)).toBeVisible();
+
+  await expectAccessible(page);
+});

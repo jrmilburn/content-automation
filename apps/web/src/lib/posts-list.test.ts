@@ -1,7 +1,11 @@
+import type { SourceVideoState } from "@studio-parallel/db";
+import type { InstagramMediaKind } from "@studio-parallel/domain";
 import { describe, expect, it } from "vitest";
 
 import {
   buildPostsHref,
+  canAnalyseSourceVideo,
+  canImportInstagramVideo,
   captionExcerpt,
   hasActiveFilters,
   parsePostsFilters,
@@ -167,4 +171,48 @@ describe("captionExcerpt", () => {
   it("leaves a caption at the limit untouched", () => {
     expect(captionExcerpt("exactly ten", 11)).toBe("exactly ten");
   });
+});
+
+const videoKinds: readonly InstagramMediaKind[] = ["REEL", "VIDEO"];
+const nonVideoKinds: readonly InstagramMediaKind[] = ["CAROUSEL_ALBUM", "IMAGE", "UNSUPPORTED"];
+const everyState: readonly SourceVideoState[] = ["NONE", "PENDING_VALIDATION", "READY", "REJECTED"];
+
+describe("canImportInstagramVideo", () => {
+  it.each(videoKinds)("offers %s a copy when it has no source video", (mediaKind) => {
+    expect(canImportInstagramVideo({ mediaKind, sourceVideoState: "NONE" })).toBe(true);
+  });
+
+  it.each(videoKinds)("offers %s a copy again after one was rejected", (mediaKind) => {
+    expect(canImportInstagramVideo({ mediaKind, sourceVideoState: "REJECTED" })).toBe(true);
+  });
+
+  it("does not offer a copy over a video that is already attached", () => {
+    // Replacing one is a separate outcome with its own cleanup, so importing
+    // over it would be refused by the server.
+    expect(canImportInstagramVideo({ mediaKind: "REEL", sourceVideoState: "READY" })).toBe(false);
+    expect(
+      canImportInstagramVideo({ mediaKind: "REEL", sourceVideoState: "PENDING_VALIDATION" }),
+    ).toBe(false);
+  });
+
+  it.each(nonVideoKinds)("never offers %s a copy, whatever its state", (mediaKind) => {
+    const offered = everyState.map((sourceVideoState) =>
+      canImportInstagramVideo({ mediaKind, sourceVideoState }),
+    );
+
+    expect(offered).toEqual([false, false, false, false]);
+  });
+});
+
+describe("canAnalyseSourceVideo", () => {
+  it("offers analysis only once the video has been checked", () => {
+    expect(canAnalyseSourceVideo({ sourceVideoState: "READY" })).toBe(true);
+  });
+
+  it.each(["NONE", "PENDING_VALIDATION", "REJECTED"] as const)(
+    "does not offer analysis for %s",
+    (sourceVideoState) => {
+      expect(canAnalyseSourceVideo({ sourceVideoState })).toBe(false);
+    },
+  );
 });
