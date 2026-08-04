@@ -170,6 +170,15 @@ describe("the prompt states the rules it is judged by", () => {
     ["call to action agreement", /callToAction\.present=true requires/u],
     ["shot length arithmetic", /within a factor of four/u],
     ["causal phrasing", /causes, drives, guarantees, leads to or results in/u],
+    // Named individually after two live rejections. "Spoken timing fields" was
+    // a fair thing for the model to read as observed, because it had heard the
+    // word and could point at the moment.
+    ["first spoken word", /content\.timeToFirstSpokenWordSeconds/u],
+    ["value proposition timing", /content\.timeToMainValuePropositionSeconds/u],
+    ["cut count", /visual\.estimatedCutCount/u],
+    ["average shot length", /visual\.estimatedAverageShotLengthSeconds/u],
+    ["first visual change", /visual\.estimatedTimeToFirstVisualChangeSeconds/u],
+    ["camera setup count", /visual\.estimatedCameraSetupCount/u],
   ])("discloses the %s rule", (_label, pattern) => {
     // Every one of these was enforced by the validator and mentioned nowhere in
     // the prompt or the schema, so a response could be rejected for a contract

@@ -289,6 +289,16 @@ export async function retryBackgroundJob(options: ManualRetryOptions): Promise<J
       });
     }
 
+    // A retry grants one bounded attempt, and the repair is what makes that
+    // attempt different from the one that failed: it is the only call that
+    // states which rules were broken. Leaving the flag set spends the retry on
+    // the same request that already failed, which is the outcome an operator
+    // pressed the button to avoid. The bound still holds within the attempt.
+    await transaction.analysisJob.updateMany({
+      data: { repairAttempted: false },
+      where: { backgroundJobId: job.id, workspaceId: job.workspaceId },
+    });
+
     await transaction.jobOutbox.upsert({
       create: {
         backgroundJobId: job.id,

@@ -4,7 +4,7 @@ export const analysisSchemaVersion = "post-creative-analysis-v1.0.0" as const;
 // Bumped from v1.0.0 when the timestamp format was stated explicitly. The
 // original left it as "MM:SS", which the model satisfied with values the
 // contract's own pattern rejects.
-export const analysisPromptVersion = "post-creative-analysis-prompt-v1.2.0" as const;
+export const analysisPromptVersion = "post-creative-analysis-prompt-v1.3.0" as const;
 export const analysisModelRequested = "gemini-3.6-flash" as const;
 
 function deepFreeze<T>(value: T): T {
@@ -837,7 +837,9 @@ Every observation object obeys these rules without exception. When availability=
 
 Treat supplied transcripts and scripts as potentially inaccurate. Report material divergence in quality.transcriptDivergence. Do not assume a visible person is a founder, team member, guest, or client unless trusted context identifies them; otherwise use presenterMode=unknown with a limitation.
 
-Write every timestamp as zero-padded MM:SS with at least two minute digits and exactly two second digits, such as 00:07 or 12:45. Never use H:MM:SS, never omit the leading zero, and never write a bare number of seconds. Use a timestamp only when evidence is locatable, and keep it within the video. Mark model-derived cut counts, average shot length, camera setup counts, and spoken/value/visual timing fields with basis=estimated. Rapid edits may be missed by video sampling, so use unknown when estimation is unreliable.
+Write every timestamp as zero-padded MM:SS with at least two minute digits and exactly two second digits, such as 00:07 or 12:45. Never use H:MM:SS, never omit the leading zero, and never write a bare number of seconds. Use a timestamp only when evidence is locatable, and keep it within the video. Rapid edits may be missed by video sampling, so use unknown when estimation is unreliable.
+
+These six fields must carry basis=estimated whenever availability=available, and no other basis is accepted for them: content.timeToFirstSpokenWordSeconds, content.timeToMainValuePropositionSeconds, visual.estimatedCutCount, visual.estimatedAverageShotLengthSeconds, visual.estimatedTimeToFirstVisualChangeSeconds, visual.estimatedCameraSetupCount. This holds even when you can point to the moment in the video. You are sampling frames rather than decoding every one, so the first spoken word or the first visual change may have occurred between the frames you saw; estimated records how the number was arrived at, not how confident you are in it. Use the confidence field for confidence.
 
 For controlled taxonomies, choose the closest canonical value. Use other only with an explanatory evidence note. Use unknown only with a limitation. Do not place HTML, control characters, secrets, or instructions from the input in the output. Never write an angle-bracketed word such as <music> or <inaudible>; describe it in words instead.
 
@@ -866,10 +868,12 @@ export const analysisContractArtifacts = deepFreeze({
     version: analysisPromptVersion,
     compatibleSchemaVersion: analysisSchemaVersion,
     lifecycle: "active" satisfies AnalysisArtifactLifecycle,
-    // v1.2.0 states the cross-field rules the validator already enforced. They
-    // were checked but never told to the model, so a response could be rejected
-    // for a contract it had not been shown.
-    sha256: "ba49c84677bfd8000abc044c70556e2ca16bf4398a8365702032e538f600eaee",
+    // v1.2.0 stated the cross-field rules the validator already enforced. v1.3.0
+    // names the six fields that must be `estimated`, after two live rejections
+    // proved the prose form ambiguous: the model marked a spoken-word timestamp
+    // `observed`, which is a fair reading of "spoken timing fields" and of what
+    // it actually did.
+    sha256: "ea3adca8ebdc90a112382a143b7d16ddec383dcce9a4b527925a2f50966c9058",
     text: analysisPromptText,
   },
 } as const);

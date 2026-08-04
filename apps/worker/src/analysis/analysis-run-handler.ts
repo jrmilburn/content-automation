@@ -393,7 +393,11 @@ export function createAnalysisRunHandler(
                 jobId: execution.jobId,
                 postId: job.instagramPostId,
                 reasonCode: outcome.analysis.issues[0]?.code ?? "SCHEMA_INVALID",
-                source: issues.slice(0, 5).join(","),
+                // The first path only, and joined with a colon. The logger
+                // scrubs any attribute that is not a safe token, so a
+                // comma-separated list of paths arrived as "unknown" — the one
+                // field that was supposed to say where the failure was.
+                source: outcome.analysis.issues[0]?.path || "none",
                 stage: "analysis_run",
                 value: issues.length,
               });
