@@ -63,6 +63,8 @@ export function TrendsScreen({
     <div className="page-stack">
       <PageHeader description={description} title="Trends" />
 
+      <TrendsAccountScope snapshot={snapshot} />
+
       {list.calculation ? <CalculationFreshness calculation={list.calculation} /> : null}
 
       {snapshot.hasAccount ? <TrendsFilters snapshot={snapshot} values={values} /> : null}
@@ -106,6 +108,33 @@ export function TrendsError({ reference }: Readonly<{ reference: string }>) {
         title="Trends did not load"
       />
     </div>
+  );
+}
+
+/**
+ * Names the account every figure below belongs to.
+ *
+ * A statistic belongs to one account, so the screen is only readable if the
+ * reader knows which one. It says so even when the account was defaulted rather
+ * than chosen: a default that presents itself as a choice is the one case where
+ * a correct figure can still mislead, because the reader believes they asked
+ * for it.
+ */
+function TrendsAccountScope({ snapshot }: Readonly<{ snapshot: TrendsSnapshot }>) {
+  const selected = snapshot.accounts.find((account) => account.id === snapshot.selectedAccountId);
+  if (!selected) return null;
+
+  return (
+    <p className="trends-scope">
+      <span className="trends-scope__account">Showing {selected.label}</span>
+      {snapshot.accountDefaulted && snapshot.accounts.length > 1 ? (
+        <span className="trends-scope__note">
+          {" "}
+          — no account was chosen, so the first connected account is shown. Choose one below to
+          compare a different account.
+        </span>
+      ) : null}
+    </p>
   );
 }
 
@@ -198,7 +227,12 @@ function TrendsFilters({
         {snapshot.accounts.length > 1 ? (
           <label>
             <span>Account</span>
+            {/* The empty option exists so that submitting nothing is a state the
+                control can represent. Without it the browser marks the first
+                account selected, which reads as a choice the reader never made
+                even though the figures below are the same either way. */}
             <select defaultValue={values.account} name="account">
+              <option value="">No account chosen</option>
               {snapshot.accounts.map((account) => (
                 <option key={account.id} value={account.id}>
                   {account.label}

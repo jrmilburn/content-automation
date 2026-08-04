@@ -37,6 +37,15 @@ export function PostsList({
   const { list } = snapshot;
   const filtered = hasActiveFilters(values);
 
+  // Only with a second account can two posts' rows mean different things, so
+  // that is when the label earns its place. With one account it would repeat
+  // the same word on every row and say nothing.
+  const accountLabels = new Map(
+    snapshot.accounts.length > 1
+      ? snapshot.accounts.map((account) => [account.id, account.label] as const)
+      : [],
+  );
+
   return (
     <div className="page-stack">
       <PageHeader description={description} title="Posts" />
@@ -55,7 +64,11 @@ export function PostsList({
 
           <ol className="posts-grid">
             {list.posts.map((post) => (
-              <PostCard key={post.id} post={post} />
+              <PostCard
+                accountLabel={accountLabels.get(post.instagramAccountId) ?? null}
+                key={post.id}
+                post={post}
+              />
             ))}
           </ol>
 
@@ -188,7 +201,10 @@ function PostsFilters({
   );
 }
 
-function PostCard({ post }: Readonly<{ post: InstagramPostListItem }>) {
+function PostCard({
+  accountLabel,
+  post,
+}: Readonly<{ accountLabel: string | null; post: InstagramPostListItem }>) {
   const kind = presentMediaKind(post);
   const sourceVideo = presentSourceVideo(post);
   const published = formatPublishedAt(post.publishedAt);
@@ -207,6 +223,10 @@ function PostCard({ post }: Readonly<{ post: InstagramPostListItem }>) {
             <StatusBadge tone={sourceVideo.tone}>{sourceVideo.label}</StatusBadge>
             <h3 id={headingId}>
               <time dateTime={post.publishedAt}>{published}</time>
+              {/* Part of the heading rather than beside it: with two accounts
+                  connected the date alone no longer identifies a row, and the
+                  accessible name is what a screen reader announces. */}
+              {accountLabel ? <span className="post-card__account">{accountLabel}</span> : null}
             </h3>
           </div>
           <p className="post-card__caption">{captionExcerpt(post.caption)}</p>
@@ -218,6 +238,7 @@ function PostCard({ post }: Readonly<{ post: InstagramPostListItem }>) {
               <span className="visually-hidden">
                 {" "}
                 for the {kind.label} published {published}
+                {accountLabel ? ` on ${accountLabel}` : ""}
               </span>
             </Link>
             {post.permalink ? (

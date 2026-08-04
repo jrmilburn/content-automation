@@ -24,14 +24,33 @@ function emptyResponse(status: number, extra: Readonly<Record<string, string>> =
 }
 
 /**
+ * Reads the account a reconnect was started from, when the form carried one.
+ *
+ * A body that is absent or is not a form is not an error: connecting an
+ * additional account posts the same form with no account at all.
+ */
+async function readReconnectAccountId(request: Request): Promise<string | null> {
+  try {
+    const submitted = (await request.formData()).get("accountId");
+    return typeof submitted === "string" && submitted.length > 0 ? submitted : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Starts Business Login for an authorised admin.
  *
  * POST only, so the redirect cannot be triggered by a cross-site link or an
  * image tag. The pending state is returned in an httpOnly, host-locked cookie
  * bound to the initiating admin; nothing about the provider request is echoed
  * into the response body.
+ *
+ * The same endpoint serves connecting an additional account and reconnecting an
+ * existing one. The difference is the submitted account: a reconnect binds the
+ * attempt to that account, and the callback refuses any other.
  */
-export async function POST(): Promise<Response> {
+export async function POST(request: Request): Promise<Response> {
   const requestContext = createWebRequestContext(await headers());
 
   try {
@@ -39,10 +58,13 @@ export async function POST(): Promise<Response> {
     const result = await startInstagramConnection({
       actor,
       correlationId: requestContext.correlationId,
+      reconnectAccountId: await readReconnectAccountId(request),
     });
 
     if (!result.started) {
-      return emptyResponse(429, { "Retry-After": String(connectionAttemptWindowSeconds) });
+      return result.reason === "ACCOUNT_NOT_FOUND"
+        ? emptyResponse(404)
+        : emptyResponse(429, { "Retry-After": String(connectionAttemptWindowSeconds) });
     }
 
     const secure = new URL(loadRuntimeConfig().PUBLIC_ORIGIN).protocol === "https:";

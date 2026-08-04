@@ -13,6 +13,7 @@ import {
   encryptCredential,
   enqueueBackgroundJobInTransaction,
   hashGrantedScopes,
+  isUuidV7,
   withWorkspaceTransaction,
   type SessionPrincipal,
 } from "@studio-parallel/db";
@@ -22,6 +23,7 @@ import {
   evaluateInstagramCallback,
   evaluateInstagramGrantedScopes,
   instagramApiVersion,
+  instagramReconnectSatisfied,
   instagramRequiredScopes,
   instagramStateLifetimeSeconds,
   isEligibleInstagramAccountType,
@@ -66,11 +68,20 @@ export type StartConnectionResult =
       sealedState: string;
       started: true;
     }>
-  | Readonly<{ reason: "RATE_LIMITED"; started: false }>;
+  | Readonly<{ reason: "RATE_LIMITED" | "ACCOUNT_NOT_FOUND"; started: false }>;
 
 export type CompleteConnectionResult =
   | Readonly<{ accountId: string; connected: true }>
-  | Readonly<{ connected: false; reason: InstagramConnectionDenialReason | "RATE_LIMITED" }>;
+  | Readonly<{
+      connected: false;
+      /**
+       * Set only for `ACCOUNT_MISMATCH`, so the screen can name the account the
+       * operator started from. It is this workspace's own account id, never
+       * anything the provider returned.
+       */
+      expectedAccountId?: string;
+      reason: InstagramConnectionDenialReason | "RATE_LIMITED";
+    }>;
 
 function providerErrorToReason(error: InstagramProviderError): InstagramConnectionDenialReason {
   return error.errorClass === "authorisation" ? "CONSENT_CANCELLED" : "PROVIDER_ERROR";
@@ -80,8 +91,13 @@ export async function startInstagramConnection(input: {
   actor: SessionPrincipal;
   correlationId: string;
   now?: Date;
+  /**
+   * Present when the operator started this from a specific account's reconnect
+   * control. Absent when they asked to connect an additional account.
+   */
+  reconnectAccountId?: string | null;
 }): Promise<StartConnectionResult> {
-  const { actor, correlationId, now = new Date() } = input;
+  const { actor, correlationId, now = new Date(), reconnectAccountId } = input;
   const runtime = loadRuntimeConfig();
   const oauth = loadInstagramOAuthConfig();
   const auth = loadAuthConfig();
@@ -100,6 +116,20 @@ export async function startInstagramConnection(input: {
     return Object.freeze({ reason: "RATE_LIMITED" as const, started: false });
   }
 
+  // Resolved server-side: the browser names an account, and the provider
+  // identifier the callback is later held to comes from our own row.
+  let expectedProviderAccountId: string | null = null;
+  if (reconnectAccountId) {
+    const account = isUuidV7(reconnectAccountId)
+      ? await repositories.instagramAccounts.findById(reconnectAccountId)
+      : null;
+
+    if (!account) {
+      return Object.freeze({ reason: "ACCOUNT_NOT_FOUND" as const, started: false });
+    }
+    expectedProviderAccountId = account.providerAccountId;
+  }
+
   const request = createInstagramAuthorizationRequest({
     appId: oauth.INSTAGRAM_APP_ID,
     now,
@@ -112,6 +142,7 @@ export async function startInstagramConnection(input: {
     action: connectionInitiatedAction,
     actor: { type: "USER", userId: actor.internalUserId },
     correlationId,
+    ...(reconnectAccountId ? { resourceId: reconnectAccountId } : {}),
     resourceType: connectionResourceType,
   });
 
@@ -119,6 +150,7 @@ export async function startInstagramConnection(input: {
     authorizeUrl: request.authorizeUrl,
     cookieMaxAgeSeconds: instagramStateLifetimeSeconds,
     sealedState: sealInstagramState({
+      expectedProviderAccountId,
       expiresAt: request.expiresAt,
       internalUserId: actor.internalUserId,
       secret: auth.AUTH_SECRET,
@@ -157,15 +189,20 @@ export async function completeInstagramConnection(input: {
   const database = getDatabase();
   const context = createWorkspaceContext(actor.workspaceId);
 
-  const audit = async (reason: InstagramConnectionDenialReason) => {
+  const audit = async (reason: InstagramConnectionDenialReason, resourceId?: string) => {
     await createWorkspaceRepositories(database, context).audit.record({
       action: connectionFailedAction,
       actor: { type: "USER", userId: actor.internalUserId },
       correlationId,
       reasonCode: reason,
+      ...(resourceId ? { resourceId } : {}),
       resourceType: connectionResourceType,
     });
-    return Object.freeze({ connected: false as const, reason });
+    return Object.freeze({
+      connected: false as const,
+      ...(resourceId ? { expectedAccountId: resourceId } : {}),
+      reason,
+    });
   };
 
   const opened = openInstagramState(sealedState, auth.AUTH_SECRET);
@@ -236,6 +273,19 @@ export async function completeInstagramConnection(input: {
       return audit(providerErrorToReason(error));
     }
     throw error;
+  }
+
+  // Checked before anything is written and before the account is judged on its
+  // own merits: a reconnect that came back with a different account is refused
+  // whatever that account's type or scopes are, so no row is created and the
+  // account the operator started from keeps its state.
+  if (!instagramReconnectSatisfied(opened?.expectedProviderAccountId ?? null, providerAccountId)) {
+    const expected = await createWorkspaceRepositories(
+      database,
+      context,
+    ).instagramAccounts.findByProviderAccountId(opened?.expectedProviderAccountId ?? "");
+
+    return audit("ACCOUNT_MISMATCH", expected?.id);
   }
 
   if (!isEligibleInstagramAccountType(identityAccountType)) {

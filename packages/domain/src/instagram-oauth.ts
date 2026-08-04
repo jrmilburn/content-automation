@@ -50,6 +50,7 @@ export const instagramConnectionDenialReasons = [
   "ACCOUNT_TYPE_INELIGIBLE",
   "SCOPE_DOWNGRADED",
   "REDIRECT_URI_INVALID",
+  "ACCOUNT_MISMATCH",
 ] as const;
 
 export type InstagramConnectionDenialReason = (typeof instagramConnectionDenialReasons)[number];
@@ -210,6 +211,11 @@ export function instagramStateCookieName(secure: boolean): string {
 }
 
 export type InstagramSealedState = Readonly<{
+  /**
+   * The provider account this attempt is bound to, when it was started as a
+   * reconnect. Absent for a new connection, which may return any account.
+   */
+  expectedProviderAccountId: string | null;
   expiresAt: Date;
   internalUserId: string;
   state: string;
@@ -222,14 +228,26 @@ export type InstagramSealedState = Readonly<{
  * admin cannot be completed by another session, and it carries an HMAC so a
  * tampered cookie is rejected rather than trusted. Single use is achieved by
  * clearing the cookie when the callback consumes it.
+ *
+ * A reconnect additionally binds the provider account it was started from. The
+ * consent screen lets the operator pick any account they administer, so without
+ * this the easiest way to acquire a second account is to reconnect a degraded
+ * one and choose a different account: that reports success, creates an account
+ * nobody asked for, and leaves the original needing reconnection for ever.
  */
 export function sealInstagramState(input: {
+  expectedProviderAccountId?: string | null;
   expiresAt: Date;
   internalUserId: string;
   secret: string;
   state: string;
 }): string {
   const payload = JSON.stringify({
+    // Omitted rather than null when absent, so a new connection seals exactly
+    // the payload it sealed before this binding existed.
+    ...(input.expectedProviderAccountId
+      ? { expectedProviderAccountId: input.expectedProviderAccountId }
+      : {}),
     expiresAt: input.expiresAt.toISOString(),
     internalUserId: input.internalUserId,
     state: input.state,
@@ -276,14 +294,44 @@ export function openInstagramState(
     return null;
   }
 
+  // A present-but-malformed binding is refused rather than dropped: silently
+  // reading it as "no binding" would turn a tampered cookie into an unbound
+  // reconnect, which is the one thing the binding exists to prevent.
+  if (
+    typeof candidate.expectedProviderAccountId !== "undefined" &&
+    (typeof candidate.expectedProviderAccountId !== "string" ||
+      candidate.expectedProviderAccountId.length === 0)
+  ) {
+    return null;
+  }
+
   const expiresAt = new Date(candidate.expiresAt);
   if (Number.isNaN(expiresAt.getTime())) return null;
 
   return Object.freeze({
+    expectedProviderAccountId:
+      typeof candidate.expectedProviderAccountId === "string"
+        ? candidate.expectedProviderAccountId
+        : null,
     expiresAt,
     internalUserId: candidate.internalUserId,
     state: candidate.state,
   });
+}
+
+/**
+ * Decides whether the account a callback returned may complete this attempt.
+ *
+ * An unbound attempt accepts whatever the operator chose, which is what makes
+ * connecting an additional account possible. A bound attempt accepts only the
+ * account it started from.
+ */
+export function instagramReconnectSatisfied(
+  expectedProviderAccountId: string | null,
+  returnedProviderAccountId: string,
+): boolean {
+  if (!expectedProviderAccountId) return true;
+  return expectedProviderAccountId === returnedProviderAccountId;
 }
 
 /** Meta returns a duration; the absolute instant is what gets persisted. */

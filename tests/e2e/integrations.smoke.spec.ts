@@ -27,6 +27,10 @@ test("integration health states are distinct and accessible at the active viewpo
   const reconnectForm = page.locator('form[action="/api/integrations/instagram/connect"]').first();
   await expect(reconnectForm).toHaveAttribute("method", "post");
 
+  // A workspace that already has accounts can still connect another, and the
+  // control says something different from reconnect.
+  await expect(page.getByRole("button", { name: "Connect another account" })).toBeVisible();
+
   const viewport = page.viewportSize();
   if (viewport && viewport.width <= 390) {
     const pageWidth = await page.evaluate(() => ({
@@ -78,9 +82,24 @@ test("the connection callback outcome is reported without provider detail", asyn
   await page.goto("/settings/integrations?instagram=connected");
   await expect(page.getByText("Instagram account connected")).toBeVisible();
 
+  // A reconnect that returned a different account names the account it was
+  // started from, and says plainly that nothing changed.
+  await page.goto(
+    "/settings/integrations?instagram=mismatch&account=019a0000-0000-7000-8000-000000000301",
+  );
+  await expect(
+    page.getByText(/@studioparallel is still connected exactly as it was/u),
+  ).toBeVisible();
+  await expect(page.getByText(/refused and nothing changed/u)).toBeVisible();
+
   // A crafted outcome must not be reflected back into the page.
   await page.goto("/settings/integrations?instagram=%3Cscript%3Ealert(1)%3C%2Fscript%3E");
   await expect(page.locator(".integration-callback")).toHaveCount(0);
+
+  // A crafted account identifier degrades to unnamed copy rather than reaching
+  // the page.
+  await page.goto("/settings/integrations?instagram=mismatch&account=%3Cscript%3E");
+  await expect(page.getByText(/the account you started from is still connected/u)).toBeVisible();
 
   await expectAccessible(page);
 });

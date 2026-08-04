@@ -65,6 +65,7 @@ function values(overrides: Partial<TrendsFilterValues> = {}): TrendsFilterValues
 
 function snapshot(overrides: Partial<TrendsSnapshot> = {}): TrendsSnapshot {
   return {
+    accountDefaulted: false,
     accounts: [{ id: accountId, label: "@studioparallel" }],
     featurePaths: ["content.hook.category"],
     hasAccount: true,
@@ -214,6 +215,66 @@ describe("TrendsScreen", () => {
     // the copy has to say so or a filtered screen reads as a conclusion.
     expect(screen.getByText("No comparisons match these filters")).toBeTruthy();
     expect(screen.getByText(/not a finding that no pattern exists/u)).toBeTruthy();
+  });
+
+  it("names the account every figure belongs to", () => {
+    render(<TrendsScreen snapshot={snapshot()} values={values()} />);
+
+    expect(screen.getByText(/Showing @studioparallel/u)).toBeTruthy();
+  });
+
+  it("says when the account was defaulted rather than chosen", () => {
+    const second = "019a0000-0000-7000-8000-000000000302";
+    render(
+      <TrendsScreen
+        snapshot={snapshot({
+          accountDefaulted: true,
+          accounts: [
+            { id: accountId, label: "@studioparallel" },
+            { id: second, label: "@parallelstudio" },
+          ],
+        })}
+        values={values()}
+      />,
+    );
+
+    // The figures are right either way; what would mislead is letting the
+    // reader believe they asked for this account.
+    expect(screen.getByText(/no account was chosen/u)).toBeTruthy();
+  });
+
+  it("lets the account control represent no choice at all", () => {
+    const second = "019a0000-0000-7000-8000-000000000302";
+    render(
+      <TrendsScreen
+        snapshot={snapshot({
+          accountDefaulted: true,
+          accounts: [
+            { id: accountId, label: "@studioparallel" },
+            { id: second, label: "@parallelstudio" },
+          ],
+        })}
+        values={values()}
+      />,
+    );
+
+    // Without an empty option the browser marks the first account selected,
+    // which reads as a choice the reader never made.
+    const account = screen.getByLabelText("Account") as HTMLSelectElement;
+    expect(account.value).toBe("");
+    expect(within(account).getByRole("option", { name: "No account chosen" })).toBeTruthy();
+  });
+
+  it("does not claim a default was applied when the reader named the account", () => {
+    render(
+      <TrendsScreen
+        snapshot={snapshot({ accountDefaulted: false })}
+        values={values({ account: accountId })}
+      />,
+    );
+
+    expect(screen.queryByText(/no account was chosen/u)).toBeNull();
+    expect(screen.getByText(/Showing @studioparallel/u)).toBeTruthy();
   });
 
   it("points an unconnected workspace at the connection rather than at trends", () => {

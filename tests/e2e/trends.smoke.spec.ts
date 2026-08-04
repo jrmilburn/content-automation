@@ -35,6 +35,9 @@ test("trends are grouped by evidence strength and accessible at the active viewp
 
   await expect(page.getByText("Calculation is current")).toBeVisible();
 
+  // A statistic belongs to one account, so the screen has to say which.
+  await expect(page.getByText(/Showing @studioparallel/u)).toBeVisible();
+
   const viewport = page.viewportSize();
   if (viewport && viewport.width <= 390) {
     const pageWidth = await page.evaluate(() => ({

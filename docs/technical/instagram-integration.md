@@ -43,8 +43,37 @@ including authorisation failure and unexpected errors, which is what makes a cap
 single-use.
 
 The callback never reflects a provider-supplied value. It redirects to a fixed internal location
-carrying only a coarse `connected` or `failed` outcome; the specific denial reason is audited but
-never returned, so a crafted callback cannot probe which check failed.
+carrying only a coarse `connected`, `failed` or `mismatch` outcome; the specific denial reason is
+audited but never returned, so a crafted callback cannot probe which check failed. The `mismatch`
+outcome additionally carries the workspace's own account id, which comes from the sealed cookie
+rather than from the callback, so naming the account still reflects nothing the provider supplied.
+
+### More than one account, and binding a reconnect
+
+A workspace may connect several Instagram accounts. `upsertConnected` keys on
+`(workspaceId, providerAccountId)` and credential activation is scoped by `accountId`, so an
+additional connection creates a new account row and leaves every existing account's `ACTIVE`
+credential untouched.
+
+Connecting an additional account and reconnecting an existing one are the same provider redirect
+and post to the same endpoint. What separates them is the account submitted with the form:
+
+- **No account submitted** — the attempt is unbound and completes with whichever account the
+  operator approves. This is how an additional account is connected.
+- **An account submitted** — the server resolves that account in the current workspace, seals its
+  `providerAccountId` into the state cookie, and the callback refuses any other account with
+  `ACCOUNT_MISMATCH`. No account row is created and the account the reconnect was started from keeps
+  its state.
+
+The binding matters because the consent screen lets an operator pick any account they administer.
+Without it, the easiest way to acquire a second account was to reconnect a degraded one and choose a
+different account: that reported success, created an account nobody asked for, and left the original
+stuck in `REAUTHORISATION_REQUIRED` indefinitely.
+
+The mismatch is checked before the returned account is judged on its own type or scopes, so the
+refusal names the account the operator started from rather than describing the one they reached by
+accident. A sealed binding that is present but malformed is refused outright rather than read as
+"unbound", so a tampered cookie cannot downgrade a reconnect into an unrestricted connection.
 
 Because the redirect URI must be an exact HTTPS value, the connection flow cannot run against
 `http://localhost`. Exercise it through an approved HTTPS development host or a tunnel whose exact

@@ -34,6 +34,8 @@ import { requireShellActor } from "./shell-session";
 export type TrendsAccountOption = Readonly<{ id: string; label: string }>;
 
 export type TrendsSnapshot = Readonly<{
+  /** True when the account was defaulted rather than named by the reader. */
+  accountDefaulted: boolean;
   accounts: readonly TrendsAccountOption[];
   featurePaths: readonly string[];
   hasAccount: boolean;
@@ -65,9 +67,11 @@ export async function loadTrendsSnapshot(
   const selectedAccountId = filters.matchesNothing
     ? null
     : (filters.instagramAccountId ?? accounts[0]?.id ?? null);
+  const accountDefaulted = selectedAccountId !== null && !filters.instagramAccountId;
 
   if (selectedAccountId === null) {
     return Object.freeze({
+      accountDefaulted: false,
       accounts,
       featurePaths: Object.freeze([]),
       hasAccount: accounts.length > 0,
@@ -86,6 +90,7 @@ export async function loadTrendsSnapshot(
   ]);
 
   return Object.freeze({
+    accountDefaulted,
     accounts,
     featurePaths,
     hasAccount: accounts.length > 0,
@@ -292,6 +297,7 @@ function testSnapshot(filters: TrendsFilters, now: Date): TrendsSnapshot {
       );
 
   return Object.freeze({
+    accountDefaulted: !filters.matchesNothing && !filters.instagramAccountId,
     accounts: Object.freeze([Object.freeze({ id: testAccountId, label: "@studioparallel" })]),
     featurePaths: Object.freeze([
       "callToAction.type",

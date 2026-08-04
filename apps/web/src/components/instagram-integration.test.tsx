@@ -126,6 +126,69 @@ describe("InstagramIntegrations", () => {
     );
   });
 
+  it("offers connecting another account once the workspace already has one", () => {
+    render(<InstagramIntegrations outcome={null} snapshot={snapshot([account()])} />);
+
+    const button = screen.getByRole("button", { name: "Connect another account" });
+    const form = button.closest("form");
+    expect(form).toHaveAttribute("method", "post");
+    expect(form).toHaveAttribute("action", "/api/integrations/instagram/connect");
+
+    // No account is submitted, which is what leaves the attempt free to connect
+    // whichever account the operator approves.
+    expect(form?.querySelector("input[name='accountId']")).toBeNull();
+  });
+
+  it("hides connecting another account from a viewer who cannot manage", () => {
+    render(<InstagramIntegrations outcome={null} snapshot={snapshot([account()], false)} />);
+
+    expect(screen.queryByRole("button", { name: "Connect another account" })).toBeNull();
+  });
+
+  it("submits the account a reconnect was started from, and words it differently", () => {
+    render(
+      <InstagramIntegrations
+        outcome={null}
+        snapshot={snapshot([account({ healthState: "EXPIRING" })])}
+      />,
+    );
+
+    const card = screen.getByRole("region", { name: "@studioparallel" });
+    const reconnect = within(card).getByRole("button", { name: "Reconnect account" });
+    const submitted = reconnect.closest("form")?.querySelector("input[name='accountId']");
+
+    expect(submitted).toHaveValue("019a0000-0000-7000-8000-000000000301");
+    // The two controls post to the same endpoint, so the wording is the only
+    // thing that distinguishes them for the operator.
+    expect(screen.getByRole("button", { name: "Connect another account" })).toBeVisible();
+  });
+
+  it("names the account a refused reconnect was started from, and not the one returned", () => {
+    render(
+      <InstagramIntegrations
+        expectedAccountId="019a0000-0000-7000-8000-000000000301"
+        outcome="mismatch"
+        snapshot={snapshot([account()])}
+      />,
+    );
+
+    const callback = screen.getByText(/still connected exactly as it was/u);
+    expect(callback).toHaveTextContent("@studioparallel");
+    expect(screen.getByText(/the reconnect was refused and nothing changed/u)).toBeVisible();
+  });
+
+  it("falls back to unnamed copy when the refused reconnect names no account here", () => {
+    render(
+      <InstagramIntegrations
+        expectedAccountId="019a0000-0000-7000-8000-0000000009ff"
+        outcome="mismatch"
+        snapshot={snapshot([account()])}
+      />,
+    );
+
+    expect(screen.getByText(/the account you started from is still connected/u)).toBeVisible();
+  });
+
   it("names a downgraded permission instead of silently omitting it", () => {
     render(
       <InstagramIntegrations

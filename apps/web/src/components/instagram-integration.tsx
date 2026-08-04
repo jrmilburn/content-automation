@@ -28,10 +28,21 @@ import { EmptyState, ErrorSummary } from "./states";
 const connectPath = "/api/integrations/instagram/connect";
 
 export function InstagramIntegrations({
+  expectedAccountId,
   outcome,
   snapshot,
-}: Readonly<{ outcome: CallbackOutcome; snapshot: IntegrationsSnapshot }>) {
-  const callback = presentCallbackOutcome(outcome);
+}: Readonly<{
+  expectedAccountId?: string | null;
+  outcome: CallbackOutcome;
+  snapshot: IntegrationsSnapshot;
+}>) {
+  // Resolved against the workspace's own accounts, so an identifier naming
+  // nothing here simply leaves the message unnamed.
+  const expected = snapshot.accounts.find((account) => account.accountId === expectedAccountId);
+  const callback = presentCallbackOutcome(
+    outcome,
+    expected ? formatUsername(expected.username) : null,
+  );
 
   return (
     <div className="page-stack">
@@ -53,15 +64,40 @@ export function InstagramIntegrations({
       {snapshot.accounts.length === 0 ? (
         <NoAccountState canManage={snapshot.canManage} />
       ) : (
-        <ul className="integration-list">
-          {snapshot.accounts.map((account) => (
-            <li key={account.accountId}>
-              <IntegrationAccountCard account={account} canManage={snapshot.canManage} />
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="integration-list">
+            {snapshot.accounts.map((account) => (
+              <li key={account.accountId}>
+                <IntegrationAccountCard account={account} canManage={snapshot.canManage} />
+              </li>
+            ))}
+          </ul>
+          {snapshot.canManage ? <AddAccountState /> : null}
+        </>
       )}
     </div>
+  );
+}
+
+/**
+ * The control for connecting an account in addition to the ones already here.
+ *
+ * It posts to the same endpoint as reconnect and carries no account, which is
+ * exactly what distinguishes the two: an unbound attempt accepts whichever
+ * account is approved, a reconnect accepts only its own. The labels are
+ * deliberately different words, because the label is all the operator has to
+ * tell them apart.
+ */
+function AddAccountState() {
+  return (
+    <section className="state-panel">
+      <h2>Connect another account</h2>
+      <p>
+        Add a second Instagram professional account to this workspace. Each account is imported and
+        reported separately, and connecting one does not affect any account already connected.
+      </p>
+      <ConnectForm label="Connect another account" />
+    </section>
   );
 }
 
@@ -92,10 +128,17 @@ function NoAccountState({ canManage }: Readonly<{ canManage: boolean }>) {
  * Connect and reconnect are the same provider redirect, so both post to the
  * same endpoint. A form rather than a link keeps it a POST, which is what stops
  * a cross-site image or link from starting a connection.
+ *
+ * `accountId` is what separates the two: when it is present the attempt is
+ * bound to that account and the callback refuses any other, and when it is
+ * absent the attempt may connect whichever account is approved. The server
+ * re-reads the account in this workspace, so a tampered value is refused rather
+ * than trusted.
  */
-function ConnectForm({ label }: Readonly<{ label: string }>) {
+function ConnectForm({ accountId, label }: Readonly<{ accountId?: string; label: string }>) {
   return (
     <form action={connectPath} className="integration-connect" method="post">
+      {accountId ? <input name="accountId" type="hidden" value={accountId} /> : null}
       <button className="button button--primary" type="submit">
         {label}
       </button>
@@ -130,8 +173,9 @@ function IntegrationAccountCard({
       {connection.action ? (
         <div className="integration-account__next">
           <ConnectForm
+            accountId={account.accountId}
             label={
-              connection.action === "RECONNECT" ? "Reconnect account" : "Connect Instagram account"
+              connection.action === "RECONNECT" ? "Reconnect account" : "Reconnect this account"
             }
           />
         </div>
