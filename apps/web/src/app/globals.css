@@ -2793,3 +2793,169 @@ h2 {
     width: 100%;
   }
 }
+
+/* Strategy
+   ------------------------------------------------------------------------ */
+
+.strategy-section,
+.strategy-request,
+.strategy-summary {
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.strategy-section__header {
+  margin-bottom: 1.25rem;
+}
+
+/* A section with nothing in it still renders. An absent section and an empty
+   one look identical once the page is scrolled, and they mean opposite things. */
+.strategy-section__empty,
+.strategy-evidence__empty {
+  max-width: 70ch;
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+.strategy-report {
+  display: grid;
+  gap: clamp(1rem, 3vw, 1.75rem);
+}
+
+.strategy-summary__facts,
+.strategy-request__facts,
+.strategy-test__facts,
+.strategy-recommendation__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1.25rem;
+  margin: 1.5rem 0 0;
+}
+
+.strategy-summary__facts dt,
+.strategy-request__facts dt,
+.strategy-test__facts dt,
+.strategy-recommendation__facts dt {
+  margin-bottom: 0.35rem;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.strategy-claims,
+.strategy-tests,
+.strategy-recommendations,
+.strategy-pillars,
+.strategy-limitations,
+.strategy-history {
+  display: grid;
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.strategy-claim,
+.strategy-test,
+.strategy-recommendation,
+.strategy-pillar,
+.strategy-history__item {
+  padding: 1.25rem;
+  border: 1px solid var(--color-border);
+}
+
+/* Classification and sample sit on one line with the claim, never in a footer:
+   a claim read without them is read as stronger than it is. */
+.strategy-claim__classification,
+.strategy-summary__mode,
+.strategy-history__head,
+.strategy-pillar__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 0.75rem 0 0;
+}
+
+.strategy-claim__sample {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.strategy-evidence {
+  display: grid;
+  gap: 0.6rem;
+  margin: 1rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--color-muted);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.strategy-evidence__role {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.75rem;
+}
+
+.strategy-evidence__id {
+  overflow-wrap: anywhere;
+}
+
+.strategy-evidence__explanation {
+  display: block;
+}
+
+.strategy-evidence__summary {
+  display: block;
+  color: var(--color-muted);
+}
+
+/*
+ * Carries the warning colour so a claim that cannot be checked reads as one.
+ * Colour alone does not carry it: the sentence says the evidence is gone, for
+ * readers who never see the hue.
+ */
+.strategy-evidence__tombstone {
+  display: block;
+  color: var(--color-warning);
+}
+
+.strategy-recommendation__hooks,
+.strategy-limitations {
+  padding-left: 1.1rem;
+  line-height: 1.7;
+}
+
+.strategy-recommendation__hooks {
+  list-style: disc;
+}
+
+.strategy-pillar__share {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.strategy-request__control {
+  margin-top: 1.5rem;
+}
+
+.strategy-request__status,
+.strategy-request__refusal,
+.strategy-history__unavailable {
+  max-width: 70ch;
+  margin: 0.75rem 0 0;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+.strategy-request__status--error {
+  color: var(--color-danger, #8c2f2f);
+}
+
+.strategy-request__status--success {
+  color: var(--color-success, #2f6b4f);
+}

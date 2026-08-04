@@ -21,6 +21,11 @@ import {
   loadStrategyEvidenceCandidates,
 } from "../../src/strategy-evidence.js";
 import {
+  listStrategyGenerations,
+  loadCurrentStrategy,
+  loadStrategyGeneration,
+} from "../../src/strategy-read.js";
+import {
   previewStrategyRequest,
   requestStrategyGeneration,
 } from "../../src/strategy-request-command.js";
@@ -616,6 +621,23 @@ describe("the frozen manifest's own guarantees", () => {
     ).rejects.toThrow();
   });
 
+  it("hands the reader the manifest a generation was frozen against", async () => {
+    await seedComparableAccount();
+    const outcome = await requestStrategyGeneration(database, context, requestInput());
+    if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
+
+    const generation = await database.strategyGeneration.findFirstOrThrow({
+      where: { id: outcome.strategyGenerationId },
+    });
+    const detail = await loadStrategyGeneration(database, context, outcome.strategyGenerationId);
+
+    // The screen resolves a cited id through this list, so an entry missing here
+    // renders as a tombstone on a claim whose evidence is in fact still there.
+    expect(detail?.evidence.length).toBe(generation.evidenceCount);
+    const statistic = detail?.evidence.find((entry) => entry.evidenceType === "feature_statistic");
+    expect(statistic?.referenceId).not.toBeNull();
+  });
+
   it("carries no caption or object key into the frozen summaries", async () => {
     await seedComparableAccount();
     const outcome = await requestStrategyGeneration(database, context, requestInput());
@@ -629,5 +651,81 @@ describe("the frozen manifest's own guarantees", () => {
     for (const row of evidence) {
       expect(row.summaryText).not.toMatch(/source-video|production\/|caption/iu);
     }
+  });
+});
+
+/**
+ * What a reader of another workspace sees, which must be nothing.
+ *
+ * Every case pairs a real id with a foreign workspace context. That is the shape
+ * a crafted identifier actually takes: the attacker has a valid id — from a
+ * screenshot, a shared link, a former membership — and the only thing standing
+ * between them and the row is the `where` clause.
+ */
+describe("reading a strategy from another workspace", () => {
+  it("returns nothing for a real generation id under a foreign workspace", async () => {
+    await seedComparableAccount();
+    const outcome = await requestStrategyGeneration(database, context, requestInput());
+    if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
+
+    const intruder = createWorkspaceContext(createId());
+
+    // Null rather than a thrown error, so a crafted id cannot be told apart from
+    // one that never existed by watching which failure comes back.
+    await expect(
+      loadStrategyGeneration(database, intruder, outcome.strategyGenerationId),
+    ).resolves.toBeNull();
+    await expect(
+      loadStrategyGeneration(database, context, outcome.strategyGenerationId),
+    ).resolves.not.toBeNull();
+  });
+
+  it("returns no history for a real account id under a foreign workspace", async () => {
+    await seedComparableAccount();
+    const outcome = await requestStrategyGeneration(database, context, requestInput());
+    if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
+
+    const intruder = createWorkspaceContext(createId());
+
+    await expect(
+      listStrategyGenerations(database, intruder, { instagramAccountId: accountId }),
+    ).resolves.toEqual([]);
+    await expect(
+      listStrategyGenerations(database, context, { instagramAccountId: accountId }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("returns no current strategy for a real account id under a foreign workspace", async () => {
+    await seedComparableAccount();
+    const outcome = await requestStrategyGeneration(database, context, requestInput());
+    if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
+
+    await database.instagramAccount.updateMany({
+      data: { currentStrategyId: outcome.strategyGenerationId },
+      where: { id: accountId, workspaceId: developmentWorkspace.id },
+    });
+    const intruder = createWorkspaceContext(createId());
+
+    await expect(loadCurrentStrategy(database, intruder, accountId)).resolves.toBeNull();
+    await expect(loadCurrentStrategy(database, context, accountId)).resolves.not.toBeNull();
+  });
+
+  it("does not read a foreign workspace's evidence onto a strategy it can see", async () => {
+    // The manifest is a second query. Scoping the generation but not its
+    // evidence would leak the summaries while the strategy itself stayed hidden.
+    await seedComparableAccount();
+    const outcome = await requestStrategyGeneration(database, context, requestInput());
+    if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
+
+    const intruder = createWorkspaceContext(createId());
+
+    await expect(
+      database.strategyEvidence.count({
+        where: {
+          strategyGenerationId: outcome.strategyGenerationId,
+          workspaceId: intruder.workspaceId,
+        },
+      }),
+    ).resolves.toBe(0);
   });
 });
