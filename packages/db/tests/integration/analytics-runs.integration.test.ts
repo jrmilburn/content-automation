@@ -101,6 +101,14 @@ async function analysedPost(
     /** Age at capture. Defaults inside the 30-day window the tests read. */
     postAgeSeconds?: number;
     publishedAt: Date;
+    /**
+     * Whether to capture anything at all.
+     *
+     * Analysed but never observed is the only state left in which no window can
+     * measure a post: `lifetime` admits an observation of any age, so a captured
+     * post is always measurable by something.
+     */
+    snapshot?: boolean;
   }>,
 ): Promise<string> {
   const postId = createId();
@@ -216,6 +224,8 @@ async function analysedPost(
     data: { currentAnalysisId: analysisId },
     where: { id: postId, workspaceId: developmentWorkspace.id },
   });
+
+  if (input.snapshot === false) return postId;
 
   // Inside the 30-day window the recalculation reads, unless a test says otherwise.
   const postAgeSeconds = input.postAgeSeconds ?? 30 * 86_400;
@@ -369,7 +379,7 @@ describe("choosing the window a run publishes", () => {
     expect(selection?.inputs.posts).toHaveLength(1);
   });
 
-  it("falls back to the widest sample when no window clears the coverage floor", async () => {
+  it("reads every analysed post when no matched window holds them all", async () => {
     for (let index = 0; index < 3; index += 1) {
       await analysedPost({
         hookCategory: "question",
@@ -387,8 +397,12 @@ describe("choosing the window a run publishes", () => {
 
     const selection = await loadBestAnalyticsInputs(database, context, windowRequest());
 
-    expect(selection?.ageWindow).toBe("day_30");
-    expect(selection?.inputs.posts).toHaveLength(3);
+    // Neither matched window can compare: day_30 holds three of the four and
+    // mature holds the fourth, and three is below the floor. `lifetime` sees
+    // one more post than the best of them, so it wins — an analysed post that
+    // no window can reach is a post the account never sees a trend for.
+    expect(selection?.ageWindow).toBe("lifetime");
+    expect(selection?.inputs.posts).toHaveLength(4);
   });
 
   it("reports what every candidate window would have measured", async () => {
@@ -407,6 +421,7 @@ describe("choosing the window a run publishes", () => {
       { ageWindow: "day_7", eligiblePosts: 0 },
       { ageWindow: "day_30", eligiblePosts: 0 },
       { ageWindow: "mature", eligiblePosts: 1 },
+      { ageWindow: "lifetime", eligiblePosts: 1 },
     ]);
   });
 
@@ -427,13 +442,32 @@ describe("choosing the window a run publishes", () => {
     expect(mature?.eligiblePosts).toBe(0);
   });
 
-  it("returns nothing when no window measures anything", async () => {
+  it("still reads a post too young for any matched window", async () => {
     await analysedPost({
       hookCategory: "question",
       likes: 200,
-      // Too young for any candidate window.
+      // An hour old: outside every matched window's lower edge.
       postAgeSeconds: 3_600,
       publishedAt: new Date("2026-06-01T00:00:00.000Z"),
+    });
+
+    const selection = await loadBestAnalyticsInputs(database, context, windowRequest());
+
+    // The observation exists, so something can be said from it. What cannot be
+    // said is that it was compared at a matched age, and publishing under
+    // `lifetime` is how the run records that.
+    expect(selection?.ageWindow).toBe("lifetime");
+    expect(selection?.inputs.posts).toHaveLength(1);
+  });
+
+  it("returns nothing when a post has never been observed", async () => {
+    // Analysed but never captured. `lifetime` admits an observation of any age,
+    // so this is the only remaining state in which no window measures anything.
+    await analysedPost({
+      hookCategory: "question",
+      likes: 200,
+      publishedAt: new Date("2026-06-01T00:00:00.000Z"),
+      snapshot: false,
     });
 
     await expect(loadBestAnalyticsInputs(database, context, windowRequest())).resolves.toBeNull();

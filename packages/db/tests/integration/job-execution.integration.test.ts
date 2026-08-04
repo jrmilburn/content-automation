@@ -325,14 +325,29 @@ describe("idempotent handler framework", () => {
     await database.workspace.delete({ where: { id: secondWorkspace.id } });
   });
 
-  it("rejects an idempotency key reused with different execution metadata", async () => {
+  it("rejects an idempotency key reused for different work", async () => {
     await enqueue("metadata-conflict", { maxAttempts: 3, priority: 10 });
 
+    // Priority describes the work, so two priorities under one key means the
+    // key is standing for two different things.
     await expect(
-      enqueue("metadata-conflict", { maxAttempts: 4, priority: 10 }),
+      enqueue("metadata-conflict", { maxAttempts: 3, priority: 20 }),
     ).rejects.toMatchObject({
       code: "JOB_IDEMPOTENCY_CONFLICT",
     });
+    await expect(database.backgroundJob.count()).resolves.toBe(1);
+  });
+
+  it("accepts the same work under a key whose job has a different retry budget", async () => {
+    // `maxAttempts` is a budget, not an input. An operator retry raises it, so
+    // comparing it made every retried job conflict with the default its own
+    // scheduler enqueues with — and a key anchored on something stable then
+    // conflicted on every sweep, stranding the account permanently.
+    const first = await enqueue("budget-difference", { maxAttempts: 3, priority: 10 });
+
+    const again = await enqueue("budget-difference", { maxAttempts: 9, priority: 10 });
+
+    expect(again.domainJobId).toBe(first.domainJobId);
     await expect(database.backgroundJob.count()).resolves.toBe(1);
   });
 });

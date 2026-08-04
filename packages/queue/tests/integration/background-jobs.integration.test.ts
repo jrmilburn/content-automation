@@ -162,8 +162,16 @@ describe("transactional background job dispatch", () => {
       resourceType: "instagram_account",
     });
 
+    // `completedAt` is not decoration: a check constraint pairs it with every
+    // terminal state, because a job that has stopped without a time it stopped
+    // at cannot be told apart from one still waiting.
     await database.backgroundJob.update({
-      data: { attemptCount: 8, maxAttempts: 9, state: "FAILED_ATTENTION" },
+      data: {
+        attemptCount: 8,
+        completedAt: new Date(),
+        maxAttempts: 9,
+        state: "FAILED_ATTENTION",
+      },
       where: { id: first.job.id },
     });
 
