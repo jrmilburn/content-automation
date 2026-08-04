@@ -792,6 +792,14 @@ model AnalysisJob {
   providerFileName      String?          @map("provider_file_name") @db.VarChar(128)
   providerFileExpiresAt DateTime?        @map("provider_file_expires_at") @db.Timestamptz(3)
   repairAttempted       Boolean          @default(false) @map("repair_attempted")
+  // Why the last response was rejected, as `CODE at path` entries.
+  //
+  // Codes and paths only, never the response. A rejected analysis previously
+  // left no evidence at all: the operator screen said "review output" for
+  // output nothing had kept, and the cause was gone as soon as the worker's
+  // terminal scrolled. The model's prose is untrusted and can echo the video's
+  // own text, so it is the one thing that must not be stored here.
+  lastValidationIssues  String[]         @map("last_validation_issues")
   createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
   workspace             Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Restrict)

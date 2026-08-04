@@ -40,7 +40,7 @@ function createValidAnalysis(): PostCreativeAnalysisV1 {
   return {
     contract: {
       schemaVersion: "post-creative-analysis-v1.0.0",
-      promptVersion: "post-creative-analysis-prompt-v1.1.0",
+      promptVersion: "post-creative-analysis-prompt-v1.2.0",
       modelRequested: "gemini-3.6-flash",
     },
     content: {

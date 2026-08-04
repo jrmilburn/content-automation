@@ -134,12 +134,21 @@ export async function recordAnalysisProviderFile(
 export async function recordAnalysisStage(
   executor: Executor,
   context: WorkspaceContext,
-  input: Readonly<{ analysisJobId: string; repairAttempted?: boolean; stage: string }>,
+  input: Readonly<{
+    analysisJobId: string;
+    repairAttempted?: boolean;
+    stage: string;
+    /** `CODE at path` entries. Never the response, which is untrusted prose. */
+    validationIssues?: readonly string[];
+  }>,
 ): Promise<void> {
   await executor.analysisJob.updateMany({
     data: {
       stage: input.stage as never,
       ...(input.repairAttempted === undefined ? {} : { repairAttempted: input.repairAttempted }),
+      ...(input.validationIssues === undefined
+        ? {}
+        : { lastValidationIssues: [...input.validationIssues] }),
     },
     where: { id: input.analysisJobId, workspaceId: context.workspaceId },
   });

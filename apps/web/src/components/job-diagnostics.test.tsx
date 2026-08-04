@@ -120,6 +120,7 @@ describe("job diagnostics", () => {
       retry: { allowed: true },
       safeErrorDetail:
         "The recorded input did not pass validation. Existing completed data remains safe.",
+      validationIssues: ["COUNT_IMPLAUSIBLE at content.majorSectionCount.value"],
       usage: {
         estimatedCostMicros: null,
         inputTokens: null,

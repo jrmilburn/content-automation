@@ -94,6 +94,14 @@ export type JobDiagnosticDetail = JobDiagnosticListItem &
     attempts: ReadonlyArray<JobDiagnosticAttempt>;
     safeErrorDetail: string | null;
     usage: JobUsageSummary;
+    /**
+     * Rules the last response broke, as `CODE at path`.
+     *
+     * Empty for any job that is not an analysis, or that has not been rejected.
+     * Carries no model prose: a path names a field, and the value in it is the
+     * untrusted part.
+     */
+    validationIssues: readonly string[];
   }>;
 
 export type JobDiagnosticList = Readonly<{
@@ -173,6 +181,9 @@ export async function loadJobDiagnosticDetail(
   const record = await database.backgroundJob.findFirst({
     select: {
       ...listSelect,
+      // Why the last response was rejected. Without it the screen can only say
+      // "review output" about output nothing kept.
+      analysisJob: { select: { lastValidationIssues: true } },
       attempts: {
         orderBy: { attemptNumber: "desc" },
         select: {
@@ -221,6 +232,7 @@ export async function loadJobDiagnosticDetail(
       outputTokens: null,
       providerRequests: null,
     }),
+    validationIssues: Object.freeze([...(record.analysisJob?.lastValidationIssues ?? [])]),
   });
 }
 
