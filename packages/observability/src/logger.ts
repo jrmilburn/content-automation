@@ -25,6 +25,7 @@ export type LogAttributes = Readonly<{
   operation?: string;
   outcome?: string;
   postId?: string;
+  providerAccountType?: string;
   providerRequestId?: string;
   providerStatus?: number;
   queueName?: string;

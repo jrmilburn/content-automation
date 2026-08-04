@@ -76,6 +76,18 @@ export async function GET(request: Request): Promise<Response> {
     });
 
     if (result.connected) return settle("connected");
+
+    // The screen can only say the account was not eligible; which type was
+    // seen is what an operator needs to act on, and it exists nowhere else.
+    if (result.reason === "ACCOUNT_TYPE_INELIGIBLE") {
+      webLogger.warn("instagram.connection.account_type_ineligible", {
+        correlationId: requestContext.correlationId,
+        providerAccountType: result.providerAccountType ?? "UNRECOGNISED",
+        reasonCode: result.reason,
+        stage: "complete",
+      });
+    }
+
     return result.reason === "ACCOUNT_MISMATCH"
       ? settle("mismatch", result.expectedAccountId)
       : settle("failed");

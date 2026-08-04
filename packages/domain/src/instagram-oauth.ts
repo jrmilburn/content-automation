@@ -28,6 +28,24 @@ export const instagramEligibleAccountTypes = ["BUSINESS", "CREATOR"] as const;
 export type InstagramAccountType = (typeof instagramEligibleAccountTypes)[number];
 
 /**
+ * How the provider names an account type, mapped to how we store it.
+ *
+ * These are not the same vocabulary, and treating them as one is what refused
+ * every creator account: Instagram reports a creator as `MEDIA_CREATOR`, so
+ * comparing its value against the stored names matched only businesses. The
+ * stored names are ours and stay as they are; the translation belongs here, at
+ * the edge, with the rest of the pinned provider contract.
+ *
+ * `CREATOR` is accepted as well because it costs nothing and means the same
+ * thing should the provider ever report it.
+ */
+const instagramProviderAccountTypes: ReadonlyMap<string, InstagramAccountType> = new Map([
+  ["BUSINESS", "BUSINESS"],
+  ["CREATOR", "CREATOR"],
+  ["MEDIA_CREATOR", "CREATOR"],
+]);
+
+/**
  * Meta's Business Login documentation does not describe PKCE support for the
  * Instagram Login path, so no code challenge is sent: advertising a challenge
  * the provider ignores would imply a protection that is not in force. The
@@ -175,10 +193,30 @@ export function evaluateInstagramCallback(input: {
   return { allowed: true, code };
 }
 
-export function isEligibleInstagramAccountType(
-  candidate: string,
-): candidate is InstagramAccountType {
-  return (instagramEligibleAccountTypes as readonly string[]).includes(candidate);
+/**
+ * The stored account type for what the provider reported, or null if the
+ * account is not a professional one we can act on.
+ *
+ * Matching is exact. The provider's enum is upper case, so a differently-cased
+ * value is a contract change rather than a spelling to absorb, and refusing it
+ * surfaces that instead of hiding it.
+ */
+export function resolveInstagramAccountType(candidate: string): InstagramAccountType | null {
+  return instagramProviderAccountTypes.get(candidate) ?? null;
+}
+
+/**
+ * The reported account type reduced to something safe to record.
+ *
+ * A refusal that cannot say what it refused is most of the way to useless: the
+ * creator case had to be diagnosed from provider documentation and elimination
+ * because the trail recorded only the reason. What stops that being an excuse
+ * to log the provider's response is the shape check — only the enum shape the
+ * contract actually uses survives, and anything else is reported as
+ * unrecognised rather than echoed wherever logs are read.
+ */
+export function loggableInstagramAccountType(candidate: string): string {
+  return /^[A-Z_]{1,32}$/u.test(candidate) ? candidate : "UNRECOGNISED";
 }
 
 /**

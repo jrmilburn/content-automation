@@ -9,9 +9,10 @@ import {
   instagramReconnectSatisfied,
   instagramRequiredScopes,
   instagramStateLifetimeSeconds,
-  isEligibleInstagramAccountType,
   isValidInstagramRedirectUri,
+  loggableInstagramAccountType,
   openInstagramState,
+  resolveInstagramAccountType,
   resolveTokenExpiry,
   sealInstagramState,
   type InstagramStateRecord,
@@ -191,12 +192,35 @@ describe("callback evaluation", () => {
 });
 
 describe("account eligibility and granted scopes", () => {
-  it("accepts only professional account types", () => {
-    expect(isEligibleInstagramAccountType("BUSINESS")).toBe(true);
-    expect(isEligibleInstagramAccountType("CREATOR")).toBe(true);
+  it("maps the provider's name for a creator account onto the one we store", () => {
+    // The value that refused every creator account: Instagram says
+    // MEDIA_CREATOR, the column says CREATOR, and comparing the two matched
+    // only businesses.
+    expect(resolveInstagramAccountType("MEDIA_CREATOR")).toBe("CREATOR");
+    expect(resolveInstagramAccountType("BUSINESS")).toBe("BUSINESS");
+    expect(resolveInstagramAccountType("CREATOR")).toBe("CREATOR");
+  });
 
-    for (const candidate of ["PERSONAL", "MEDIA_CREATOR", "business", "", "UNKNOWN"]) {
-      expect(isEligibleInstagramAccountType(candidate)).toBe(false);
+  it("resolves nothing for an account that is not professional", () => {
+    // "business" stays refused deliberately: the provider's enum is upper
+    // case, so another casing is a contract change to surface, not a spelling
+    // to absorb.
+    for (const candidate of ["PERSONAL", "business", "media_creator", "", "UNKNOWN"]) {
+      expect(resolveInstagramAccountType(candidate)).toBeNull();
+    }
+  });
+
+  it("only lets the provider's own enum shape through to a log", () => {
+    expect(loggableInstagramAccountType("MEDIA_CREATOR")).toBe("MEDIA_CREATOR");
+
+    for (const candidate of [
+      "not an enum",
+      '{"error":"..."}',
+      "A".repeat(33),
+      "",
+      "creator\nInjected: line",
+    ]) {
+      expect(loggableInstagramAccountType(candidate)).toBe("UNRECOGNISED");
     }
   });
 

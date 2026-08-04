@@ -26,11 +26,11 @@ import {
   instagramReconnectSatisfied,
   instagramRequiredScopes,
   instagramStateLifetimeSeconds,
-  isEligibleInstagramAccountType,
+  loggableInstagramAccountType,
   openInstagramState,
+  resolveInstagramAccountType,
   resolveTokenExpiry,
   sealInstagramState,
-  type InstagramAccountType,
   type InstagramConnectionDenialReason,
 } from "@studio-parallel/domain";
 
@@ -80,6 +80,12 @@ export type CompleteConnectionResult =
        * anything the provider returned.
        */
       expectedAccountId?: string;
+      /**
+       * Set only for `ACCOUNT_TYPE_INELIGIBLE`. Already reduced to the enum
+       * shape the contract uses, so what reaches a log cannot be arbitrary
+       * provider text.
+       */
+      providerAccountType?: string;
       reason: InstagramConnectionDenialReason | "RATE_LIMITED";
     }>;
 
@@ -288,8 +294,21 @@ export async function completeInstagramConnection(input: {
     return audit("ACCOUNT_MISMATCH", expected?.id);
   }
 
-  if (!isEligibleInstagramAccountType(identityAccountType)) {
-    return audit("ACCOUNT_TYPE_INELIGIBLE");
+  // Resolved rather than compared: the provider names a creator account
+  // `MEDIA_CREATOR`, which matches neither stored name, so testing its value
+  // against them refused every creator account that ever tried to connect.
+  const accountType = resolveInstagramAccountType(identityAccountType);
+
+  if (accountType === null) {
+    const refusal = await audit("ACCOUNT_TYPE_INELIGIBLE");
+
+    // Carried out so the caller can record what was refused. The audit row
+    // holds the reason alone, which is why this case had to be diagnosed from
+    // provider documentation rather than from the trail it left.
+    return Object.freeze({
+      ...refusal,
+      providerAccountType: loggableInstagramAccountType(identityAccountType),
+    });
   }
 
   const scopeEvaluation = evaluateInstagramGrantedScopes(grantedScopes);
@@ -309,7 +328,7 @@ export async function completeInstagramConnection(input: {
   // failure cannot leave an account without an active credential.
   const accountId = await withWorkspaceTransaction(database, context, async (repositories) => {
     const account = await repositories.instagramAccounts.upsertConnected({
-      accountType: identityAccountType as InstagramAccountType,
+      accountType,
       apiVersion: instagramApiVersion,
       grantedScopes,
       mediaCount,

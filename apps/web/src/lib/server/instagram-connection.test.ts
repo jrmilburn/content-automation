@@ -288,3 +288,60 @@ describe("completing a reconnect", () => {
     );
   });
 });
+
+describe("judging the returned account's type", () => {
+  it("connects a creator account, storing the name the column uses", async () => {
+    // Instagram reports a creator as MEDIA_CREATOR. Comparing that against the
+    // stored names refused every creator account; it has to be translated.
+    fetchInstagramIdentity.mockResolvedValue({
+      accountType: "MEDIA_CREATOR",
+      mediaCount: 12,
+      providerAccountId: secondProviderAccountId,
+      username: "parallelstudio",
+    });
+
+    await expect(complete(sealed(null))).resolves.toEqual(
+      expect.objectContaining({ connected: true }),
+    );
+    expect(upsertConnected).toHaveBeenCalledWith(
+      expect.objectContaining({ accountType: "CREATOR" }),
+    );
+  });
+
+  it("refuses a personal account and reports which type it saw", async () => {
+    fetchInstagramIdentity.mockResolvedValue({
+      accountType: "PERSONAL",
+      mediaCount: 0,
+      providerAccountId: secondProviderAccountId,
+      username: "personal-account",
+    });
+
+    await expect(complete(sealed(null))).resolves.toEqual({
+      connected: false,
+      providerAccountType: "PERSONAL",
+      reason: "ACCOUNT_TYPE_INELIGIBLE",
+    });
+
+    // A refused account leaves nothing behind — no row, and above all no
+    // credential for an account that was never connected.
+    expect(upsertConnected).not.toHaveBeenCalled();
+    expect(activate).not.toHaveBeenCalled();
+    expect(enqueueBackgroundJobInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("does not carry arbitrary provider text into what gets logged", async () => {
+    fetchInstagramIdentity.mockResolvedValue({
+      accountType: '{"error":{"message":"unexpected"}}',
+      mediaCount: 0,
+      providerAccountId: secondProviderAccountId,
+      username: "odd-account",
+    });
+
+    await expect(complete(sealed(null))).resolves.toEqual({
+      connected: false,
+      providerAccountType: "UNRECOGNISED",
+      reason: "ACCOUNT_TYPE_INELIGIBLE",
+    });
+    expect(upsertConnected).not.toHaveBeenCalled();
+  });
+});
