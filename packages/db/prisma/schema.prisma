@@ -935,7 +935,9 @@ enum FeatureStatisticConfidence {
 model AccountFeatureStatistic {
   id                        String                         @id @db.Uuid
   workspaceId               String                         @map("workspace_id") @db.Uuid
-  instagramAccountId        String                         @map("instagram_account_id") @db.Uuid
+  // The statistic's scope, matching its run: an account, or null for every
+  // linked account pooled together.
+  instagramAccountId        String?                        @map("instagram_account_id") @db.Uuid
   // The run that first produced this row, kept for provenance. It is *not* how
   // a reader finds a run's statistics: a recalculation over unchanged data
   // collapses onto this row rather than rewriting it, so a later run publishes
@@ -979,7 +981,7 @@ model AccountFeatureStatistic {
   calculatedAt              DateTime                       @map("calculated_at") @db.Timestamptz(3)
   createdAt                 DateTime                       @default(now()) @map("created_at") @db.Timestamptz(3)
   workspace                 Workspace                      @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
-  account                   InstagramAccount               @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
+  account                   InstagramAccount?              @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
   // Restrict, not Cascade: once a later run publishes this row, deleting the
   // run that first wrote it must not take the row with it.
   calculationRun            AccountAnalyticsRun            @relation(fields: [workspaceId, calculationRunId], references: [workspaceId, id], onDelete: Restrict)
@@ -988,9 +990,12 @@ model AccountFeatureStatistic {
   strategyEvidence          StrategyEvidence[]
 
   @@unique([workspaceId, id])
-  // One row per identical question and identical inputs. A repeat calculation
-  // over unchanged data collapses instead of accumulating duplicates.
-  @@unique([workspaceId, instagramAccountId, featurePath, featureValue, metric, ageWindow, inputFingerprint], map: "account_feature_statistics_question_inputs_key")
+  // One row per identical question and identical inputs, so a repeat
+  // calculation over unchanged data collapses instead of accumulating
+  // duplicates. Declared in the migration rather than here: the workspace-wide
+  // scope stores a null account, and without `NULLS NOT DISTINCT` — which
+  // Prisma cannot express — every pooled row would be unique from every other
+  // on the strength of that null and the key would quietly stop collapsing.
   // Explicit names: the generated ones truncate to the same string.
   @@index([workspaceId, instagramAccountId, calculatedAt(sort: Desc)], map: "account_feature_statistics_account_calculated_at_idx")
   @@index([workspaceId, instagramAccountId, confidence], map: "account_feature_statistics_account_confidence_idx")
@@ -1071,7 +1076,11 @@ enum AnalyticsRunState {
 model AccountAnalyticsRun {
   id                  String                         @id @db.Uuid
   workspaceId         String                         @map("workspace_id") @db.Uuid
-  instagramAccountId  String                         @map("instagram_account_id") @db.Uuid
+  // The run's scope. Naming an account means the run describes that account;
+  // null means it describes every linked account at once. A separate
+  // discriminator would have allowed the two to disagree, and there is no third
+  // scope for one to express.
+  instagramAccountId  String?                        @map("instagram_account_id") @db.Uuid
   state               AnalyticsRunState              @default(BUILDING)
   ageWindow           String                         @map("age_window") @db.VarChar(16)
   publishedFrom       DateTime                       @map("published_from") @db.Timestamptz(3)
@@ -1091,7 +1100,7 @@ model AccountAnalyticsRun {
   createdAt           DateTime                       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime                       @updatedAt @map("updated_at") @db.Timestamptz(3)
   workspace           Workspace                      @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
-  account             InstagramAccount               @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
+  account             InstagramAccount?              @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
   // Rows this run first produced. Provenance, not membership: see `published`.
   statistics          AccountFeatureStatistic[]
   published           AccountAnalyticsRunStatistic[]
@@ -1099,8 +1108,9 @@ model AccountAnalyticsRun {
 
   @@unique([workspaceId, id])
   @@index([workspaceId, instagramAccountId, startedAt(sort: Desc)], map: "analytics_runs_account_started_idx")
-  // One ACTIVE run per account is enforced by a partial unique index in the
-  // migration; Prisma cannot express a filtered unique index.
+  // One ACTIVE run per scope is enforced by a partial unique index in the
+  // migration; Prisma can express neither a filtered index nor the
+  // `NULLS NOT DISTINCT` that makes it hold for the workspace-wide scope.
   @@index([workspaceId, state], map: "analytics_runs_state_idx")
   @@map("account_analytics_runs")
 }
