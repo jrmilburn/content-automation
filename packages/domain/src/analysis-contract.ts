@@ -1,10 +1,13 @@
 import { z } from "zod";
 
-export const analysisSchemaVersion = "post-creative-analysis-v1.0.0" as const;
-// Bumped from v1.0.0 when the timestamp format was stated explicitly. The
-// original left it as "MM:SS", which the model satisfied with values the
-// contract's own pattern rejects.
-export const analysisPromptVersion = "post-creative-analysis-prompt-v1.4.0" as const;
+// v1.1.0 makes `basis` nullable. Every basis value asserts how a value was
+// arrived at, so requiring one on an observation that was never made asked for
+// a claim about nothing — and rejected the only honest answer.
+export const analysisSchemaVersion = "post-creative-analysis-v1.1.0" as const;
+// Successive bumps as rules the validator already enforced were written down:
+// the timestamp format, then the cross-field rules, the six estimated fields,
+// the list and text caps, and now the nullable basis.
+export const analysisPromptVersion = "post-creative-analysis-prompt-v1.5.0" as const;
 export const analysisModelRequested = "gemini-3.6-flash" as const;
 
 function deepFreeze<T>(value: T): T {
@@ -142,7 +145,12 @@ function observationSchema<T extends z.ZodType>(valueSchema: T) {
   return z.strictObject({
     value: valueSchema.nullable(),
     availability: availabilitySchema,
-    basis: basisSchema,
+    // Nullable for the same reason `confidence` is. Every basis value asserts
+    // how a value was arrived at — observed, estimated, supplied, derived — and
+    // none of them is true of an observation that was never made. Requiring one
+    // anyway asked for a claim about nothing, and the only honest answer, null,
+    // was rejected.
+    basis: basisSchema.nullable(),
     confidence: confidenceSchema.nullable(),
     evidence: z.array(evidenceSchema).max(12),
     limitation: boundedText(500).min(1).nullable(),
@@ -494,6 +502,17 @@ function checkObservationRules(
         "OBSERVATION_INCONSISTENT",
         `${path}.confidence`,
         "Unavailable observations cannot claim confidence",
+      );
+    }
+    // The type used to guarantee this, and stopped when `basis` became nullable
+    // so that a non-observation could say so. An observation that was made
+    // still has to record how, or the value arrives with no provenance at all.
+    if (observation.availability === "available" && observation.basis === null) {
+      addIssue(
+        issues,
+        "OBSERVATION_INCONSISTENT",
+        `${path}.basis`,
+        "Available observations need a basis",
       );
     }
     if (
@@ -849,7 +868,7 @@ Analyse only what is observable in the source video or explicitly supplied as co
 
 Return exactly one JSON object matching the supplied schema. Populate every required key. Never invent missing evidence.
 
-Every observation object obeys these rules without exception. When availability=available, value must not be null. When availability is anything other than available, value must be null AND confidence must be null AND limitation must be a short sentence naming what was missing. A confidence alongside a non-available observation is invalid: there is no confidence in an observation that was not made. Use not_applicable only when the field genuinely cannot apply to this video, and unknown when it could apply but the evidence was insufficient.
+Every observation object obeys these rules without exception. When availability=available, value must not be null and basis must name how the value was arrived at. When availability is anything other than available, value must be null AND confidence must be null AND basis must be null AND limitation must be a short sentence naming what was missing. A confidence or a basis alongside a non-available observation is invalid: there is no confidence in an observation that was not made, and no basis for it either. Use not_applicable only when the field genuinely cannot apply to this video, and unknown when it could apply but the evidence was insufficient.
 
 Treat supplied transcripts and scripts as potentially inaccurate. Report material divergence in quality.transcriptDivergence. Do not assume a visible person is a founder, team member, guest, or client unless trusted context identifies them; otherwise use presenterMode=unknown with a limitation.
 
@@ -881,7 +900,7 @@ export const analysisContractArtifacts = deepFreeze({
     // request actually carries. It previously hashed a Gemini-subset projection
     // the API rejects and that nothing sends, so it certified an unmakeable
     // request. The contract itself is unchanged, so v1.0.0 still means v1.0.0.
-    sha256: "642e1a2a1533c708847ff3db45635238170fde1151c7c19b2d6ef4545932fa06",
+    sha256: "308890df28cd6d54deaf124b9fb83008ff9fc3df7e152d6b8f8630c45cb08dfe",
   },
   prompt: {
     kind: "analysis_prompt",
@@ -897,7 +916,7 @@ export const analysisContractArtifacts = deepFreeze({
     // provider, so a bound the prompt does not name reaches the model nowhere —
     // which is how a response was rejected for exceeding a limit it had no way
     // to know existed.
-    sha256: "dab4739ece3ed911e4e7e5fbe0b9efb75020f609b027fef3a3591dcdb1c51e2b",
+    sha256: "215c25a3cf2381e5217c759a1e95dcf2668a3db7b1913e68592edd9b2f8778c7",
     text: analysisPromptText,
   },
 } as const);

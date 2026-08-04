@@ -55,7 +55,7 @@ function post(
 
 const identity: StrategyManifestIdentity = {
   ageWindow: "day_30",
-  analysisSchemaVersion: "post-creative-analysis-v1.0.0",
+  analysisSchemaVersion: "post-creative-analysis-v1.1.0",
   analyticsRunId: "run_1",
   analyticsVersion: "account-analytics-v1.0.0",
   cohortVersion: "account-cohort-v1.0.0",

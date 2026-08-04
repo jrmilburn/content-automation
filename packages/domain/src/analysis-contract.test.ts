@@ -39,8 +39,8 @@ function estimated<T>(value: T) {
 function createValidAnalysis(): PostCreativeAnalysisV1 {
   return {
     contract: {
-      schemaVersion: "post-creative-analysis-v1.0.0",
-      promptVersion: "post-creative-analysis-prompt-v1.4.0",
+      schemaVersion: "post-creative-analysis-v1.1.0",
+      promptVersion: "post-creative-analysis-prompt-v1.5.0",
       modelRequested: "gemini-3.6-flash",
     },
     content: {
@@ -251,6 +251,42 @@ describe("post creative analysis v1 contract", () => {
     input.content.topic.confidence =
       value === "derived" || value === "user_supplied" ? null : "medium";
     expect(validatePostCreativeAnalysisV1(input, { probedDurationSeconds: 30 }).valid).toBe(true);
+  });
+
+  it("accepts a null basis on an observation that was never made", () => {
+    // Every basis value asserts how a value was arrived at, and none of them is
+    // true of a call to action that does not exist. Requiring one asked for a
+    // claim about nothing and rejected the only honest answer.
+    const input = createValidAnalysis();
+    input.callToAction.present.value = false;
+    input.callToAction.type.value = "none";
+    input.callToAction.text = {
+      availability: "not_applicable",
+      basis: null,
+      confidence: null,
+      evidence: [],
+      limitation: "This video makes no call to action.",
+      value: null,
+    };
+
+    expect(validatePostCreativeAnalysisV1(input, { probedDurationSeconds: 30 }).valid).toBe(true);
+  });
+
+  it("still requires a basis on an observation that was made", () => {
+    // The type used to guarantee this and stopped when basis became nullable. A
+    // value with no provenance is what the field exists to prevent.
+    const input = createValidAnalysis();
+    input.content.topic.basis = null;
+
+    const result = validatePostCreativeAnalysisV1(input, { probedDurationSeconds: 30 });
+    if (result.valid) throw new Error("expected a missing basis to be rejected");
+
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({
+        code: "OBSERVATION_INCONSISTENT",
+        path: "content.topic.basis",
+      }),
+    );
   });
 });
 
