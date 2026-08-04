@@ -203,10 +203,21 @@ export async function enqueueBackgroundJobInTransaction(
       },
     });
 
+    // What the key promised, compared against what it resolved to. The point is
+    // to catch one key standing for two different pieces of work, so only the
+    // fields that describe the work are compared.
+    //
+    // `maxAttempts` is deliberately absent. It is a retry budget rather than an
+    // input, and an operator retry raises it to `attemptCount + 1` — so any job
+    // that has ever been retried no longer matches the default a scheduler
+    // enqueues with. For a key anchored on something stable, like the dirty
+    // marker an analytics recalculation is keyed on, that conflict repeats on
+    // every sweep and the account is never scheduled again. One exhausted job
+    // stranded its whole account permanently, while reading as a transient
+    // failure an operator could retry.
     if (
       job.id !== generatedIds.jobId &&
       (job.inputVersion !== (inputVersion ?? null) ||
-        job.maxAttempts !== maxAttempts ||
         job.priority !== priority ||
         job.resourceId !== (input.resourceId ?? null) ||
         job.resourceType !== (resourceType ?? null))
