@@ -151,11 +151,39 @@ export function toJobFailure(error: GeminiError): JobHandlerFailure {
   }
 }
 
+/**
+ * What an unparseable response looked like, without quoting any of it.
+ *
+ * A response that is not JSON leaves nothing behind otherwise: no issues, no
+ * length, no finish reason. That is the difference between knowing the ceiling
+ * truncated the contract and guessing at it, so the shape is recorded even
+ * though the content never can be.
+ */
+export function describeUnparseableResponse(text: string, finishReason: string | null): string {
+  const trimmed = text.trim();
+  const shape =
+    trimmed.length === 0
+      ? "empty"
+      : trimmed.startsWith("```")
+        ? "fenced"
+        : !trimmed.startsWith("{")
+          ? "not_an_object"
+          : trimmed.endsWith("}")
+            ? "object_but_malformed"
+            : "object_unterminated";
+
+  return `RESPONSE_NOT_JSON shape=${shape} chars=${String(text.length)} finish=${
+    finishReason ?? "none"
+  }`;
+}
+
 type RunOutcome = Readonly<{
   analysis: ReturnType<typeof validatePostCreativeAnalysisV1>;
   finishReason: string | null;
   latencyMs: number;
   modelVersion: string | null;
+  /** Set only when the response could not be parsed at all. */
+  notJson?: string;
   usage: Readonly<{
     inputTokens: number | null;
     outputTokens: number | null;
@@ -177,13 +205,18 @@ async function requestAnalysis(
     fileUri: string;
     /** Issues to correct, when this call is the repair. */
     previousIssues?: readonly AnalysisValidationIssue[];
+    /** The previous response could not be parsed, so say so rather than cite a rule. */
+    previousWasNotJson?: boolean;
     probedDurationSeconds: number;
   }>,
 ): Promise<RunOutcome> {
   const response = await withHeartbeat(execution, () =>
     dependencies.gemini.generateStructuredText({
       fileUri: input.fileUri,
-      instruction: createAnalysisInstruction(input.previousIssues ?? []),
+      instruction: createAnalysisInstruction(
+        input.previousIssues ?? [],
+        input.previousWasNotJson ?? false,
+      ),
       mimeType: "video/mp4",
     }),
   );
@@ -193,9 +226,33 @@ async function requestAnalysis(
   try {
     parsed = JSON.parse(response.text);
   } catch {
-    throw new JobHandlerFailure({
-      errorClass: "SEMANTIC_OUTPUT",
-      errorCode: "ANALYSIS_RESPONSE_NOT_JSON",
+    // Returned rather than thrown, so this reaches the one bounded repair. A
+    // response that is not JSON is the case a retry is most likely to fix —
+    // "return only the object" is a correctable instruction — and throwing here
+    // skipped the repair entirely and spent the attempt on nothing.
+    return Object.freeze({
+      analysis: Object.freeze({
+        issues: Object.freeze([
+          Object.freeze({
+            code: "SCHEMA_INVALID" as const,
+            message: "Response was not JSON",
+            path: "",
+          }),
+        ]),
+        valid: false as const,
+      }),
+      finishReason: response.finishReason,
+      latencyMs: response.durationMs,
+      modelVersion: response.modelVersion,
+      // Shape only, never content. Enough to tell a truncated object from a
+      // fenced one from an empty one, which is the difference between raising
+      // the token ceiling and correcting the instruction.
+      notJson: describeUnparseableResponse(response.text, response.finishReason),
+      usage: Object.freeze({
+        inputTokens: response.usage.inputTokens,
+        outputTokens: response.usage.outputTokens,
+        totalTokens: response.usage.totalTokens,
+      }),
     });
   }
 
@@ -230,6 +287,20 @@ export function describeIssues(issues: readonly AnalysisValidationIssue[]): read
   return Object.freeze(
     issues.map((issue) => (issue.path === "" ? issue.code : `${issue.code} at ${issue.path}`)),
   );
+}
+
+/**
+ * What to store about one rejected response.
+ *
+ * A response that failed to parse has no validation issues to report, so the
+ * shape description stands in for them. Either way the record replaces whatever
+ * the previous attempt left, so a reader is never shown rules that belong to a
+ * different failure.
+ */
+function failureRecord(outcome: RunOutcome): readonly string[] {
+  if (outcome.notJson !== undefined) return Object.freeze([outcome.notJson]);
+
+  return outcome.analysis.valid ? Object.freeze([]) : describeIssues(outcome.analysis.issues);
 }
 
 export function createAnalysisRunHandler(
@@ -363,7 +434,7 @@ export function createAnalysisRunHandler(
                 analysisJobId: job.id,
                 repairAttempted: true,
                 stage: "REPAIRING",
-                validationIssues: describeIssues(outcome.analysis.issues),
+                validationIssues: failureRecord(outcome),
               });
 
               // The repair states what was wrong. Resending the original
@@ -373,38 +444,44 @@ export function createAnalysisRunHandler(
                 fileUri: file.uri,
                 previousIssues: outcome.analysis.issues,
                 probedDurationSeconds,
+                ...(outcome.notJson === undefined ? {} : { previousWasNotJson: true }),
               });
             }
 
             if (!outcome.analysis.valid) {
-              const issues = describeIssues(outcome.analysis.issues);
+              const record = failureRecord(outcome);
 
-              // Stored as well as logged. A log line lives as long as the
-              // worker's terminal, and the operator screen tells a reader to
-              // review output that nothing had kept.
+              // Always overwritten, never appended. Leaving the previous
+              // attempt's issues in place made the screen attribute rules to a
+              // failure that was not about them.
               await recordAnalysisStage(dependencies.database, workspace, {
                 analysisJobId: job.id,
                 stage: "REQUESTING",
-                validationIssues: issues,
+                validationIssues: record,
               });
 
               dependencies.logger.warn("analysis.response_invalid", {
                 correlationId,
                 jobId: execution.jobId,
                 postId: job.instagramPostId,
-                reasonCode: outcome.analysis.issues[0]?.code ?? "SCHEMA_INVALID",
-                // The first path only, and joined with a colon. The logger
-                // scrubs any attribute that is not a safe token, so a
-                // comma-separated list of paths arrived as "unknown" — the one
-                // field that was supposed to say where the failure was.
+                reasonCode:
+                  outcome.notJson === undefined
+                    ? (outcome.analysis.issues[0]?.code ?? "SCHEMA_INVALID")
+                    : "RESPONSE_NOT_JSON",
+                // The first path only. The logger scrubs any attribute that is
+                // not a safe token, so a comma-separated list of paths arrived
+                // as "unknown" — the one field meant to say where it failed.
                 source: outcome.analysis.issues[0]?.path || "none",
                 stage: "analysis_run",
-                value: issues.length,
+                value: record.length,
               });
 
               throw new JobHandlerFailure({
                 errorClass: "SEMANTIC_OUTPUT",
-                errorCode: "ANALYSIS_RESPONSE_INVALID",
+                errorCode:
+                  outcome.notJson === undefined
+                    ? "ANALYSIS_RESPONSE_INVALID"
+                    : "ANALYSIS_RESPONSE_NOT_JSON",
               });
             }
 
