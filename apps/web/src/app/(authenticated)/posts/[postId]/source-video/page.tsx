@@ -1,6 +1,8 @@
 import { loadObjectStorageConfig } from "@studio-parallel/config";
+import { isImportableInstagramMediaKind } from "@studio-parallel/domain";
 import { notFound } from "next/navigation";
 
+import { InstagramVideoImportControl } from "../../../../../components/instagram-video-import-control";
 import { SourceVideoStatus } from "../../../../../components/source-video-status";
 import { VideoUpload } from "../../../../../components/video-upload";
 import { requireShellActor } from "../../../../../lib/server/shell-session";
@@ -32,19 +34,27 @@ export default async function SourceVideoPage({
       <header className="page-header">
         <h1>Source video</h1>
         <p>
-          Attach the original video for this {post.mediaKind === "REEL" ? "reel" : "post"} so it can
-          be analysed. Instagram does not provide the original file.
+          Attach the video for this {post.mediaKind === "REEL" ? "reel" : "post"} so it can be
+          analysed. Upload your original file, or copy the version Instagram serves.
         </p>
       </header>
       {post.asset === null ? null : <SourceVideoStatus asset={post.asset} />}
-      {/* A rejected asset still needs a replacement, so the control stays. A
+      {/* A rejected asset still needs a replacement, so the controls stay. A
           video that is validating or ready does not: replacing one is a
           separate outcome with its own cleanup. */}
       {post.asset === null || post.asset.state === "REJECTED" ? (
-        // The limit is read from configuration rather than written into the
-        // control, so the advertised number cannot drift from the one the
-        // server enforces.
-        <VideoUpload maxBytes={loadObjectStorageConfig().UPLOAD_MAX_BYTES} postId={post.id} />
+        <>
+          {/* Offered only where there is a video to copy. An image post would
+              have the control refuse, which is a worse answer than not
+              offering it. */}
+          {isImportableInstagramMediaKind(post.mediaKind) ? (
+            <InstagramVideoImportControl postId={post.id} />
+          ) : null}
+          {/* The limit is read from configuration rather than written into the
+              control, so the advertised number cannot drift from the one the
+              server enforces. */}
+          <VideoUpload maxBytes={loadObjectStorageConfig().UPLOAD_MAX_BYTES} postId={post.id} />
+        </>
       ) : null}
     </>
   );

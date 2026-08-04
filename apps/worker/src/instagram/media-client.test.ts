@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { fetchInstagramMediaPage, InstagramMediaError } from "./media-client.js";
+import {
+  fetchInstagramMediaItem,
+  fetchInstagramMediaPage,
+  InstagramMediaError,
+} from "./media-client.js";
 
 const accessToken = "IGAAcanaryTokenValueThatMustNeverLeak";
 const providerAccountId = "17841400000000001";
@@ -219,6 +223,83 @@ describe("fetchInstagramMediaPage", () => {
       const serialised = `${(error as Error).name}${(error as Error).message}${JSON.stringify(error)}`;
       expect(serialised).not.toContain(accessToken);
       expect(serialised).not.toContain("Invalid token");
+    }
+  });
+});
+
+describe("fetchInstagramMediaItem", () => {
+  const providerMediaId = "17900000000000001";
+
+  it("reads the media node for a fresh signed URL, with the token in a header", async () => {
+    const fetchImplementation = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = new URL(input);
+      expect(url.host).toBe("graph.instagram.com");
+      expect(url.pathname).toBe(`/v25.0/${providerMediaId}`);
+      expect(url.toString()).not.toContain(accessToken);
+      expect(new Headers(init?.headers).get("Authorization")).toBe(`Bearer ${accessToken}`);
+      // A redirect off the pinned host would carry the bearer token with it.
+      expect(init?.redirect).toBe("error");
+
+      return jsonResponse({
+        id: providerMediaId,
+        media_product_type: "REELS",
+        media_type: "VIDEO",
+        media_url: "https://scontent.cdninstagram.com/v/reel.mp4?oe=SIGNATURE",
+      });
+    });
+
+    const item = await fetchInstagramMediaItem({
+      accessToken,
+      fetchImplementation,
+      providerMediaId,
+    });
+
+    expect(item.mediaUrl).toBe("https://scontent.cdninstagram.com/v/reel.mp4?oe=SIGNATURE");
+    expect(item.mediaType).toBe("VIDEO");
+  });
+
+  it("validates the media id before it reaches the path", async () => {
+    const fetchImplementation = vi.fn();
+
+    for (const crafted of ["../me", "17900000000000001/insights", "", "abc"]) {
+      await expect(
+        fetchInstagramMediaItem({ accessToken, fetchImplementation, providerMediaId: crafted }),
+      ).rejects.toBeInstanceOf(InstagramMediaError);
+    }
+
+    expect(fetchImplementation).not.toHaveBeenCalled();
+  });
+
+  it("reports an absent media_url rather than inventing one", async () => {
+    const fetchImplementation = vi.fn(async () =>
+      jsonResponse({ id: providerMediaId, media_type: "IMAGE" }),
+    );
+
+    const item = await fetchInstagramMediaItem({
+      accessToken,
+      fetchImplementation,
+      providerMediaId,
+    });
+
+    expect(item.mediaUrl).toBeNull();
+  });
+
+  it("classifies a rejected read without echoing provider text", async () => {
+    const fetchImplementation = vi.fn(async () =>
+      jsonResponse({ error: { code: 190, message: "Invalid token canary" } }, { status: 400 }),
+    );
+
+    try {
+      await fetchInstagramMediaItem({ accessToken, fetchImplementation, providerMediaId });
+      expect.unreachable("the read should have been refused");
+    } catch (error) {
+      expect(error).toBeInstanceOf(InstagramMediaError);
+      // Code 190 on a 400 is an authorisation problem, so it asks for a
+      // reconnect rather than being retried into a lockout.
+      expect((error as InstagramMediaError).responseClass).toBe("authorisation");
+      const serialised = JSON.stringify(error, Object.getOwnPropertyNames(error));
+      expect(serialised).not.toContain(accessToken);
+      expect(serialised).not.toContain("Invalid token canary");
     }
   });
 });

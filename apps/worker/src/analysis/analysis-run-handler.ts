@@ -28,6 +28,8 @@ import {
 } from "@studio-parallel/integrations";
 import { parseCorrelationId, type JsonLogger } from "@studio-parallel/observability";
 
+import { withHeartbeat } from "../heartbeat.js";
+
 /**
  * Produces one immutable creative analysis of one video.
  *
@@ -51,43 +53,11 @@ import { parseCorrelationId, type JsonLogger } from "@studio-parallel/observabil
 export const analysisRunQueue = { name: "analysis.run", version: 1 } as const;
 
 /**
- * How often the lease is extended during a provider call.
- *
- * The lease is 120 seconds and heartbeating is manual. Every provider call this
- * handler makes can outlast that: the upload timeout alone is ten minutes, the
- * model request five, and the file poll can add two more. Without this the
- * attempt is reclaimed mid-upload, the retry fails identically, and the job
- * burns its whole budget re-uploading a video that never finishes.
- *
- * Well inside the lease so a single slow heartbeat cannot lose it.
+ * Re-exported so this handler's own tests and callers are unaffected by the
+ * helper moving. It lives in a neutral module now that a second queue needs it:
+ * an Instagram media transfer has the same lease problem as a Gemini upload.
  */
-const heartbeatIntervalMs = 30_000;
-
-/**
- * Keeps the job's lease alive for the duration of one long operation.
- *
- * A timer rather than a hook inside the adapter, because the adapter has no
- * business knowing what a job lease is — and because this way the upload, the
- * poll and the model request are all covered by the same three lines.
- *
- * A failed heartbeat is swallowed: the work is still progressing, and turning a
- * transient database blip into a failed analysis would throw away a paid
- * provider call.
- */
-export async function withHeartbeat<T>(
-  execution: JobHandlerExecutionContext,
-  operation: () => Promise<T>,
-): Promise<T> {
-  const timer = setInterval(() => {
-    void execution.heartbeat().catch(() => undefined);
-  }, heartbeatIntervalMs);
-
-  try {
-    return await operation();
-  } finally {
-    clearInterval(timer);
-  }
-}
+export { withHeartbeat };
 
 export type AnalysisRunDependencies = Readonly<{
   acquireConcurrency?: ((signal: AbortSignal) => Promise<() => void>) | undefined;

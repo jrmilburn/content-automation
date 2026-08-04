@@ -32,6 +32,7 @@ function asset(overrides: Partial<SourceVideoAsset> = {}): SourceVideoAsset {
     heightPx: null,
     id: "019fc538-493b-71f8-9c49-b9dfa1803503",
     instagramPostId: "019fb5f6-1ad8-75f9-9320-59b589b45581",
+    origin: "USER_UPLOAD",
     rejectionCode: null,
     state: "PENDING_VALIDATION",
     uploadedAt: "2026-08-03T01:23:48.157Z",
@@ -145,5 +146,51 @@ describe("analyse control placement", () => {
       "data-post",
       "019fb5f6-1ad8-75f9-9320-59b589b45581",
     );
+  });
+});
+
+describe("where the video came from", () => {
+  it("says a video was uploaded from the user's own file", () => {
+    render(<SourceVideoStatus asset={asset({ origin: "USER_UPLOAD", state: "READY" })} />);
+
+    expect(screen.getByText("Source")).toBeVisible();
+    expect(screen.getByText(/Uploaded from your own file/u)).toBeVisible();
+  });
+
+  it("says a video was copied from Instagram, and that it is a re-encode", () => {
+    // The imported copy is not the master the account owner filmed. A reader
+    // comparing quality later has to be able to tell which one this is.
+    render(<SourceVideoStatus asset={asset({ origin: "PROVIDER_IMPORT", state: "READY" })} />);
+
+    expect(screen.getByText(/Copied from Instagram/u)).toBeVisible();
+    expect(screen.getByText(/re-encoded for playback/u)).toBeVisible();
+  });
+
+  it("describes an import that is still being checked as copied, not uploaded", () => {
+    render(
+      <SourceVideoStatus
+        asset={asset({ origin: "PROVIDER_IMPORT", state: "PENDING_VALIDATION" })}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /Copied from Instagram and being checked/u,
+    );
+  });
+
+  it("offers a different next step when an imported video was refused", () => {
+    // Uploading a different file is the useful advice for a rejected upload. For
+    // a rejected import there is no other file to choose, so it says so.
+    render(
+      <SourceVideoStatus
+        asset={asset({
+          origin: "PROVIDER_IMPORT",
+          rejectionCode: "UNDECODABLE",
+          state: "REJECTED",
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/Upload your own file instead/u);
   });
 });

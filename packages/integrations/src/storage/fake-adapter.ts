@@ -8,6 +8,7 @@ import {
   type MultipartUploadHandle,
   type ObjectStorageAdapter,
   ObjectStorageError,
+  type PutObjectStreamRequest,
   type SignedPartInstruction,
   type StoredObjectBody,
   type StoredObjectMetadata,
@@ -249,6 +250,64 @@ export function createFakeObjectStorage(
       }
 
       return Promise.resolve(Object.freeze(abandoned));
+    },
+
+    /**
+     * Drains the stream chunk by chunk and stores what it actually read.
+     *
+     * Strict on the two things the real adapter is strict about, because a
+     * permissive fake here would let both defects reach a live provider: a
+     * stream that fails part-way must leave nothing addressable at the key, and
+     * a zero-byte body is a fault rather than an empty object.
+     */
+    async putObjectStream(request: PutObjectStreamRequest): Promise<StoredObjectMetadata> {
+      const reader = request.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let bytes = 0;
+
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          chunks.push(value);
+          bytes += value.byteLength;
+        }
+      } catch (error) {
+        // Nothing is written on the failure path, so a caller that retries
+        // finds the key clear exactly as it would against S3.
+        throw new ObjectStorageError("putObjectStream", error);
+      } finally {
+        reader.cancel().catch(() => undefined);
+      }
+
+      if (bytes === 0) {
+        throw new ObjectStorageError("putObjectStream");
+      }
+
+      const body = new Uint8Array(bytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        body.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+
+      const stored = Object.freeze({
+        body,
+        contentType: request.contentType,
+        // A single-part shape, deliberately distinguishable from the
+        // `-<partCount>` composite a completed multipart upload produces.
+        etag: digest(body),
+        objectVersion: randomUUID(),
+      });
+      objects.set(request.objectKey, stored);
+
+      return Object.freeze({
+        bytes,
+        contentType: stored.contentType,
+        etag: stored.etag,
+        objectVersion: stored.objectVersion,
+      });
     },
 
     async signPartUpload(

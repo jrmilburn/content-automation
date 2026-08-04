@@ -12,7 +12,7 @@ const envelope = {
 
 describe("background job contracts", () => {
   it("keeps every queue name explicitly versioned", () => {
-    expect(queueDefinitions).toHaveLength(9);
+    expect(queueDefinitions).toHaveLength(10);
     expect(new Set(queueDefinitions.map(queueVersionKey)).size).toBe(queueDefinitions.length);
     expect(
       queueDefinitions.every(({ version }) => Number.isSafeInteger(version) && version > 0),

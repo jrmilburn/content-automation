@@ -23,6 +23,7 @@ import {
   type MultipartUploadHandle,
   type ObjectStorageAdapter,
   ObjectStorageError,
+  type PutObjectStreamRequest,
   type SignedPartInstruction,
   type StoredObjectBody,
   type StoredObjectMetadata,
@@ -277,6 +278,104 @@ export function createS3ObjectStorageAdapter(
     return Object.freeze(abandoned);
   }
 
+  /**
+   * Writes one object from a stream, as multipart rather than a single PUT.
+   *
+   * `PutObjectCommand` with a stream body needs a known `ContentLength`, and
+   * without one the SDK collects the whole body to length it and checksum it —
+   * which is precisely the 1 GiB-in-memory outcome this contract exists to
+   * prevent, and which would pass every small-fixture test before failing in
+   * production. Multipart needs no advance length, so only one part is ever
+   * resident, and it reuses the create call that sets server-side encryption
+   * and the complete call that re-reads server-observed metadata.
+   */
+  async function putObjectStream(request: PutObjectStreamRequest): Promise<StoredObjectMetadata> {
+    const handle = await createMultipartUpload({
+      contentType: request.contentType,
+      objectKey: request.objectKey,
+    });
+
+    try {
+      const parts = await uploadStreamAsParts(handle, request.body);
+
+      // Zero bytes cannot be completed as multipart, and an empty source video
+      // is a fault however it arrived. Fail here rather than storing something
+      // the probe would only reject later.
+      if (parts.length === 0) {
+        throw new ObjectStorageError("putObjectStream");
+      }
+
+      return await completeMultipartUpload(handle, parts);
+    } catch (error) {
+      // The caller retries, so the key must be clear and no upload may be left
+      // in flight for the abandonment sweep to find. A failure to abort must
+      // not replace the original error, which is the one that explains why.
+      await abortMultipartUpload(handle).catch(() => undefined);
+
+      throw error instanceof ObjectStorageError
+        ? error
+        : new ObjectStorageError("putObjectStream", error);
+    }
+  }
+
+  async function uploadStreamAsParts(
+    handle: MultipartUploadHandle,
+    body: ReadableStream<Uint8Array>,
+  ): Promise<readonly CompletedPart[]> {
+    const parts: CompletedPart[] = [];
+    const reader = body.getReader();
+    let pending: Uint8Array[] = [];
+    let pendingBytes = 0;
+
+    const flush = async (): Promise<void> => {
+      if (pendingBytes === 0) return;
+
+      const partNumber = parts.length + 1;
+      const uploaded = await client.send(
+        new UploadPartCommand({
+          Body: concatenate(pending, pendingBytes),
+          Bucket: bucket,
+          Key: handle.objectKey,
+          PartNumber: partNumber,
+          UploadId: handle.providerUploadId,
+        }),
+      );
+
+      if (uploaded.ETag === undefined) {
+        throw new ObjectStorageError("putObjectStream");
+      }
+
+      parts.push(Object.freeze({ etag: uploaded.ETag.replaceAll('"', ""), partNumber }));
+      pending = [];
+      pendingBytes = 0;
+    };
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value.byteLength === 0) continue;
+
+        pending.push(value);
+        pendingBytes += value.byteLength;
+
+        // Every part but the last must reach the provider minimum, so the
+        // buffer is flushed only once it is a legal part on its own.
+        if (pendingBytes >= config.UPLOAD_PART_SIZE_BYTES) {
+          await flush();
+        }
+      }
+
+      await flush();
+
+      return parts;
+    } finally {
+      // Releases the source — for a provider download that is the socket, which
+      // would otherwise stay open until the response was garbage collected.
+      reader.cancel().catch(() => undefined);
+    }
+  }
+
   async function signPartUpload(
     handle: MultipartUploadHandle,
     partNumber: number,
@@ -313,6 +412,22 @@ export function createS3ObjectStorageAdapter(
     getObject,
     headObject,
     listAbandonedUploads,
+    putObjectStream,
     signPartUpload,
   });
+}
+
+/** Joins the buffered chunks into the single contiguous body a part needs. */
+function concatenate(chunks: readonly Uint8Array[], totalBytes: number): Uint8Array {
+  if (chunks.length === 1 && chunks[0]) return chunks[0];
+
+  const joined = new Uint8Array(totalBytes);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return joined;
 }

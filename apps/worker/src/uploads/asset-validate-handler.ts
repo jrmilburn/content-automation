@@ -165,7 +165,7 @@ async function decideVerdict({ asset, dependencies, execution }: DecideOptions):
 
     const evaluated = evaluateProbedMedia(
       {
-        declaredContentType: asset.uploadIntentDeclaredContentType,
+        declaredContentType: asset.declaredContentType,
         headerFamily: staged.family,
         media: probed.media,
       },

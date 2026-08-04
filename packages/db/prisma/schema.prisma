@@ -625,6 +625,18 @@ enum VideoAssetState {
   @@map("video_asset_state")
 }
 
+// Where an asset's bytes came from. A user upload is the master the account
+// owner holds; a provider import is the delivery re-encode Instagram serves for
+// the same post. Both are validated identically and only one of them is the
+// original, so the difference is recorded rather than inferred — a reader
+// comparing quality needs to know which one they are looking at.
+enum VideoAssetOrigin {
+  USER_UPLOAD
+  PROVIDER_IMPORT
+
+  @@map("video_asset_origin")
+}
+
 // Why validation refused an asset. These are the only rejection details that
 // reach a user, a log line or an API response: the probe's own message can echo
 // container internals and the temporary file path, so it is never surfaced.
@@ -700,11 +712,22 @@ model VideoUploadIntent {
 //
 // The intent relation is unique, so a retried or replayed completion resolves to
 // the same asset row instead of creating a duplicate.
+//
+// A provider import has no intent — there was no browser to tell what to do —
+// so it anchors on the importing job instead, and that column is unique for
+// exactly the same reason: a redelivered import must resolve to the asset it
+// already created rather than write a second object. A database check keeps the
+// two mutually exclusive, so an asset always has precisely one provenance.
 model VideoAsset {
   id               String                   @id @db.Uuid
   workspaceId      String                   @map("workspace_id") @db.Uuid
   instagramPostId  String                   @map("instagram_post_id") @db.Uuid
-  uploadIntentId   String                   @map("upload_intent_id") @db.Uuid
+  origin           VideoAssetOrigin         @default(USER_UPLOAD)
+  uploadIntentId   String?                  @map("upload_intent_id") @db.Uuid
+  // Provenance and replay anchor, deliberately not a foreign key: an asset must
+  // outlive the job that produced it, and job retention should never be able to
+  // block an asset from existing.
+  importJobId      String?                  @map("import_job_id") @db.Uuid
   objectKey        String                   @map("object_key") @db.VarChar(512)
   bucket           String                   @db.VarChar(63)
   region           String                   @db.VarChar(64)
@@ -734,11 +757,12 @@ model VideoAsset {
   updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
   workspace        Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   post             InstagramPost            @relation(fields: [workspaceId, instagramPostId], references: [workspaceId, id], onDelete: Restrict)
-  uploadIntent     VideoUploadIntent        @relation(fields: [workspaceId, uploadIntentId], references: [workspaceId, id], onDelete: Restrict)
+  uploadIntent     VideoUploadIntent?       @relation(fields: [workspaceId, uploadIntentId], references: [workspaceId, id], onDelete: Restrict)
   analysisJobs     AnalysisJob[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, uploadIntentId])
+  @@unique([workspaceId, importJobId])
   @@unique([objectKey])
   @@index([workspaceId, instagramPostId, createdAt(sort: Desc)])
   @@index([workspaceId, state])

@@ -14,6 +14,20 @@ Provide durable, private and replaceable source video for an imported post; supp
 6. A worker streams the object into an isolated media probe, validates it, and only then marks it `ready`.
 7. The post’s current asset pointer changes only after validation. A failed replacement leaves the old current asset untouched.
 
+## Importing the post’s own Instagram video
+
+A user may instead ask for the post’s own video to be copied from Instagram, which is offered wherever upload is offered and only for a post whose media is a video. It exists because the alternative in practice is that posts stay unanalysed while their video sits in Instagram already.
+
+1. The request only enqueues; the worker owns the provider call and the transfer.
+2. The worker reads the media node for a **fresh** `media_url`. The URL is never stored: Meta re-signs it on every request, so a kept value is one that has already started refusing.
+3. Bytes are read only from Meta’s media CDN hosts, over HTTPS, with every redirect hop re-checked against the same allowlist and no credential attached — the signed URL is the authorisation, and the bearer token has no business reaching a CDN.
+4. The transfer is bounded by `UPLOAD_MAX_BYTES` and fails mid-stream rather than storing more, so a response that lies about its length cannot be written in full.
+5. The object key is derived from the importing job rather than minted per attempt, so a retry overwrites its own earlier bytes instead of orphaning them where no row points and no purge sweep looks.
+6. The asset is created `PENDING_VALIDATION` with origin `PROVIDER_IMPORT`, and the ordinary `asset.validate` job decides whether it is analysable. An imported file gets no more trust than one a person chose.
+7. The asset is anchored on the importing job, uniquely. That is what the unique upload intent does for an upload: a redelivered import resolves to the asset it already produced instead of downloading the video again.
+
+The imported copy is Instagram’s delivery re-encode, not the master. That is a real limitation and is stated in the interface rather than hidden: a reader comparing quality needs to know which one they are looking at.
+
 ## Proposed v1 validation policy
 
 Configuration, not client code, owns limits. Launch defaults to confirm with Studio Parallel:
@@ -39,7 +53,8 @@ Virus/malware scanning is defence in depth. At minimum, keep uploads private/qua
 - Short-lived signed upload/download URLs (proposed 15 minutes); downloads require a fresh server authorisation.
 - CORS allows only the deployed application origins and required multipart methods/headers.
 - Store bucket, region, object version, ETag, bytes and checksum; an ETag is not treated as a cryptographic checksum.
-- Original source content is never copied from an Instagram CDN URL.
+- A source asset records its origin. `USER_UPLOAD` is the master the account owner holds. `PROVIDER_IMPORT` is a copy of the file Instagram serves for the same post, fetched by the server on explicit request. The two are validated identically and only one of them is the original, so the difference is stored rather than inferred and is stated wherever an asset is shown.
+- Only one server-side write path exists, and it is the import. Every other object arrives through a browser's signed part upload. The server-side write is multipart under the hood so no object is ever held in memory to be stored, it sets the same server-side encryption, and a failed or aborted transfer leaves no object addressable at the key.
 
 ## Transcript and context editing
 

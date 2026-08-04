@@ -36,6 +36,10 @@ import {
   createInstagramTokenMaintainHandler,
   instagramTokenQueue,
 } from "./instagram/token-maintain-handler.js";
+import {
+  createInstagramMediaImportHandler,
+  instagramMediaImportQueue,
+} from "./instagram/media-import-handler.js";
 import { createInstagramSyncScheduler } from "./instagram/sync-scheduler.js";
 import { createInstagramTokenMaintenanceScheduler } from "./instagram/token-maintenance-scheduler.js";
 import { createOutboxReconciler } from "./outbox-reconciler.js";
@@ -155,6 +159,18 @@ const registry = createQueueHandlerRegistry([
     loadEncryption,
     logger,
   }),
+  createInstagramMediaImportHandler({
+    // Reads the media node and then pulls the file, so it holds the same
+    // provider slot as every other Instagram queue rather than competing with
+    // them for Meta's rate limit.
+    acquireConcurrency: (signal) => providerConcurrency.acquire("instagram", signal),
+    database,
+    environment: config.APP_ENV,
+    loadMasterKeys: () => loadEncryption().masterKeys,
+    logger,
+    storage: objectStorage,
+    storageConfig,
+  }),
   createAssetCleanupHandler({
     database,
     logger,
@@ -198,6 +214,7 @@ const workerRuntime = createQueueWorkerRuntime({
     analyticsRecalculateQueue,
     assetCleanupQueue,
     assetValidateQueue,
+    instagramMediaImportQueue,
     instagramSnapshotQueue,
     instagramSyncQueue,
     instagramTokenQueue,

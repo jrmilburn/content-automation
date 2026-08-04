@@ -225,6 +225,71 @@ export async function createVideoAsset(
   });
 }
 
+export type CreateImportedVideoAssetInput = Readonly<{
+  bucket: string;
+  bytes: number;
+  contentType: string;
+  etag: string;
+  importJobId: string;
+  instagramPostId: string;
+  objectKey: string;
+  objectVersion: string | null;
+  region: string;
+}>;
+
+/**
+ * Publishes the asset one import produced.
+ *
+ * Like the upload path it starts PENDING_VALIDATION: bytes that came from the
+ * provider get no more trust than bytes that came from a browser, and only the
+ * probe may publish either.
+ *
+ * There is no declared checksum, because there was no second party to declare
+ * one. Validation still computes the verified checksum as it streams.
+ */
+export async function createImportedVideoAsset(
+  executor: UploadExecutor,
+  context: WorkspaceContext,
+  input: CreateImportedVideoAssetInput,
+): Promise<VideoAssetRecord> {
+  return executor.videoAsset.create({
+    data: {
+      bucket: input.bucket,
+      bytes: BigInt(input.bytes),
+      contentType: input.contentType,
+      etag: input.etag,
+      id: createId(),
+      importJobId: input.importJobId,
+      instagramPostId: input.instagramPostId,
+      objectKey: input.objectKey,
+      objectVersion: input.objectVersion,
+      origin: "PROVIDER_IMPORT",
+      region: input.region,
+      state: "PENDING_VALIDATION",
+      workspaceId: context.workspaceId,
+    },
+    select: assetSelect,
+  });
+}
+
+/**
+ * The asset a given import job already created, if it created one.
+ *
+ * This is what makes a redelivered import safe: the unique anchor means the
+ * second delivery finds the first delivery's asset instead of downloading the
+ * video again and writing a second object.
+ */
+export async function findVideoAssetForImportJob(
+  executor: UploadExecutor,
+  context: WorkspaceContext,
+  importJobId: string,
+): Promise<VideoAssetRecord | null> {
+  return executor.videoAsset.findFirst({
+    select: assetSelect,
+    where: { importJobId, workspaceId: context.workspaceId },
+  });
+}
+
 /** Everything validation needs to judge one asset, read in a single query. */
 export type VideoAssetForValidation = Readonly<{
   bytes: bigint;
@@ -233,7 +298,17 @@ export type VideoAssetForValidation = Readonly<{
   instagramPostId: string;
   objectKey: string;
   state: "PENDING_VALIDATION" | "READY" | "REJECTED";
-  uploadIntentDeclaredContentType: string;
+  /**
+   * What the asset's source claimed its type was, before any probe ran.
+   *
+   * For an upload that is the browser's claim, recorded on the intent when the
+   * server authorised it. For a provider import there is no intent and no
+   * browser, so it is the type the provider's response carried. Either way it
+   * is an unverified claim, which is exactly what the validation policy needs:
+   * it checks the claim against the container header and the probe, and refuses
+   * when the three disagree.
+   */
+  declaredContentType: string;
 }>;
 
 export async function findVideoAssetForValidation(
@@ -244,9 +319,11 @@ export async function findVideoAssetForValidation(
   const asset = await executor.videoAsset.findFirst({
     select: {
       ...assetSelect,
+      contentType: true,
       declaredChecksum: true,
-      // The declared content type lives on the intent, which is the record of
-      // what the browser claimed when the server authorised the upload.
+      // For an upload the claim lives on the intent, which is the record of what
+      // the browser said when the server authorised it. An import has no intent,
+      // so its claim is the content type recorded from the provider's response.
       uploadIntent: { select: { declaredContentType: true } },
     },
     where: { id: assetId, workspaceId: context.workspaceId },
@@ -256,14 +333,23 @@ export async function findVideoAssetForValidation(
     return null;
   }
 
+  const declaredContentType = asset.uploadIntent?.declaredContentType ?? asset.contentType;
+
+  // An asset with no claim at all cannot be validated: the policy compares the
+  // claim against the header and the probe, and a missing claim would quietly
+  // reduce that to a two-way check.
+  if (declaredContentType === null) {
+    return null;
+  }
+
   return Object.freeze({
     bytes: asset.bytes,
     declaredChecksum: asset.declaredChecksum,
+    declaredContentType,
     id: asset.id,
     instagramPostId: asset.instagramPostId,
     objectKey: asset.objectKey,
     state: asset.state,
-    uploadIntentDeclaredContentType: asset.uploadIntent.declaredContentType,
   });
 }
 

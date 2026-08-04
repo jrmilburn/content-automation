@@ -49,7 +49,21 @@ function formatDuration(durationMs: number): string {
   return `${minutes}:${String(totalSeconds % 60).padStart(2, "0")}`;
 }
 
+/**
+ * How the video got here.
+ *
+ * Stated for every asset rather than only for imports, because "uploaded" and
+ * "copied from Instagram" mean different things about the file's quality, and a
+ * label that appears only sometimes leaves the other case ambiguous.
+ */
+function describeOrigin(origin: SourceVideoAsset["origin"]): string {
+  return origin === "PROVIDER_IMPORT"
+    ? "Copied from Instagram — the version Instagram serves, re-encoded for playback"
+    : "Uploaded from your own file";
+}
+
 export function SourceVideoStatus({ asset }: Readonly<{ asset: SourceVideoAsset }>) {
+  const imported = asset.origin === "PROVIDER_IMPORT";
   const dimensions =
     asset.widthPx !== null && asset.heightPx !== null ? `${asset.widthPx}×${asset.heightPx}` : null;
 
@@ -65,9 +79,9 @@ export function SourceVideoStatus({ asset }: Readonly<{ asset: SourceVideoAsset 
 
       {asset.state === "PENDING_VALIDATION" ? (
         <p className="source-video-status__state" data-state="checking" role="status">
-          Uploaded and being checked. This page does not update on its own — reload it to see the
-          result. If it stays here, the check may have failed; an administrator can look at the job
-          for this video.
+          {imported ? "Copied from Instagram" : "Uploaded"} and being checked. This page does not
+          update on its own — reload it to see the result. If it stays here, the check may have
+          failed; an administrator can look at the job for this video.
         </p>
       ) : null}
 
@@ -82,7 +96,10 @@ export function SourceVideoStatus({ asset }: Readonly<{ asset: SourceVideoAsset 
 
       {asset.state === "REJECTED" ? (
         <p className="source-video-status__state" data-state="rejected" role="alert">
-          {describeRejection(asset.rejectionCode)} Upload a different file to replace it.
+          {describeRejection(asset.rejectionCode)}{" "}
+          {imported
+            ? "Upload your own file instead, or try Instagram again."
+            : "Upload a different file to replace it."}
         </p>
       ) : null}
 
@@ -92,7 +109,11 @@ export function SourceVideoStatus({ asset }: Readonly<{ asset: SourceVideoAsset 
           <dd>{details.join(" · ")}</dd>
         </div>
         <div>
-          <dt>Uploaded</dt>
+          <dt>Source</dt>
+          <dd>{describeOrigin(asset.origin)}</dd>
+        </div>
+        <div>
+          <dt>Added</dt>
           <dd>
             <time dateTime={asset.uploadedAt}>
               {asset.uploadedAt.slice(0, 16).replace("T", " ")}

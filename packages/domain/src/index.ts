@@ -228,6 +228,17 @@ export {
   type NormalisedInstagramMedia,
 } from "./instagram-media.js";
 export {
+  instagramMediaHostSuffixes,
+  instagramMediaImportFailureReasons,
+  instagramMediaImportFields,
+  instagramMediaImportKey,
+  instagramMediaImportRefusalReasons,
+  isAllowedInstagramMediaUrl,
+  isImportableInstagramMediaKind,
+  type InstagramMediaImportFailureReason,
+  type InstagramMediaImportRefusalReason,
+} from "./instagram-media-import.js";
+export {
   instagramAccountSyncIntervalHours,
   instagramIncrementalOverlapDays,
   instagramManualSyncKey,
