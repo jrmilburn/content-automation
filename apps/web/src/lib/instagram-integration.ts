@@ -53,11 +53,23 @@ export type IntegrationAccountView = Readonly<{
 }>;
 
 /** The coarse outcome the connection callback redirects back with. */
-export type CallbackOutcome = "connected" | "failed" | null;
+export type CallbackOutcome = "connected" | "failed" | "mismatch" | null;
 
 export function parseCallbackOutcome(value: string | string[] | undefined): CallbackOutcome {
   const first = Array.isArray(value) ? value[0] : value;
-  return first === "connected" || first === "failed" ? first : null;
+  return first === "connected" || first === "failed" || first === "mismatch" ? first : null;
+}
+
+/**
+ * Reads the account a refused reconnect was started from.
+ *
+ * The value is only ever used to look an account up in the workspace's own
+ * snapshot, so an unknown or crafted identifier degrades to unnamed copy rather
+ * than reaching the page.
+ */
+export function parseCallbackAccountId(value: string | string[] | undefined): string | null {
+  const first = Array.isArray(value) ? value[0] : value;
+  return typeof first === "string" && first.length > 0 && first.length <= 64 ? first : null;
 }
 
 /**
@@ -237,12 +249,24 @@ export function presentDashboardIntegration(
 /** Copy for the coarse outcome the provider callback redirects back with. */
 export function presentCallbackOutcome(
   outcome: CallbackOutcome,
+  expectedAccountName?: string | null,
 ): Readonly<{ description: string; title: string; tone: StatusTone }> | null {
   if (outcome === "connected") {
     return Object.freeze({
       description: "The account is connected. Importing starts automatically in the background.",
       title: "Instagram account connected",
       tone: "success" as const,
+    });
+  }
+  if (outcome === "mismatch") {
+    // Names only the account the reconnect was started from. The account that
+    // was actually approved is deliberately not echoed: it is provider-supplied
+    // text, and it may not belong to this workspace at all.
+    const expected = expectedAccountName ?? "the account you started from";
+    return Object.freeze({
+      description: `A different Instagram account was approved, so the reconnect was refused and nothing changed. ${expected} is still connected exactly as it was. To reconnect it, start again and choose ${expected} at the Instagram prompt. To add a different account, use "Connect another account".`,
+      title: `Reconnect was refused because it returned a different account`,
+      tone: "danger" as const,
     });
   }
   if (outcome === "failed") {

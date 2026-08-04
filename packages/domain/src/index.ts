@@ -180,6 +180,7 @@ export {
   instagramEligibleAccountTypes,
   instagramGraphHost,
   instagramPkceSupported,
+  instagramReconnectSatisfied,
   instagramRequiredScopes,
   instagramStateByteLength,
   instagramStateCookieName,

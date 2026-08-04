@@ -115,6 +115,14 @@ export function createWorkspaceRepositories(database: DatabaseExecutor, context:
         }),
     },
     instagramAccounts: {
+      /**
+       * Workspace-scoped by id, so an account identifier from another workspace
+       * resolves to null rather than to somebody else's account.
+       */
+      findById: (accountId: string): Promise<InstagramAccount | null> =>
+        database.instagramAccount.findFirst({
+          where: { ...workspaceWhere, id: accountId },
+        }),
       findByProviderAccountId: (providerAccountId: string): Promise<InstagramAccount | null> =>
         database.instagramAccount.findUnique({
           where: {

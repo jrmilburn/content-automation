@@ -38,15 +38,25 @@ export async function GET(request: Request): Promise<Response> {
     ...(secure ? ["Secure"] : []),
   ].join("; ");
 
-  const settle = (outcome: "connected" | "failed"): Response =>
-    new Response(null, {
+  /**
+   * `expectedAccountId` is this workspace's own account id, taken from the
+   * sealed cookie rather than from the callback, so naming the account the
+   * operator started from still reflects nothing the provider supplied.
+   */
+  const settle = (outcome: "connected" | "failed" | "mismatch", expectedAccountId?: string) => {
+    const location = new URL("/settings/integrations", "https://placeholder.invalid");
+    location.searchParams.set("instagram", outcome);
+    if (expectedAccountId) location.searchParams.set("account", expectedAccountId);
+
+    return new Response(null, {
       headers: {
         ...callbackHeaders,
         "Set-Cookie": clearedCookie,
-        Location: `/settings/integrations?instagram=${outcome}`,
+        Location: `${location.pathname}${location.search}`,
       },
       status: 303,
     });
+  };
 
   try {
     const actor = await requireAdminActor();
@@ -65,7 +75,10 @@ export async function GET(request: Request): Promise<Response> {
       sealedState,
     });
 
-    return settle(result.connected ? "connected" : "failed");
+    if (result.connected) return settle("connected");
+    return result.reason === "ACCOUNT_MISMATCH"
+      ? settle("mismatch", result.expectedAccountId)
+      : settle("failed");
   } catch (error) {
     reportError(
       error,

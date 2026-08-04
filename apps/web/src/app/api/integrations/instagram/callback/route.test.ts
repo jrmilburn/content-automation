@@ -97,6 +97,38 @@ describe("Instagram connection callback", () => {
     );
   });
 
+  it("sends a refused reconnect back naming the account it was started from", async () => {
+    completeInstagramConnection.mockResolvedValue({
+      connected: false,
+      expectedAccountId: "019a0000-0000-7000-8000-000000000301",
+      reason: "ACCOUNT_MISMATCH",
+    });
+
+    const response = await GET(
+      new Request(`${callbackUrl}?code=abc&state=xyz`, {
+        headers: { cookie: "__Host-ig_connect_state=sealed.value" },
+      }),
+    );
+
+    // A distinct outcome, because "it failed" cannot explain that the operator
+    // approved a different account than the one they set out to reconnect.
+    expect(response.headers.get("location")).toBe(
+      "/settings/integrations?instagram=mismatch&account=019a0000-0000-7000-8000-000000000301",
+    );
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
+  it("still reports a refused reconnect when the expected account cannot be named", async () => {
+    completeInstagramConnection.mockResolvedValue({
+      connected: false,
+      reason: "ACCOUNT_MISMATCH",
+    });
+
+    const response = await GET(new Request(`${callbackUrl}?code=abc&state=xyz`));
+
+    expect(response.headers.get("location")).toBe("/settings/integrations?instagram=mismatch");
+  });
+
   it("clears the cookie and fails closed when the caller is not an admin", async () => {
     requireAdminActor.mockRejectedValue(new Error("ACCESS_DENIED"));
 

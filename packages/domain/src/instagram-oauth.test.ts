@@ -6,6 +6,7 @@ import {
   createInstagramAuthorizationRequest,
   evaluateInstagramCallback,
   evaluateInstagramGrantedScopes,
+  instagramReconnectSatisfied,
   instagramRequiredScopes,
   instagramStateLifetimeSeconds,
   isEligibleInstagramAccountType,
@@ -252,10 +253,41 @@ describe("sealed connection state", () => {
 
   it("round-trips the state, initiating user and expiry", () => {
     expect(openInstagramState(seal(), secret)).toEqual({
+      expectedProviderAccountId: null,
       expiresAt,
       internalUserId,
       state: "pending-state-value",
     });
+  });
+
+  it("round-trips the account a reconnect was started from", () => {
+    expect(
+      openInstagramState(seal({ expectedProviderAccountId: "17841400000000001" }), secret),
+    ).toEqual({
+      expectedProviderAccountId: "17841400000000001",
+      expiresAt,
+      internalUserId,
+      state: "pending-state-value",
+    });
+  });
+
+  it("refuses a binding that is present but not a usable account id", () => {
+    for (const expectedProviderAccountId of [42, "", true, {}]) {
+      const encoded = Buffer.from(
+        JSON.stringify({
+          expectedProviderAccountId,
+          expiresAt: expiresAt.toISOString(),
+          internalUserId,
+          state: "pending-state-value",
+        }),
+        "utf8",
+      ).toString("base64url");
+      const signature = createHmac("sha256", secret).update(encoded, "utf8").digest("base64url");
+
+      // Reading a damaged binding as "unbound" would let a tampered cookie
+      // downgrade a reconnect into an unrestricted connection.
+      expect(openInstagramState(`${encoded}.${signature}`, secret)).toBeNull();
+    }
   });
 
   it("rejects a tampered payload or signature", () => {
@@ -299,6 +331,18 @@ describe("sealed connection state", () => {
     // The payload is encoded rather than encrypted, so this documents that the
     // cookie must stay httpOnly; it is integrity-protected, not confidential.
     expect(seal()).not.toContain("pending-state-value");
+  });
+});
+
+describe("reconnect binding", () => {
+  it("accepts any account when the attempt is not bound to one", () => {
+    // This is what makes connecting an additional account possible at all.
+    expect(instagramReconnectSatisfied(null, "17841400000000009")).toBe(true);
+  });
+
+  it("accepts only the bound account when the attempt is a reconnect", () => {
+    expect(instagramReconnectSatisfied("17841400000000001", "17841400000000001")).toBe(true);
+    expect(instagramReconnectSatisfied("17841400000000001", "17841400000000002")).toBe(false);
   });
 });
 

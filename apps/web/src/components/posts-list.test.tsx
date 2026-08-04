@@ -210,6 +210,59 @@ describe("PostsList unavailable triage signals", () => {
   });
 });
 
+describe("PostsList account labelling", () => {
+  const secondAccountId = "019a0000-0000-7000-8000-000000000302";
+
+  function twoAccounts(): PostsSnapshot {
+    return snapshot({
+      accounts: [
+        { id: accountId, label: "@studioparallel" },
+        { id: secondAccountId, label: "@parallelstudio" },
+      ],
+      list: {
+        generatedAt: "2026-07-31T03:00:00.000Z",
+        nextCursor: null,
+        posts: [
+          post(),
+          post({
+            id: "019a0000-0000-7000-8000-000000000402",
+            instagramAccountId: secondAccountId,
+          }),
+        ],
+        totalCount: 2,
+      },
+    });
+  }
+
+  it("states which account each row belongs to once a second is connected", () => {
+    const { container } = render(<PostsList snapshot={twoAccounts()} values={values()} />);
+
+    // Two accounts' posts interleave by date, so a row that does not say whose
+    // it is cannot be read correctly. Scoped to the rows, because the filter
+    // control lists the same names.
+    const labelled = [...container.querySelectorAll(".posts-grid .post-card__account")].map(
+      (element) => element.textContent,
+    );
+
+    expect(labelled).toEqual(["@studioparallel", "@parallelstudio"]);
+  });
+
+  it("names the account in the link, so the rows stay distinguishable out of context", () => {
+    render(<PostsList snapshot={twoAccounts()} values={values()} />);
+
+    expect(
+      screen.getByRole("link", { name: /for the Reel published .* on @parallelstudio$/u }),
+    ).toBeVisible();
+  });
+
+  it("says nothing about the account when only one is connected", () => {
+    const { container } = render(<PostsList snapshot={snapshot()} values={values()} />);
+
+    // With one account the label would repeat on every row and add nothing.
+    expect(container.querySelector(".post-card__account")).toBeNull();
+  });
+});
+
 describe("PostsList source video", () => {
   it("links every post to its own source video page", () => {
     render(
