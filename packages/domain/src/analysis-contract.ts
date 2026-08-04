@@ -347,12 +347,23 @@ export function createAnalysisInstruction(
    * makes the one retry worth making.
    */
   previousIssues: readonly AnalysisValidationIssue[] = [],
+  /**
+   * The previous response could not be parsed at all.
+   *
+   * A different correction, because there is no rule to cite: the problem was
+   * the envelope rather than the contents, and naming a validation code would
+   * point the model at a field that may well have been right.
+   */
+  previousWasNotJson = false,
 ): string {
   // Codes and paths only. The rejected response is untrusted model output, and
   // echoing it back would carry whatever the video's own text told the model to
   // say into the next request.
-  const correction =
-    previousIssues.length === 0
+  const correction = previousWasNotJson
+    ? `
+
+Your previous response could not be parsed as JSON. Return a single JSON object and nothing else: no markdown fence, no commentary before or after it, no trailing text. If the analysis is long, keep every required key and shorten free-text values rather than stopping partway.`
+    : previousIssues.length === 0
       ? ""
       : `
 
