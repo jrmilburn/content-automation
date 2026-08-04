@@ -6,7 +6,11 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { buildFeatureRequests, loadAnalyticsInputs } from "../../src/analytics-features.js";
-import { activateAnalyticsRun, startAnalyticsRun } from "../../src/analytics-runs.js";
+import {
+  activateAnalyticsRun,
+  analyticsDebounceMs,
+  startAnalyticsRun,
+} from "../../src/analytics-runs.js";
 import { createDatabaseClient, type DatabaseClient } from "../../src/client.js";
 import { calculateFeatureFamily, storeFeatureStatistics } from "../../src/feature-statistics.js";
 import { createId } from "../../src/id.js";
@@ -64,6 +68,12 @@ function observation(
 
 async function clear(): Promise<void> {
   await database.strategyEvidence.deleteMany();
+  // The current-strategy pointer restricts deleting the generation it points
+  // at, the same way the current-analysis pointer does below. Nothing here
+  // publishes a strategy yet, so this is not load-bearing today — but it will
+  // be the moment a test exercises the worker, and finding out then costs a CI
+  // round trip.
+  await database.instagramAccount.updateMany({ data: { currentStrategyId: null }, where: {} });
   await database.strategyGeneration.deleteMany();
   await database.accountAnalyticsRunStatistic.deleteMany();
   await database.accountFeatureStatisticPost.deleteMany();
@@ -76,6 +86,10 @@ async function clear(): Promise<void> {
   await database.videoUploadIntent.deleteMany();
   await database.instagramMetricSnapshot.deleteMany();
   await database.instagramPost.deleteMany();
+  // Before the jobs themselves. Requesting a strategy enqueues through the
+  // outbox, so unlike fixtures that insert a job row directly this one leaves
+  // rows that hold a foreign key to it.
+  await database.jobOutbox.deleteMany();
   await database.backgroundJob.deleteMany();
   await database.instagramAccount.deleteMany();
 }
@@ -384,8 +398,14 @@ describe("refusing a request", () => {
 
   it("refuses while a recalculation is owed", async () => {
     await seedComparableAccount();
+    // Both markers or neither: a check constraint pairs them, because a due
+    // time without a dirty time is a debounce for a change that never happened.
+    // Activation cleared both, so this has to set both back.
     await database.instagramAccount.updateMany({
-      data: { analyticsDirtySince: calculatedAt },
+      data: {
+        analyticsDirtySince: calculatedAt,
+        analyticsDueAt: new Date(calculatedAt.getTime() + analyticsDebounceMs),
+      },
       where: { id: accountId },
     });
 
