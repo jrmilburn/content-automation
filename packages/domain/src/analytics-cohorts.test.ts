@@ -15,6 +15,7 @@ import {
   snapshotAgeWindowFor,
   snapshotAgeWindows,
   summariseCoverage,
+  unmatchedAgeWindow,
   summariseSpread,
   type AnalyticsWindowCandidate,
   type ComparableSnapshotCandidate,
@@ -35,10 +36,20 @@ describe("snapshot age windows", () => {
   it("agrees with the storage buckets on every upper edge", () => {
     // Both come from the same contract table. If they ever disagree, a snapshot
     // would be stored under one name and selected under another.
+    //
+    // `lifetime` is exempt because nothing is ever captured for it: it names a
+    // way of reading observations rather than a moment to take one, so it has no
+    // storage bucket to agree with.
     for (const window of snapshotAgeWindows) {
+      if (window.key === unmatchedAgeWindow) continue;
+
       const bucket = instagramSnapshotBuckets.find((entry) => entry.key === window.key);
       expect(bucket?.maximumSeconds).toBe(window.maximumSeconds);
     }
+  });
+
+  it("gives the unmatched window no storage bucket", () => {
+    expect(instagramSnapshotBuckets.map((entry) => entry.key)).not.toContain(unmatchedAgeWindow);
   });
 
   it("carries the lower tolerance the storage buckets do not", () => {
@@ -103,11 +114,35 @@ describe("recalculation window selection", () => {
     }));
   }
 
-  it("offers only windows whose numbers have had time to arrive", () => {
+  it("offers the settled windows and the unmatched one as a last resort", () => {
     // The early windows observe a post while it is still being distributed, so a
     // difference between two groups there can be a difference in reach rather
-    // than in the posts.
-    expect([...recalculationWindowCandidates]).toEqual(["day_7", "day_30", "mature"]);
+    // than in the posts. `lifetime` is last because it compares nothing at a
+    // matched age.
+    expect([...recalculationWindowCandidates]).toEqual(["day_7", "day_30", "mature", "lifetime"]);
+  });
+
+  it("never lets the unmatched window outrank a matched one on size alone", () => {
+    // It admits every observation, so it always holds the most posts. Deciding
+    // on sample size would hide the matched comparison permanently.
+    expect(selectAnalyticsAgeWindow(offered({ day_30: 9, lifetime: 40 }), 20, 8)).toBe("day_30");
+    expect(selectAnalyticsAgeWindow(offered({ day_30: 25, lifetime: 40 }), 20, 8)).toBe("day_30");
+  });
+
+  it("falls back to the unmatched window when no matched one can compare", () => {
+    // The live case: seven analysed posts, one of them in a matched window, so
+    // every matched comparison is empty and the account would otherwise see
+    // nothing at all.
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 1, lifetime: 7 }), 20, 8)).toBe("lifetime");
+  });
+
+  it("prefers a matched window as soon as it can compare anything", () => {
+    // Eight posts is a group of three against a comparison of five.
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 8, lifetime: 30 }), 20, 8)).toBe("day_7");
+  });
+
+  it("returns null when nothing was measured, including unmatched", () => {
+    expect(selectAnalyticsAgeWindow(offered({ day_7: 0, lifetime: 0 }), 20, 8)).toBeNull();
   });
 
   it("takes the most mature window that clears the coverage floor", () => {

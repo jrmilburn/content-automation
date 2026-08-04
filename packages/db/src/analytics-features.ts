@@ -343,7 +343,14 @@ export async function loadBestAnalyticsInputs(
   // than large. The moderate class is the point at which a comparison is worth
   // presenting at all, so a window that reaches it is covered enough to choose
   // on maturity.
-  const ageWindow = selectAnalyticsAgeWindow(considered, sampleThresholds.moderate.total);
+  // A matched window is preferred once it can compare anything at all — the weak
+  // class needs a group of 3 against a comparison of 5. Below that it says
+  // nothing, and reading every observation together is the more useful answer.
+  const ageWindow = selectAnalyticsAgeWindow(
+    considered,
+    sampleThresholds.moderate.total,
+    sampleThresholds.weak.group + sampleThresholds.weak.comparison,
+  );
   const inputs = ageWindow === null ? undefined : measuredByWindow.get(ageWindow);
   if (ageWindow === null || !inputs) return null;
 

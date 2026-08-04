@@ -69,6 +69,7 @@ export {
   snapshotAgeWindowFor,
   snapshotAgeWindowMaturity,
   snapshotAgeWindows,
+  unmatchedAgeWindow,
   summariseCoverage,
   summariseSpread,
   type AnalyticsWindowCandidate,

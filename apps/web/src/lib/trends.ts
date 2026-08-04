@@ -278,6 +278,10 @@ const ageWindowLabels: Readonly<Record<string, string>> = Object.freeze({
   day_30: "30 days after publication",
   hour_1: "1 hour after publication",
   import: "at import",
+  // Named for what it costs the reader rather than for the age it covers, since
+  // it covers all of them. A comparison drawn here mixes posts measured at
+  // different ages, which is weaker than one drawn at a matched age.
+  lifetime: "at mixed ages, because too few posts share a comparable age",
   mature: "settled, more than 40 days after publication",
 });
 
