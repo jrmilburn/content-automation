@@ -285,7 +285,15 @@ async function requestAnalysis(
  */
 export function describeIssues(issues: readonly AnalysisValidationIssue[]): readonly string[] {
   return Object.freeze(
-    issues.map((issue) => (issue.path === "" ? issue.code : `${issue.code} at ${issue.path}`)),
+    issues.map((issue) => {
+      const where = issue.path === "" ? issue.code : `${issue.code} at ${issue.path}`;
+      // The parser's reason, when it carried one. `SCHEMA_INVALID at
+      // craft.suggestedImprovements` alone could mean too many, too long, wrong
+      // type or an unexpected key — four corrections reported identically.
+      const reason = /\(([a-z_]+)\)$/u.exec(issue.message)?.[1];
+
+      return reason === undefined ? where : `${where} (${reason})`;
+    }),
   );
 }
 
