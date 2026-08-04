@@ -65,6 +65,29 @@ export const snapshotAgeWindows = Object.freeze([
     minimumSeconds: 3_456_000,
     maximumSeconds: Number.POSITIVE_INFINITY,
   },
+  /**
+   * Every observation, whatever its age.
+   *
+   * The only window with no storage bucket behind it: nothing is ever captured
+   * "for lifetime", so it names a way of reading observations rather than a
+   * moment to take one. Each post contributes its most mature snapshot.
+   *
+   * It exists because the alternative was worse. The windows above are
+   * tolerances with deliberate gaps between them, so a post observed at five
+   * days belongs to none of them, and an account could carry analysed posts that
+   * no calculation would ever look at. A comparison drawn across mixed exposure
+   * is weaker than one drawn at a matched age — but it is evidence, and the run
+   * records that it used this window so a reader knows which they are looking at.
+   *
+   * Chosen only when no matched window has enough posts to compare, so it never
+   * displaces a better answer.
+   */
+  {
+    key: "lifetime",
+    targetSeconds: null,
+    minimumSeconds: 0,
+    maximumSeconds: Number.POSITIVE_INFINITY,
+  },
 ] as const);
 
 export type SnapshotAgeWindow = (typeof snapshotAgeWindows)[number];
@@ -104,7 +127,18 @@ export const recalculationWindowCandidates = Object.freeze([
   "day_7",
   "day_30",
   "mature",
+  "lifetime",
 ] as const satisfies readonly SnapshotAgeWindowKey[]);
+
+/**
+ * The window that compares nothing at a matched age.
+ *
+ * Held apart from the others in selection: it admits every observation, so it
+ * would always hold the most posts and would win any contest decided on sample
+ * size alone — permanently hiding the matched comparison it is meant to stand in
+ * for.
+ */
+export const unmatchedAgeWindow = "lifetime" as const satisfies SnapshotAgeWindowKey;
 
 export type AnalyticsWindowCandidate = Readonly<{
   ageWindow: SnapshotAgeWindowKey;
@@ -141,22 +175,40 @@ function mostMature(candidates: readonly AnalyticsWindowCandidate[]): AnalyticsW
 export function selectAnalyticsAgeWindow(
   candidates: readonly AnalyticsWindowCandidate[],
   adequateCoverage: number,
+  /**
+   * Posts a matched window needs before it is preferred to the unmatched one.
+   *
+   * Below this a matched comparison has too few posts to say anything, and
+   * showing nothing at all is the worse answer: the account has analysed posts
+   * and no calculation would ever look at them.
+   */
+  minimumMatchedPosts = 0,
 ): SnapshotAgeWindowKey | null {
   const measured = candidates.filter((candidate) => candidate.eligiblePosts > 0);
   if (measured.length === 0) return null;
 
-  const covered = measured.filter((candidate) => candidate.eligiblePosts >= adequateCoverage);
+  const matched = measured.filter((candidate) => candidate.ageWindow !== unmatchedAgeWindow);
+
+  const covered = matched.filter((candidate) => candidate.eligiblePosts >= adequateCoverage);
   if (covered.length > 0) return mostMature(covered).ageWindow;
 
-  const widest = measured.reduce((winner, candidate) =>
+  const usable = matched.filter((candidate) => candidate.eligiblePosts >= minimumMatchedPosts);
+  if (usable.length > 0) return widest(usable).ageWindow;
+
+  // No matched window can compare anything. Reading every observation together
+  // is weaker than comparing at one age, and it is what the account has.
+  const unmatched = measured.find((candidate) => candidate.ageWindow === unmatchedAgeWindow);
+  return unmatched ? unmatched.ageWindow : widest(measured).ageWindow;
+}
+
+function widest(candidates: readonly AnalyticsWindowCandidate[]): AnalyticsWindowCandidate {
+  return candidates.reduce((winner, candidate) =>
     candidate.eligiblePosts > winner.eligiblePosts ||
     (candidate.eligiblePosts === winner.eligiblePosts &&
       snapshotAgeWindowMaturity(candidate.ageWindow) > snapshotAgeWindowMaturity(winner.ageWindow))
       ? candidate
       : winner,
   );
-
-  return widest.ageWindow;
 }
 
 /**

@@ -111,6 +111,45 @@ describe("instagramSnapshotDueFor", () => {
     ).toMatchObject({ ageBucket: "day_1" });
   });
 
+  it.each([
+    ["day_7", 388_800, 518_400],
+    ["day_30", 900_000, 2_160_000],
+  ])(
+    "owes nothing for %s until the post reaches the window, not just the bucket",
+    (_bucket, insideBucketOnly, windowStart) => {
+      // The bucket partitions by upper edge, so day_7 begins where day_3 ends at
+      // four days, while the window it will be selected from begins at six.
+      // Capturing on the bucket wrote an observation no window accepts, and the
+      // bucket then read as observed so the post never got a second chance.
+      expect(
+        instagramSnapshotDueFor({ capturedBuckets: [], postAgeSeconds: insideBucketOnly }),
+      ).toBeNull();
+
+      expect(
+        instagramSnapshotDueFor({ capturedBuckets: [], postAgeSeconds: windowStart }),
+      ).not.toBeNull();
+    },
+  );
+
+  it("still owes each bucket at its nominal target", () => {
+    // The guard delays a capture; it must not lose one. Nominal targets rather
+    // than window edges, because a bucket boundary belongs to the lower bucket:
+    // 1800 seconds is the last second of `import`, not the first of `hour_1`.
+    for (const [bucket, age] of [
+      ["import", 0],
+      ["hour_1", 3_600],
+      ["day_1", 86_400],
+      ["day_3", 259_200],
+      ["day_7", 604_800],
+      ["day_30", 2_592_000],
+      ["mature", 4_000_000],
+    ] as const) {
+      expect(instagramSnapshotDueFor({ capturedBuckets: [], postAgeSeconds: age })).toMatchObject({
+        ageBucket: bucket,
+      });
+    }
+  });
+
   it("owes a mature post its one observation", () => {
     // A post already past the closing buckets when its account connected has no
     // other window it can ever appear in. Refusing this one made an established

@@ -1,3 +1,4 @@
+import { snapshotAgeWindowFor } from "./analytics-cohorts.js";
 import { instagramSnapshotBucketFor, type InstagramSnapshotBucket } from "./instagram-insights.js";
 import type { InstagramSyncTrigger } from "./instagram-media.js";
 
@@ -80,6 +81,19 @@ export function instagramSnapshotDueFor(
 
   const ageBucket = instagramSnapshotBucketFor(postAgeSeconds);
   if (input.capturedBuckets.includes(ageBucket)) return null;
+
+  // Owed only once the post is inside the window analytics will select from,
+  // not merely inside the bucket it will be filed under. The two disagree on
+  // their lower edge: a bucket partitions by upper edge alone, so `day_7`
+  // begins where `day_3` ends at four days, while the window is a tolerance
+  // that begins at six.
+  //
+  // Capturing on the bucket fired at four days and wrote an observation no
+  // window would ever accept — and because the bucket then read as observed,
+  // the post never got a second chance. Five of six day_7 snapshots on the live
+  // account landed in that two-day gap and are permanently unusable. The same
+  // hole is sixteen days wide at day_30.
+  if (postAgeSeconds < snapshotAgeWindowFor(ageBucket).minimumSeconds) return null;
 
   return Object.freeze({ ageBucket, postAgeSeconds });
 }
