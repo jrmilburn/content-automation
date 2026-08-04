@@ -18,6 +18,7 @@ Fallback: Instagram API with Facebook Login is only selected if a proof against 
 ## Account and access eligibility
 
 - Only Instagram professional **Business** and **Creator** accounts are eligible; personal/consumer accounts are rejected.
+- The provider does not spell those the way this system stores them. `account_type` reports a creator as **`MEDIA_CREATOR`**, while the stored enum is `CREATOR`, so the value must be mapped at the boundary (`resolveInstagramAccountType`) rather than compared against the stored names. Comparing them directly refused every creator account while accepting business ones, which reads as an Instagram-side failure because the grant itself succeeds.
 - Standard Access is sufficient when the app serves accounts Studio Parallel owns/manages and those accounts/users are added appropriately to the Meta app.
 - Advanced Access and Meta App Review are required if the app later serves professional accounts Studio Parallel does not own/manage. That is outside v1, but the production ownership arrangement must be confirmed.
 - The app must be configured in the relevant Meta business/app dashboard with exact HTTPS redirect URIs, privacy/deletion information and requested use-case permissions.
