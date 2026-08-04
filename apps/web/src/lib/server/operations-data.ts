@@ -134,6 +134,9 @@ function createTestDetail(jobId: string): JobDiagnosticDetail | null {
     safeErrorDetail: failed
       ? "The recorded input did not pass validation. Existing completed data remains safe."
       : null,
+    validationIssues: Object.freeze(
+      failed ? ["COUNT_IMPLAUSIBLE at content.majorSectionCount.value"] : [],
+    ),
     usage: Object.freeze({
       estimatedCostMicros: null,
       inputTokens: null,

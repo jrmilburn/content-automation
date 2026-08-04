@@ -1169,6 +1169,25 @@ h2 {
   margin-top: 1.5rem;
 }
 
+.job-safe-detail__subheading {
+  margin: 1.75rem 0 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+}
+
+.job-validation-issues {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--color-muted);
+  line-height: 1.7;
+}
+
+/* Long enough to hold a nested field path without wrapping mid-token. */
+.job-validation-issues code {
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+
 .job-detail-section {
   display: grid;
   grid-template-columns: minmax(11rem, 0.55fr) minmax(0, 1.45fr);

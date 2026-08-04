@@ -138,7 +138,7 @@ export function JobDetail({
         </div>
       </section>
 
-      {job.safeErrorDetail || job.reconciliationCode ? (
+      {job.safeErrorDetail || job.reconciliationCode || job.validationIssues.length > 0 ? (
         <section aria-labelledby="job-safe-detail-heading" className="job-safe-detail">
           <p className="operations-sequence">Safe technical detail</p>
           <h2 id="job-safe-detail-heading">What needs attention</h2>
@@ -157,6 +157,23 @@ export function JobDetail({
               <Fact code label="Consistency flag" value={job.reconciliationCode} />
             ) : null}
           </dl>
+          {job.validationIssues.length > 0 ? (
+            <>
+              {/*
+                What "review output" actually means. Each entry names a rule and
+                the field it was broken at; the value in that field is the
+                untrusted part and is deliberately absent.
+              */}
+              <h3 className="job-safe-detail__subheading">Rules the response broke</h3>
+              <ul className="job-validation-issues">
+                {job.validationIssues.map((issue) => (
+                  <li key={issue}>
+                    <code>{issue}</code>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
         </section>
       ) : null}
 

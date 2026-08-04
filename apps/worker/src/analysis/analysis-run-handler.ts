@@ -17,6 +17,7 @@ import {
   createAnalysisInstruction,
   JobHandlerFailure,
   validatePostCreativeAnalysisV1,
+  type AnalysisValidationIssue,
   type QueueHandlerRegistration,
   type QueueJobEnvelope,
 } from "@studio-parallel/domain";
@@ -172,12 +173,17 @@ type RunOutcome = Readonly<{
 async function requestAnalysis(
   dependencies: AnalysisRunDependencies,
   execution: JobHandlerExecutionContext,
-  input: Readonly<{ fileUri: string; probedDurationSeconds: number }>,
+  input: Readonly<{
+    fileUri: string;
+    /** Issues to correct, when this call is the repair. */
+    previousIssues?: readonly AnalysisValidationIssue[];
+    probedDurationSeconds: number;
+  }>,
 ): Promise<RunOutcome> {
   const response = await withHeartbeat(execution, () =>
     dependencies.gemini.generateStructuredText({
       fileUri: input.fileUri,
-      instruction: createAnalysisInstruction(),
+      instruction: createAnalysisInstruction(input.previousIssues ?? []),
       mimeType: "video/mp4",
     }),
   );
@@ -210,6 +216,20 @@ async function requestAnalysis(
       totalTokens: response.usage.totalTokens,
     }),
   });
+}
+
+/**
+ * The rejection, as something a person can act on.
+ *
+ * Code and path only. The path is what makes an issue diagnosable — a bare
+ * `SCHEMA_INVALID` says a response was wrong somewhere in 381 properties — and
+ * the response itself is untrusted model prose that can echo the video's own
+ * text, so it is the one thing that must never be stored or logged.
+ */
+export function describeIssues(issues: readonly AnalysisValidationIssue[]): readonly string[] {
+  return Object.freeze(
+    issues.map((issue) => (issue.path === "" ? issue.code : `${issue.code} at ${issue.path}`)),
+  );
 }
 
 export function createAnalysisRunHandler(
@@ -343,21 +363,39 @@ export function createAnalysisRunHandler(
                 analysisJobId: job.id,
                 repairAttempted: true,
                 stage: "REPAIRING",
+                validationIssues: describeIssues(outcome.analysis.issues),
               });
 
+              // The repair states what was wrong. Resending the original
+              // instruction asked the model to guess, so a rule it broke once it
+              // broke again and the retry bought nothing but its own cost.
               outcome = await requestAnalysis(dependencies, execution, {
                 fileUri: file.uri,
+                previousIssues: outcome.analysis.issues,
                 probedDurationSeconds,
               });
             }
 
             if (!outcome.analysis.valid) {
+              const issues = describeIssues(outcome.analysis.issues);
+
+              // Stored as well as logged. A log line lives as long as the
+              // worker's terminal, and the operator screen tells a reader to
+              // review output that nothing had kept.
+              await recordAnalysisStage(dependencies.database, workspace, {
+                analysisJobId: job.id,
+                stage: "REQUESTING",
+                validationIssues: issues,
+              });
+
               dependencies.logger.warn("analysis.response_invalid", {
                 correlationId,
                 jobId: execution.jobId,
                 postId: job.instagramPostId,
                 reasonCode: outcome.analysis.issues[0]?.code ?? "SCHEMA_INVALID",
+                source: issues.slice(0, 5).join(","),
                 stage: "analysis_run",
+                value: issues.length,
               });
 
               throw new JobHandlerFailure({
