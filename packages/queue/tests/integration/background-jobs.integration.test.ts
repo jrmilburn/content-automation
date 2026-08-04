@@ -147,6 +147,43 @@ describe("transactional background job dispatch", () => {
     ).rejects.toThrowError(expect.objectContaining({ code: "JOB_IDEMPOTENCY_CONFLICT" }));
   });
 
+  it("still schedules a key whose job has spent extra attempts on a retry", async () => {
+    // An operator retry raises maxAttempts to attemptCount + 1, so a retried job
+    // no longer matches the default a scheduler enqueues with. Treating that as
+    // a conflict stranded a live account: its key is anchored on a dirty marker
+    // that does not move while it is dirty, so every sweep raised the same 409
+    // and the account was never scheduled again.
+    const first = await enqueueBackgroundJob(database, workspaceContext, {
+      correlationId,
+      handlerVersion: 1,
+      idempotencyKey: "retried-budget",
+      queueName: "analytics.recalculate",
+      resourceId: "019fb5dd-bb70-7578-86bd-206efe9157d7",
+      resourceType: "instagram_account",
+    });
+
+    await database.backgroundJob.update({
+      data: { attemptCount: 8, maxAttempts: 9, state: "FAILED_ATTENTION" },
+      where: { id: first.job.id },
+    });
+
+    const again = await enqueueBackgroundJob(database, workspaceContext, {
+      correlationId,
+      handlerVersion: 1,
+      idempotencyKey: "retried-budget",
+      queueName: "analytics.recalculate",
+      resourceId: "019fb5dd-bb70-7578-86bd-206efe9157d7",
+      resourceType: "instagram_account",
+    });
+
+    // The same job, and its own budget is left alone.
+    expect(again.job.id).toBe(first.job.id);
+    expect(again.created).toBe(false);
+    await expect(
+      database.backgroundJob.findUniqueOrThrow({ where: { id: first.job.id } }),
+    ).resolves.toMatchObject({ maxAttempts: 9 });
+  });
+
   it("recovers a crash between commit and dispatch, with one queue delivery", async () => {
     const { job } = await enqueueBackgroundJob(database, workspaceContext, {
       correlationId,
