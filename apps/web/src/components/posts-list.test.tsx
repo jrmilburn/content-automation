@@ -1,11 +1,34 @@
 // @vitest-environment jsdom
 import type { InstagramPostListItem } from "@studio-parallel/db";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { PostsFilterValues } from "../lib/posts-list";
 import type { PostsSnapshot } from "../lib/server/posts-data";
-import { PostsError, PostsList } from "./posts-list";
+
+// Both controls reach a server action, and through it next-auth, which does not
+// load under jsdom. What is tested here is which card offers which of them; the
+// controls' own behaviour is tested where they live.
+vi.mock("./instagram-video-import-button", () => ({
+  InstagramVideoImportButton: ({
+    context,
+    postId,
+  }: Readonly<{ context?: string; postId: string }>) => (
+    <button data-context={context} data-post={postId} type="button">
+      Use the Instagram video
+    </button>
+  ),
+}));
+
+vi.mock("./analysis-request-control", () => ({
+  AnalysisRequestControl: ({ context, postId }: Readonly<{ context?: string; postId: string }>) => (
+    <button data-context={context} data-post={postId} type="button">
+      Analyse this video
+    </button>
+  ),
+}));
+
+const { PostsError, PostsList } = await import("./posts-list");
 
 const accountId = "019a0000-0000-7000-8000-000000000301";
 
@@ -404,5 +427,87 @@ describe("PostsError", () => {
     expect(screen.getByRole("heading", { name: "Posts did not load" })).toBeVisible();
     expect(screen.getByText(/existing data remains safe/u)).toBeVisible();
     expect(screen.getByText("0192f2a0-0000-7000-8000-00000000abcd")).toBeVisible();
+  });
+});
+
+describe("PostsList per-post actions", () => {
+  function actions() {
+    const results = screen.getByRole("region", { name: "Imported posts" });
+    return {
+      analyse: within(results).queryByRole("button", { name: /Analyse this video/u }),
+      link: within(results).queryByRole("button", { name: /Use the Instagram video/u }),
+    };
+  }
+
+  it.each(["NONE", "REJECTED"] as const)(
+    "offers the Instagram copy for a reel in %s",
+    (sourceVideoState) => {
+      render(<PostsList snapshot={withPosts(post({ sourceVideoState }))} values={values()} />);
+
+      expect(actions().link).toBeVisible();
+      // Nothing to analyse until a video is attached and checked.
+      expect(actions().analyse).toBeNull();
+    },
+  );
+
+  it("offers analysis once the video has been checked, and no longer offers a copy", () => {
+    render(
+      <PostsList snapshot={withPosts(post({ sourceVideoState: "READY" }))} values={values()} />,
+    );
+
+    expect(actions().analyse).toBeVisible();
+    // Importing over an attached video would be a replacement, which is a
+    // separate outcome the server refuses.
+    expect(actions().link).toBeNull();
+  });
+
+  it("offers nothing while the video is still being checked", () => {
+    render(
+      <PostsList
+        snapshot={withPosts(post({ sourceVideoState: "PENDING_VALIDATION" }))}
+        values={values()}
+      />,
+    );
+
+    expect(actions().analyse).toBeNull();
+    expect(actions().link).toBeNull();
+  });
+
+  it.each(["CAROUSEL_ALBUM", "IMAGE", "UNSUPPORTED"] as const)(
+    "never offers a copy for %s, which has no video to copy",
+    (mediaKind) => {
+      render(
+        <PostsList
+          snapshot={withPosts(post({ mediaKind, sourceVideoState: "NONE" }))}
+          values={values()}
+        />,
+      );
+
+      expect(actions().link).toBeNull();
+    },
+  );
+
+  it("names the post each button belongs to, so repeated labels stay distinguishable", () => {
+    render(
+      <PostsList
+        snapshot={withPosts(
+          post({ id: "019a0000-0000-7000-8000-000000000401" }),
+          post({
+            id: "019a0000-0000-7000-8000-000000000402",
+            publishedAt: "2026-07-27T03:40:00.000Z",
+          }),
+        )}
+        values={values()}
+      />,
+    );
+
+    const buttons = screen.getAllByRole("button", { name: /Use the Instagram video/u });
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]).toHaveAttribute("data-post", "019a0000-0000-7000-8000-000000000401");
+    expect(buttons[1]).toHaveAttribute("data-post", "019a0000-0000-7000-8000-000000000402");
+    expect(new Set(buttons.map((button) => button.getAttribute("data-context")))).toHaveProperty(
+      "size",
+      2,
+    );
   });
 });

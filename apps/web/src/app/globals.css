@@ -2260,6 +2260,24 @@ h2 {
   font-size: 0.82rem;
 }
 
+/* The button a card offers, and whatever the request answered.
+   Wraps rather than widening: a card is as narrow as 20rem in the grid, and the
+   button keeps its full 44px touch target rather than shrinking to fit. */
+.post-card__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+
+/* The status line is a sibling of the form, so it only reads as attached to it
+   once it takes the whole row. */
+.post-card__controls .analysis-request__status,
+.post-card__controls .video-import__status {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .posts-pagination {
   display: flex;
   justify-content: center;
