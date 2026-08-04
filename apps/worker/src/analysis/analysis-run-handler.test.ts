@@ -123,6 +123,28 @@ describe("what a rejected response leaves behind", () => {
     ]);
   });
 
+  it("keeps the parser's reason, which says which correction to make", () => {
+    // SCHEMA_INVALID at a path could mean too many, too long, wrong type or an
+    // unexpected key. Those are four different fixes reported identically.
+    expect(
+      describeIssues([
+        {
+          code: "SCHEMA_INVALID",
+          message: "Response does not match the analysis schema (too_big)",
+          path: "craft.suggestedImprovements",
+        },
+      ]),
+    ).toEqual(["SCHEMA_INVALID at craft.suggestedImprovements (too_big)"]);
+  });
+
+  it("reads no reason from a message that carries none", () => {
+    expect(
+      describeIssues([
+        { code: "CTA_INCONSISTENT", message: "Call to action disagrees", path: "callToAction" },
+      ]),
+    ).toEqual(["CTA_INCONSISTENT at callToAction"]);
+  });
+
   it("keeps nothing but codes and paths", () => {
     // The rejected response is untrusted model prose that can echo the video's
     // own text, so it must not reach a stored record or a log line.
@@ -219,6 +241,12 @@ describe("the prompt states the rules it is judged by", () => {
     ["average shot length", /visual\.estimatedAverageShotLengthSeconds/u],
     ["first visual change", /visual\.estimatedTimeToFirstVisualChangeSeconds/u],
     ["camera setup count", /visual\.estimatedCameraSetupCount/u],
+    // The schema is never sent to the provider, so a bound the prompt does not
+    // name reaches the model nowhere.
+    ["improvement cap", /suggestedImprovements holds at most 12/u],
+    ["timestamp cap", /at most 8 relevantTimestamps/u],
+    ["string list cap", /at most 20 entries of at most 300 characters/u],
+    ["unknown keys", /Any key not named here is rejected/u],
   ])("discloses the %s rule", (_label, pattern) => {
     // Every one of these was enforced by the validator and mentioned nowhere in
     // the prompt or the schema, so a response could be rejected for a contract

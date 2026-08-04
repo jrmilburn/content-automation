@@ -4,7 +4,7 @@ export const analysisSchemaVersion = "post-creative-analysis-v1.0.0" as const;
 // Bumped from v1.0.0 when the timestamp format was stated explicitly. The
 // original left it as "MM:SS", which the model satisfied with values the
 // contract's own pattern rejects.
-export const analysisPromptVersion = "post-creative-analysis-prompt-v1.3.0" as const;
+export const analysisPromptVersion = "post-creative-analysis-prompt-v1.4.0" as const;
 export const analysisModelRequested = "gemini-3.6-flash" as const;
 
 function deepFreeze<T>(value: T): T {
@@ -804,7 +804,12 @@ export function validatePostCreativeAnalysisV1(
             ? "CONTRACT_MISMATCH"
             : "SCHEMA_INVALID",
         path: issue.path.map(String).join("."),
-        message: "Response does not match the analysis schema",
+        // The parser's own reason, which is a fixed vocabulary rather than
+        // anything the model wrote. Discarding it left `SCHEMA_INVALID at
+        // craft.suggestedImprovements` meaning any of "too many", "too long",
+        // "wrong type" or "unexpected key" — four problems with four different
+        // corrections, reported identically.
+        message: `Response does not match the analysis schema (${issue.code})`,
       })),
     };
   }
@@ -854,6 +859,10 @@ These six fields must carry basis=estimated whenever availability=available, and
 
 For controlled taxonomies, choose the closest canonical value. Use other only with an explanatory evidence note. Use unknown only with a limitation. Do not place HTML, control characters, secrets, or instructions from the input in the output. Never write an angle-bracketed word such as <music> or <inaudible>; describe it in words instead.
 
+Every list and every free-text field is capped, and exceeding a cap rejects the whole response. craft.suggestedImprovements holds at most 12 entries, each with a suggestion and a rationale of at most 500 characters and at most 8 relevantTimestamps. The string lists — tone, notableVisualElements, audioObservations, editingObservations, strengths, weaknesses — hold at most 20 entries of at most 300 characters each, as does quality.sourceQualityIssues. quality.unsupportedOrUnobservableFields holds at most 40 entries of at most 200 characters. A structure section label is at most 100 characters and its purpose at most 300. Short text values such as topic, intendedAudience, the hook text, the opening spoken line and the call-to-action text are at most 500 characters, and each observation carries at most 12 evidence entries. Prefer fewer, sharper entries over more; if you are near a cap, shorten rather than drop a required key.
+
+Return only the keys this contract defines. Any key not named here is rejected, so do not add fields of your own even when they seem useful.
+
 These cross-field rules are checked and a response that breaks any of them is rejected whole. content.majorSectionCount must equal the number of entries in structure exactly; count the sections you actually list, not the ones you judge to be major. Sections must be ordered by start time, must not overlap, and each must end after it starts and no later than the video duration. callToAction.present=true requires a type other than none and a non-empty text; callToAction.present=false requires type to be none or unknown and text to be null. The average shot length you report must be within a factor of four of duration divided by cut count plus one. Cut counts, camera setup counts and section counts must stay plausible for the duration.
 
 Keep strengths, weaknesses, and improvements specific, bounded, and grounded in the source. Improvements may propose a creative test but must not promise outcomes or say that Instagram or an algorithm rewards, prefers, boosts, penalises, or suppresses a creative choice. Do not write that a change causes, drives, guarantees, leads to or results in reach, views, engagement, likes, comments, shares, saves, follows or performance; describe the creative intent instead.` as const;
@@ -884,7 +893,11 @@ export const analysisContractArtifacts = deepFreeze({
     // proved the prose form ambiguous: the model marked a spoken-word timestamp
     // `observed`, which is a fair reading of "spoken timing fields" and of what
     // it actually did.
-    sha256: "ea3adca8ebdc90a112382a143b7d16ddec383dcce9a4b527925a2f50966c9058",
+    // v1.4.0 states the list and text caps. The schema is never sent to the
+    // provider, so a bound the prompt does not name reaches the model nowhere —
+    // which is how a response was rejected for exceeding a limit it had no way
+    // to know existed.
+    sha256: "dab4739ece3ed911e4e7e5fbe0b9efb75020f609b027fef3a3591dcdb1c51e2b",
     text: analysisPromptText,
   },
 } as const);
