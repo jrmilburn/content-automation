@@ -134,7 +134,7 @@ async function main(): Promise<void> {
           {
             parts: [
               { file_data: { file_uri: file.uri, mime_type: "video/mp4" } },
-              { text: createAnalysisInstruction() },
+              { text: createAnalysisInstruction({ probedDurationSeconds }) },
             ],
             role: "user",
           },

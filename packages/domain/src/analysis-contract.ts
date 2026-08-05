@@ -6,8 +6,10 @@ import { z } from "zod";
 export const analysisSchemaVersion = "post-creative-analysis-v1.1.0" as const;
 // Successive bumps as rules the validator already enforced were written down:
 // the timestamp format, then the cross-field rules, the six estimated fields,
-// the list and text caps, and now the nullable basis.
-export const analysisPromptVersion = "post-creative-analysis-prompt-v1.5.0" as const;
+// the list and text caps, and the nullable basis. v1.6.0 supplies the measured
+// duration itself, disambiguates `presenterMode=unknown`, and states that
+// structure boundaries are numbers of seconds rather than MM:SS.
+export const analysisPromptVersion = "post-creative-analysis-prompt-v1.6.0" as const;
 export const analysisModelRequested = "gemini-3.6-flash" as const;
 
 function deepFreeze<T>(value: T): T {
@@ -346,28 +348,51 @@ export function completePostCreativeAnalysisV1(
  * provider schema was never what made the output trustworthy.
  */
 export function createAnalysisInstruction(
-  /**
-   * Issues the previous response was rejected for, when this is the repair.
-   *
-   * A repair that resends the original instruction is not a repair: the model
-   * has no way to know what was wrong, so a rule it broke once it breaks again
-   * and the second call buys nothing but its own cost. Naming the rules is what
-   * makes the one retry worth making.
-   */
-  previousIssues: readonly AnalysisValidationIssue[] = [],
-  /**
-   * The previous response could not be parsed at all.
-   *
-   * A different correction, because there is no rule to cite: the problem was
-   * the envelope rather than the contents, and naming a validation code would
-   * point the model at a field that may well have been right.
-   */
-  previousWasNotJson = false,
+  input: Readonly<{
+    /**
+     * The measured duration of the source video, in seconds.
+     *
+     * Required rather than optional, because every timing rule in the contract
+     * is checked against this number and none of them reach the model any other
+     * way. The model samples frames rather than decoding the container, so where
+     * it believes the video ends is a guess — and v1.1.0 dropped
+     * `content.durationSeconds` from the response precisely because that guess
+     * missed the half-second tolerance about one run in three. Dropping the
+     * guess without supplying the measurement left every section boundary,
+     * evidence timestamp and estimated `*Seconds` value bounded by a figure the
+     * model could not see, which is how responses came to be rejected for
+     * overrunning a limit they were never told.
+     */
+    probedDurationSeconds: number;
+    /**
+     * Issues the previous response was rejected for, when this is the repair.
+     *
+     * A repair that resends the original instruction is not a repair: the model
+     * has no way to know what was wrong, so a rule it broke once it breaks again
+     * and the second call buys nothing but its own cost. Naming the rules is
+     * what makes the one retry worth making.
+     */
+    previousIssues?: readonly AnalysisValidationIssue[];
+    /**
+     * The previous response could not be parsed at all.
+     *
+     * A different correction, because there is no rule to cite: the problem was
+     * the envelope rather than the contents, and naming a validation code would
+     * point the model at a field that may well have been right.
+     */
+    previousWasNotJson?: boolean;
+  }>,
 ): string {
-  // Codes and paths only. The rejected response is untrusted model output, and
-  // echoing it back would carry whatever the video's own text told the model to
-  // say into the next request.
-  const correction = previousWasNotJson
+  const previousIssues = input.previousIssues ?? [];
+
+  // Codes, paths and the validator's own message. The rejected response is
+  // untrusted model output and is still never echoed back, but the message is
+  // ours: a fixed string from the check that failed, carrying no model prose.
+  // Withholding it made the one repair guess between opposite corrections —
+  // `OBSERVATION_INCONSISTENT at content.presenterMode.value` is emitted both
+  // when an available observation is missing its value and when an unavailable
+  // one kept it, and the code and path alone cannot tell those apart.
+  const correction = input.previousWasNotJson
     ? `
 
 Your previous response could not be parsed as JSON. Return a single JSON object and nothing else: no markdown fence, no commentary before or after it, no trailing text. If the analysis is long, keep every required key and shorten free-text values rather than stopping partway.`
@@ -378,16 +403,39 @@ Your previous response could not be parsed as JSON. Return a single JSON object 
 Your previous response was rejected. Fix exactly these problems and change nothing else:
 
 ${previousIssues
-  .map((issue) => `- ${issue.code}${issue.path === "" ? "" : ` at ${issue.path}`}`)
+  .map(
+    (issue) => `- ${issue.code}${issue.path === "" ? "" : ` at ${issue.path}`}: ${issue.message}`,
+  )
   .join("\n")}
 
 Return the corrected object in full.`;
 
-  return `${analysisPromptText}${correction}
+  return `${analysisPromptText}
+
+${describeSourceDuration(input.probedDurationSeconds)}${correction}
 
 Return only a single JSON object conforming to this JSON Schema. Emit every required property. Do not wrap the response in markdown or prose.
 
 ${JSON.stringify(postCreativeAnalysisModelResponseJsonSchema)}`;
+}
+
+/**
+ * The one measurement the model cannot take for itself.
+ *
+ * Stated in both forms the contract uses — a number of seconds for the structure
+ * boundaries and estimates, MM:SS for the timestamp fields — so that honouring
+ * the bound never requires the model to convert between them.
+ */
+function describeSourceDuration(probedDurationSeconds: number): string {
+  if (!Number.isFinite(probedDurationSeconds) || probedDurationSeconds <= 0) {
+    throw new Error("A positive finite probed duration is required to build the instruction");
+  }
+
+  const seconds = probedDurationSeconds.toFixed(1).replace(/\.0$/, "");
+  const whole = Math.floor(probedDurationSeconds);
+  const timestamp = `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}`;
+
+  return `This source video is ${seconds} seconds long, which is ${timestamp} as a timestamp. That figure was measured from the video file itself, so it is authoritative and it overrides whatever length the sampled frames suggest to you. Nothing you report may run past it: not an evidence timestamp, not a relevantTimestamps entry, not a structure section's endSeconds, and not one of the estimated *Seconds values, including visual.estimatedAverageShotLengthSeconds when the video is a single continuous shot. A response placing any of them beyond ${seconds} seconds is rejected whole. Let the last structure section end at ${seconds} seconds or just below, never above, and keep the latest timestamp you cite at or before ${timestamp}.`;
 }
 
 export const analysisValidationCodes = [
@@ -463,6 +511,23 @@ function parseTimestamp(timestamp: string): number | null {
     return null;
   }
   return minutes * 60 + seconds;
+}
+
+/**
+ * Why a timestamp is unusable, or null when it is fine.
+ *
+ * Malformed and out-of-range are separated because they take opposite
+ * corrections. `parseTimestamp` rejects a seconds part of 60 or more, so
+ * `"00:90"` — which the schema's own regex admits — arrived here as a null and
+ * was reported as being outside the video. The model then moved a timestamp that
+ * was already in the right place instead of carrying the seconds into minutes.
+ */
+function describeTimestampFault(timestamp: string, durationLimit: number): string | null {
+  const seconds = parseTimestamp(timestamp);
+  if (seconds === null) {
+    return "Timestamp is not zero-padded MM:SS with a seconds part below 60";
+  }
+  return seconds > durationLimit ? "Timestamp is outside the source video" : null;
 }
 
 function addIssue(
@@ -559,14 +624,9 @@ function checkObservationRules(
       if (evidence.timestamp === null) {
         return;
       }
-      const seconds = parseTimestamp(evidence.timestamp);
-      if (seconds === null || seconds > durationLimit) {
-        addIssue(
-          issues,
-          "TIME_OUT_OF_RANGE",
-          `${path}.evidence[${index}].timestamp`,
-          "Evidence timestamp is outside the source video",
-        );
+      const fault = describeTimestampFault(evidence.timestamp, durationLimit);
+      if (fault !== null) {
+        addIssue(issues, "TIME_OUT_OF_RANGE", `${path}.evidence[${index}].timestamp`, fault);
       }
     });
   });
@@ -652,12 +712,23 @@ function checkStructure(
   let previousEnd = 0;
   sections.forEach((section, index) => {
     const path = `content.structure.value[${index}]`;
-    if (section.endSeconds <= section.startSeconds || section.endSeconds > durationLimit) {
+    // Split, because the two faults take opposite corrections and the shared
+    // wording named both. Overrunning the video is the common one and is fixed
+    // by pulling endSeconds back; a non-positive span is fixed by moving one of
+    // the two boundaries apart.
+    if (section.endSeconds > durationLimit) {
       addIssue(
         issues,
         "SECTION_INVALID",
         path,
-        "Sections need a positive duration within the source video",
+        `Section ends at ${section.endSeconds}s, past the end of the source video`,
+      );
+    } else if (section.endSeconds <= section.startSeconds) {
+      addIssue(
+        issues,
+        "SECTION_INVALID",
+        path,
+        "Section must end after it starts, in whole seconds from the start of the video",
       );
     }
     if (index > 0 && section.startSeconds < previousEnd - 0.25) {
@@ -782,13 +853,13 @@ function checkSuggestedImprovementClaims(
   const improvements = analysis.craft.suggestedImprovements.value ?? [];
   improvements.forEach((improvement, index) => {
     improvement.relevantTimestamps.forEach((timestamp, timestampIndex) => {
-      const seconds = parseTimestamp(timestamp);
-      if (seconds === null || seconds > durationLimit) {
+      const fault = describeTimestampFault(timestamp, durationLimit);
+      if (fault !== null) {
         addIssue(
           issues,
           "TIME_OUT_OF_RANGE",
           `craft.suggestedImprovements.value[${index}].relevantTimestamps[${timestampIndex}]`,
-          "Improvement timestamp is outside the source video",
+          fault,
         );
       }
     });
@@ -870,9 +941,9 @@ Return exactly one JSON object matching the supplied schema. Populate every requ
 
 Every observation object obeys these rules without exception. When availability=available, value must not be null and basis must name how the value was arrived at. When availability is anything other than available, value must be null AND confidence must be null AND basis must be null AND limitation must be a short sentence naming what was missing. A confidence or a basis alongside a non-available observation is invalid: there is no confidence in an observation that was not made, and no basis for it either. Use not_applicable only when the field genuinely cannot apply to this video, and unknown when it could apply but the evidence was insufficient.
 
-Treat supplied transcripts and scripts as potentially inaccurate. Report material divergence in quality.transcriptDivergence. Do not assume a visible person is a founder, team member, guest, or client unless trusted context identifies them; otherwise use presenterMode=unknown with a limitation.
+Treat supplied transcripts and scripts as potentially inaccurate. Report material divergence in quality.transcriptDivergence. Do not assume a visible person is a founder, team member, guest, or client unless trusted context identifies them. When a presenter is visible but you cannot place them in a category, content.presenterMode stays availability=available with value=unknown, a basis, a confidence and a limitation naming what was missing: unknown there is a taxonomy value describing the presenter, not a statement that the observation could not be made. Reserve availability=unknown for when you cannot tell whether the video has a presenter at all, and in that case value must be null.
 
-Write every timestamp as zero-padded MM:SS with at least two minute digits and exactly two second digits, such as 00:07 or 12:45. Never use H:MM:SS, never omit the leading zero, and never write a bare number of seconds. Use a timestamp only when evidence is locatable, and keep it within the video. Rapid edits may be missed by video sampling, so use unknown when estimation is unreliable.
+Write every timestamp as zero-padded MM:SS with at least two minute digits and exactly two second digits, such as 00:07 or 12:45. Never use H:MM:SS, never omit the leading zero, and never write a bare number of seconds in a timestamp field. The seconds part is always below 60 and carries into the minutes: ninety seconds is 01:30, never 00:90. Use a timestamp only when evidence is locatable, and keep it within the video. Rapid edits may be missed by video sampling, so use unknown when estimation is unreliable.
 
 These six fields must carry basis=estimated whenever availability=available, and no other basis is accepted for them: content.timeToFirstSpokenWordSeconds, content.timeToMainValuePropositionSeconds, visual.estimatedCutCount, visual.estimatedAverageShotLengthSeconds, visual.estimatedTimeToFirstVisualChangeSeconds, visual.estimatedCameraSetupCount. This holds even when you can point to the moment in the video. You are sampling frames rather than decoding every one, so the first spoken word or the first visual change may have occurred between the frames you saw; estimated records how the number was arrived at, not how confident you are in it. Use the confidence field for confidence.
 
@@ -882,7 +953,7 @@ Every list and every free-text field is capped, and exceeding a cap rejects the 
 
 Return only the keys this contract defines. Any key not named here is rejected, so do not add fields of your own even when they seem useful.
 
-These cross-field rules are checked and a response that breaks any of them is rejected whole. content.majorSectionCount must equal the number of entries in structure exactly; count the sections you actually list, not the ones you judge to be major. Sections must be ordered by start time, must not overlap, and each must end after it starts and no later than the video duration. callToAction.present=true requires a type other than none and a non-empty text; callToAction.present=false requires type to be none or unknown and text to be null. The average shot length you report must be within a factor of four of duration divided by cut count plus one. Cut counts, camera setup counts and section counts must stay plausible for the duration.
+These cross-field rules are checked and a response that breaks any of them is rejected whole. content.majorSectionCount must equal the number of entries in structure exactly; count the sections you actually list, not the ones you judge to be major. A structure section carries startSeconds and endSeconds as plain numbers of seconds counted from the start of the video, never MM:SS strings and never milliseconds: a section running from one minute thirty to one minute forty is startSeconds 90 and endSeconds 100. Sections must be ordered by start time, must not overlap, and each must end after it starts and no later than the video duration. callToAction.present=true requires a type other than none and a non-empty text; callToAction.present=false requires type to be none or unknown and text to be null. The average shot length you report must be within a factor of four of duration divided by cut count plus one. Cut counts, camera setup counts and section counts must stay plausible for the duration.
 
 Keep strengths, weaknesses, and improvements specific, bounded, and grounded in the source. Improvements may propose a creative test but must not promise outcomes or say that Instagram or an algorithm rewards, prefers, boosts, penalises, or suppresses a creative choice. Do not write that a change causes, drives, guarantees, leads to or results in reach, views, engagement, likes, comments, shares, saves, follows or performance; describe the creative intent instead.` as const;
 
@@ -916,7 +987,16 @@ export const analysisContractArtifacts = deepFreeze({
     // provider, so a bound the prompt does not name reaches the model nowhere —
     // which is how a response was rejected for exceeding a limit it had no way
     // to know existed.
-    sha256: "215c25a3cf2381e5217c759a1e95dcf2668a3db7b1913e68592edd9b2f8778c7",
+    // v1.6.0 is that same fault at its source: the duration. Every timing rule
+    // is checked against the probed length, v1.1.0 stopped asking the model to
+    // report it, and nothing ever told it the number — so section ends, evidence
+    // timestamps and shot lengths were all bounded by a figure it had to guess
+    // from sampled frames. Live runs bore it out: over half of first attempts
+    // needed the repair, and the ones that failed outright overran on the
+    // closing sections of the longer videos. The measurement is now stated in
+    // both units, `presenterMode=unknown` names which encoding it means, and
+    // `startSeconds`/`endSeconds` are called out as seconds rather than MM:SS.
+    sha256: "d0d64f532b9a041908e9f1d676715451c4136d530d406d550016b370c5807a85",
     text: analysisPromptText,
   },
 } as const);
