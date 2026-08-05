@@ -335,6 +335,23 @@ describe("generateStructuredText", () => {
         instruction: "x",
         mimeType: "video/mp4",
       }),
+      // Reported as truncation rather than as an empty response. This test
+      // asserted `no_candidate` until an assistant turn ran out of output budget
+      // while thinking and told its reader to ask again — which met the same
+      // ceiling every time. The two failures need opposite responses, so the
+      // adapter has to keep them apart.
+    ).rejects.toMatchObject({ responseClass: "truncated" });
+  });
+
+  it("still reports an empty candidate as an empty candidate", async () => {
+    await expect(
+      createAdapter([
+        json(generation({ candidates: [{ content: { parts: [] }, finishReason: "STOP" }] })),
+      ]).generateStructuredText({
+        fileUri: activeFile.uri,
+        instruction: "x",
+        mimeType: "video/mp4",
+      }),
     ).rejects.toMatchObject({ responseClass: "no_candidate" });
   });
 });

@@ -433,9 +433,17 @@ const geminiConfigSchema = z
     // kills the request between the question and the answer and records
     // nothing.
     GEMINI_CHAT_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(45_000),
-    // A reply is a few paragraphs. The ceiling is what stops one turn of a
-    // conversation from costing what a whole strategy does.
-    GEMINI_CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(8_192).default(2_048),
+    // Not the reply length. The model reasons before it writes and both are
+    // billed against this one ceiling, so a limit sized for the answer alone
+    // stops the reasoning mid-thought and returns a truncated response with no
+    // answer in it at all. That is what 2048 did: every turn spent its whole
+    // budget thinking and came back empty.
+    //
+    // The reply is bounded where it can be bounded honestly — `chatReplyV1Schema`
+    // caps it at 4000 characters and validation rejects anything longer. This
+    // number exists to leave room to think, so it matches the ceiling analysis
+    // and strategy have always used rather than trying to be frugal.
+    GEMINI_CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1_024).max(32_768).default(32_000),
     GEMINI_FILE_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(2_000),
     GEMINI_FILE_POLL_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(600).default(60),
     // One concurrent video per project by default. Gemini bills per token and a

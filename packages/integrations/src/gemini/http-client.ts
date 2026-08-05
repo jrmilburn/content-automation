@@ -214,12 +214,18 @@ export function createGeminiHttpAdapter(dependencies: GeminiHttpDependencies): G
       if (candidate.outcome !== "ok" || candidate.text === null) {
         throw new GeminiError({
           operation: "generateStructuredText",
+          // A truncated answer is still a fragment rather than an answer, and no
+          // caller parses half a JSON object. What changed is that it says so:
+          // reporting truncation as an empty candidate sent readers to "try
+          // again" for a failure that repeats until the output ceiling moves.
+          // The model reasons before it writes and both are billed against that
+          // ceiling, so a limit sized for the reply alone truncates every time.
           responseClass:
             candidate.outcome === "safety_blocked"
               ? "safety_blocked"
-              : // A truncated answer is a fragment, not an answer. It is reported
-                // as absent so no caller parses half a JSON object.
-                "no_candidate",
+              : candidate.outcome === "truncated"
+                ? "truncated"
+                : "no_candidate",
         });
       }
 

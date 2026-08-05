@@ -35,6 +35,7 @@ describe("describeChatFailure", () => {
       "SAFETY_BLOCKED",
       "TIMEOUT",
       "TRANSIENT",
+      "TRUNCATED",
     ]) {
       const described = describeChatFailure(code);
       expect(described).not.toContain(code);
@@ -48,6 +49,17 @@ describe("describeChatFailure", () => {
 
   it("keeps a refused answer and an unreachable provider apart", () => {
     expect(describeChatFailure("SAFETY_BLOCKED")).not.toBe(describeChatFailure("TRANSIENT"));
+  });
+
+  it("does not tell a reader to ask again when asking again cannot work", () => {
+    const truncated = describeChatFailure("TRUNCATED");
+
+    // The same request meets the same ceiling every time, so this is the one
+    // failure where "ask again" is a loop with no exit. It names the setting a
+    // person has to change instead.
+    expect(truncated).not.toMatch(/ask again/iu);
+    expect(truncated).toContain("GEMINI_CHAT_MAX_OUTPUT_TOKENS");
+    expect(truncated).not.toBe(describeChatFailure("NO_CANDIDATE"));
   });
 });
 
