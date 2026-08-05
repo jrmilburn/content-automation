@@ -20,6 +20,7 @@ const primaryNavigation = [
   { href: "/posts", label: "Posts" },
   { href: "/trends", label: "Trends" },
   { href: "/strategy", label: "Strategy" },
+  { href: "/chat", label: "Assistant" },
   { href: "/operations", label: "Operations" },
 ] as const;
 

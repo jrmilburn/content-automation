@@ -394,8 +394,11 @@ const mediaValidationConfigSchema = z
 export type MediaValidationConfig = Readonly<z.infer<typeof mediaValidationConfigSchema>>;
 
 // Gemini host, model and budgets are safe deploy config. The key loads
-// separately, so the web application — which never calls Gemini — has no reason
-// to touch it.
+// separately, so a deployment that only ever runs the worker's jobs is not
+// obliged to hold it. The web application now does call Gemini, for the
+// assistant and only for the assistant: a chat turn is seconds of text, not
+// minutes of video, and queueing it would make a conversation arrive one poll
+// at a time. Everything else the model is asked still belongs to the worker.
 const geminiConfigSchema = z
   .object({
     APP_ENV: z.enum(["local", "test", "preview", "staging", "production"]).default("local"),
@@ -419,6 +422,20 @@ const geminiConfigSchema = z
     // A video upload is minutes of transfer; a model call is seconds of wait.
     GEMINI_UPLOAD_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(1_800_000).default(600_000),
     GEMINI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(900_000).default(300_000),
+    // A conversation waits differently from a job. Nobody watches a strategy
+    // generate, so five minutes there costs nothing; a person sitting in front
+    // of a chat has decided it is broken long before that, and a request they
+    // have already given up on is one this product is still paying for.
+    //
+    // Sized to fire inside the route's own 60s ceiling rather than level with
+    // it, leaving room for the write that follows. A timeout this product
+    // raises records a failed turn the reader can see; one the platform raises
+    // kills the request between the question and the answer and records
+    // nothing.
+    GEMINI_CHAT_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(45_000),
+    // A reply is a few paragraphs. The ceiling is what stops one turn of a
+    // conversation from costing what a whole strategy does.
+    GEMINI_CHAT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(8_192).default(2_048),
     GEMINI_FILE_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(2_000),
     GEMINI_FILE_POLL_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(600).default(60),
     // One concurrent video per project by default. Gemini bills per token and a

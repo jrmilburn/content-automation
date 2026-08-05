@@ -3035,3 +3035,215 @@ h2 {
 .strategy-request__status--success {
   color: var(--color-success, #2f6b4f);
 }
+
+/* Assistant
+   ------------------------------------------------------------------------ */
+
+.chat-sessions,
+.chat-conversation,
+.chat-composer,
+.chat-follow-ups {
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  border: 1px solid var(--color-rule);
+  background: var(--color-surface);
+}
+
+.chat-sessions__list {
+  display: grid;
+  gap: 1rem;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-session-card {
+  padding: 1.25rem;
+  border: 1px solid var(--color-rule);
+}
+
+.chat-session-card h3 {
+  margin: 0;
+}
+
+.chat-session-card__meta {
+  margin: 0.5rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.chat-conversation {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.chat-conversation__opening {
+  max-width: 70ch;
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+/* A turn is bounded and offset rather than tinted alone: who said a thing is
+   not information this product encodes in colour, because a reader who cannot
+   see the difference still has to be able to follow the conversation. */
+.chat-message {
+  max-width: 70ch;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--color-rule);
+  line-height: 1.65;
+}
+
+.chat-message p {
+  margin: 0 0 0.75rem;
+}
+
+.chat-message p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-message--user {
+  margin-left: auto;
+  background: var(--color-canvas);
+}
+
+.chat-message--assistant {
+  border-left: 3px solid var(--color-ink);
+}
+
+.chat-message--failed {
+  border-left: 3px solid var(--color-danger, #8c2f2f);
+}
+
+.chat-message--pending {
+  opacity: 0.7;
+}
+
+.chat-message__speaker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 0 0 0.5rem;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.chat-message__time {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.chat-message__evidence {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-rule);
+}
+
+.chat-message__evidence-label {
+  margin: 0 0 0.5rem;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.chat-message__evidence ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.95rem;
+}
+
+.chat-message__tombstone {
+  color: var(--color-muted);
+}
+
+.chat-composer__label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.chat-composer__field {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  background: var(--color-canvas);
+  color: inherit;
+  font: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.chat-composer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+}
+
+.chat-composer__hint {
+  max-width: 48ch;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.chat-composer__status,
+.chat-session-controls__status {
+  max-width: 70ch;
+  margin: 0.75rem 0 0;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+.chat-composer__status--error,
+.chat-session-controls__status {
+  color: var(--color-danger, #8c2f2f);
+}
+
+.chat-follow-ups h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.chat-follow-ups ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--color-muted);
+}
+
+.chat-session-controls,
+.chat-session-controls__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.chat-session-controls__field {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-rule);
+  background: var(--color-canvas);
+  color: inherit;
+  font: inherit;
+}
+
+@media (max-width: 799px) {
+  .chat-message--user {
+    margin-left: 0;
+  }
+
+  .chat-composer__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

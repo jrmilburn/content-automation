@@ -891,6 +891,19 @@ const prohibitedClaimPatterns = [
   /\b(?:causes?|guarantees?|will (?:increase|boost|improve)|drives?|leads? to|results? in)\b.{0,80}\b(?:reach|views?|plays?|engagement|likes?|comments?|shares?|saves?|follows?|performance|distribution|virality|viral)\b/iu,
 ] as const;
 
+/**
+ * Whether one string makes a causal or algorithmic claim this product refuses.
+ *
+ * Exported because the assistant answers questions about the same evidence in
+ * the same product voice, and a second lexicon would drift from this one the
+ * first time either was edited. The rule is a property of what may be claimed
+ * about an account, not of the strategy document that happens to enforce it
+ * first.
+ */
+export function containsProhibitedClaim(value: string): boolean {
+  return prohibitedClaimPatterns.some((pattern) => pattern.test(value));
+}
+
 function walkStrings(
   value: unknown,
   path: string,
@@ -913,7 +926,7 @@ function walkStrings(
 
 function validateLanguage(strategy: StrategyV1, issues: StrategyValidationIssue[]): void {
   walkStrings(strategy, "", (value, path) => {
-    if (prohibitedClaimPatterns.some((pattern) => pattern.test(value))) {
+    if (containsProhibitedClaim(value)) {
       addIssue(
         issues,
         "CAUSAL_OR_ALGORITHM_CLAIM",
