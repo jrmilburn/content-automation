@@ -5,7 +5,12 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { describeStrategyRefusal, strategyPrimaryMetric } from "../../../lib/strategy";
+import {
+  describeStrategyFailure,
+  describeStrategyRefusal,
+  parseStrategyScopeValue,
+  strategyPrimaryMetric,
+} from "../../../lib/strategy";
 import { getDatabase } from "../../../lib/server/database";
 import { requireShellActor } from "../../../lib/server/shell-session";
 import { webErrorMonitor, webLogger } from "../../../lib/server/observability";
@@ -18,11 +23,17 @@ import {
 /**
  * Asking for one strategy.
  *
- * The account arrives in the form, so it is never trusted: the workspace comes
- * from the session and the command resolves the account inside that workspace,
- * which turns another workspace's id into the same "no such account" refusal a
- * nonexistent one gets. The form decides which of the reader's own accounts to
- * spend a provider call on, and nothing more.
+ * The scope arrives in the form, so it is never trusted: the workspace comes
+ * from the session and the command resolves the scope inside that workspace,
+ * which turns another workspace's account id into the same "no such account"
+ * refusal a nonexistent one gets. The form decides which of the reader's own
+ * calculations to spend a provider call on, and nothing more.
+ *
+ * The scope is either an account or every linked account pooled, and the two are
+ * separate calculations rather than two views of one. An unrecognised value is
+ * refused here rather than defaulted, because a mistyped id that quietly became
+ * the pooled scope would spend a provider call answering a question nobody
+ * asked, and the resulting strategy would look entirely normal.
  *
  * The metric is not in the form at all. A caller able to name it could ask for
  * a strategy built on a measure the preview never showed, so it is fixed to the
@@ -41,7 +52,14 @@ export async function requestStrategyAction(
 ): Promise<StrategyActionState> {
   const requestContext = createWebRequestContext(await headers());
   const acceptExploratory = formData.get("acceptExploratory") === "true";
-  const accountId = String(formData.get("accountId") ?? "");
+  const scope = parseStrategyScopeValue(String(formData.get("accountId") ?? ""));
+
+  if (scope === undefined) {
+    return Object.freeze({
+      message: "That is not a scope this workspace can generate a strategy for.",
+      status: "error" as const,
+    });
+  }
 
   try {
     const actor = await requireShellActor();
@@ -53,7 +71,7 @@ export async function requestStrategyAction(
         correlationId: requestContext.correlationId,
         editorialConstraint: null,
         formatEmphasis: [],
-        instagramAccountId: accountId,
+        instagramAccountId: scope,
         pillarEmphasis: [],
         primaryMetric: strategyPrimaryMetric,
         requestedByUserId: actor.internalUserId,
@@ -77,7 +95,7 @@ export async function requestStrategyAction(
       status: "success" as const,
     });
   } catch (error) {
-    reportError(
+    const details = reportError(
       error,
       {
         correlationId: requestContext.correlationId,
@@ -95,8 +113,11 @@ export async function requestStrategyAction(
     // not force. This action is where the expiry is first observed, so it is
     // where the reader has to be told — the same redirect the layout performs.
     if (classifyError(error).errorCode !== "ACCESS_DENIED") {
+      // The command's own code rather than a single sentence for everything it
+      // can fail on. The codes are a closed set it defines; anything outside it
+      // falls back, so an unclassified failure still says something true.
       return Object.freeze({
-        message: "The request could not be made. Nothing was generated.",
+        message: describeStrategyFailure(details.errorCode),
         reference: requestContext.correlationId,
         status: "error" as const,
       });

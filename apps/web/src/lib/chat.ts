@@ -24,12 +24,29 @@ export const chatTitleMaxLength = 120;
  * a question that will never work.
  */
 const failureMessages: Readonly<Record<string, string>> = Object.freeze({
+  // Every provider response class has an entry, because a class with none fell
+  // through to the fallback and told a reader "this could not be produced" for
+  // a failure the product knew the name of. The set is `geminiResponseClasses`
+  // uppercased, and `chat.test.ts` holds this map to it.
+  AUTHORISATION:
+    "The assistant is not authorised to reach the model. Asking again will not help until GEMINI_API_KEY is corrected.",
+  FILE_FAILED: "The model could not read something this question needed. Ask again.",
   INVALID_REQUEST: "This question could not be sent in a form the model accepts. Try rewording it.",
   NO_CANDIDATE: "The model returned nothing at all. Ask again.",
-  QUOTA: "The assistant has reached its usage limit for now. Try again later.",
+  RATE_LIMIT: "The assistant has reached its usage limit for now. Try again in a few minutes.",
+  // A rule this product holds itself to refused the answer, and which rule is
+  // worth saying: a reader who knows the question invited a claim about
+  // causation can ask it a way the assistant is allowed to answer, and a reader
+  // told only "the rules" cannot.
+  RESPONSE_CAUSAL_CLAIM:
+    "The answer claimed a creative choice causes reach or engagement, which this product does not publish, so it was discarded. Asking about what the measured comparisons show will get an answer.",
+  RESPONSE_CONTROL_CHARACTER:
+    "The answer contained characters this screen cannot render, so it was discarded. Ask again.",
   RESPONSE_INVALID:
     "The answer did not follow the rules this product holds itself to, so it was discarded. Ask again.",
   RESPONSE_NOT_JSON: "The answer arrived in a shape this screen cannot read. Ask again.",
+  RESPONSE_SCHEMA_INVALID:
+    "The answer did not have the shape this screen reads, so it was discarded. Ask again.",
   SAFETY_BLOCKED: "The model declined to answer this one. Try asking it a different way.",
   TIMEOUT: "The answer took longer than the assistant waits. Ask again.",
   TRANSIENT: "The assistant could not be reached. Ask again in a moment.",

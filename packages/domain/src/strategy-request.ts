@@ -69,6 +69,26 @@ export const strategyRefusalReasons = [
 
 export type StrategyRefusalReason = (typeof strategyRefusalReasons)[number];
 
+/**
+ * Which population a request is about.
+ *
+ * A discriminated pair rather than a nullable id, because the two states a null
+ * id used to carry are opposites: "every linked account, pooled" is a request
+ * this product answers, and "no such account" is one it refuses. They were the
+ * same value here, which is why a pooled request was told to connect an account
+ * it already had.
+ *
+ * The shape matches the analytics recalculation's own scope, so a reader who
+ * has followed one can follow the other.
+ */
+export type StrategyRequestScope =
+  Readonly<{ instagramAccountId: string; kind: "account" }> | Readonly<{ kind: "pooled" }>;
+
+/** The account column a scope writes, where the pooled scope writes none. */
+export function strategyScopeAccountId(scope: StrategyRequestScope): string | null {
+  return scope.kind === "account" ? scope.instagramAccountId : null;
+}
+
 export type StrategyEligibilityInput = Readonly<{
   /** Whether the caller has agreed to an exploratory result. */
   acceptExploratory: boolean;
@@ -77,9 +97,10 @@ export type StrategyEligibilityInput = Readonly<{
   /** True while a recalculation is owed, so statistics are mid-flight. */
   analyticsDirty: boolean;
   comparablePostCount: number;
-  instagramAccountId: string | null;
   primaryMetric: string;
   publicationWeekCount: number;
+  /** Null when the caller named an account this workspace does not have. */
+  scope: StrategyRequestScope | null;
 }>;
 
 export type StrategyEligibility =
@@ -99,7 +120,7 @@ export type StrategyEligibility =
  * for. Accepting `views` here would build a manifest with nothing in it.
  */
 export function evaluateStrategyEligibility(input: StrategyEligibilityInput): StrategyEligibility {
-  if (input.instagramAccountId === null) {
+  if (input.scope === null) {
     return Object.freeze({ eligible: false, mode: null, reason: "account_not_found" });
   }
 

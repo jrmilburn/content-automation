@@ -120,7 +120,7 @@ async function ensureUploader(): Promise<void> {
   });
 }
 
-async function createAccount(): Promise<string> {
+async function createAccount(username = "studioparallel"): Promise<string> {
   const id = createId();
   await database.instagramAccount.create({
     data: {
@@ -130,7 +130,7 @@ async function createAccount(): Promise<string> {
       grantedScopes: ["instagram_business_basic"],
       id,
       providerAccountId: `1784140000000${String(Math.floor(Math.random() * 9000) + 1000)}`,
-      username: "studioparallel",
+      username,
       workspaceId: developmentWorkspace.id,
     },
   });
@@ -138,14 +138,20 @@ async function createAccount(): Promise<string> {
 }
 
 async function analysedPost(
-  input: Readonly<{ hookCategory: string | null; likes: number; publishedAt: Date }>,
+  input: Readonly<{
+    hookCategory: string | null;
+    instagramAccountId?: string;
+    likes: number;
+    publishedAt: Date;
+  }>,
 ): Promise<string> {
   const postId = createId();
+  const owner = input.instagramAccountId ?? accountId;
   await database.instagramPost.create({
     data: {
       firstImportedAt: input.publishedAt,
       id: postId,
-      instagramAccountId: accountId,
+      instagramAccountId: owner,
       lastImportedAt: input.publishedAt,
       mediaKind: "REEL",
       mediaProductType: "REELS",
@@ -337,14 +343,62 @@ async function publishCalculation(): Promise<string> {
 
 /** Enough analysed posts, split across two hook values, to compare on. */
 async function seedComparableAccount(): Promise<void> {
+  await seedComparablePosts(accountId);
+  await publishCalculation();
+}
+
+async function seedComparablePosts(owner: string): Promise<void> {
   for (let index = 0; index < 12; index += 1) {
     await analysedPost({
       hookCategory: index < 6 ? "question" : "claim",
+      instagramAccountId: owner,
       likes: index < 6 ? 200 + index : 100 + index,
       publishedAt: new Date(Date.UTC(2026, 2, 1 + index * 8)),
     });
   }
-  await publishCalculation();
+}
+
+/**
+ * The pooled calculation, published the way the recalculation handler publishes
+ * one: the account key is absent rather than null, from the window through to
+ * activation.
+ */
+async function publishPooledCalculation(): Promise<string> {
+  const pooledRequest = { ageWindow: "day_30", publishedFrom, publishedTo } as const;
+
+  const inputs = await loadAnalyticsInputs(database, context, pooledRequest);
+  const families = buildFeatureRequests(pooledRequest, inputs);
+  const run = await startAnalyticsRun(database, context, {
+    ageWindow: "day_30",
+    analysisCount: inputs.posts.length,
+    inputFingerprint: "d".repeat(64),
+    now: calculatedAt,
+    publishedFrom,
+    publishedTo,
+  });
+
+  let expected = 0;
+  for (const family of families) {
+    expected += family.candidates.length;
+    await storeFeatureStatistics(
+      database,
+      context,
+      family,
+      calculateFeatureFamily(family),
+      calculatedAt,
+      run.id,
+    );
+  }
+
+  // A pooled run clears no debounce marker, so it passes no `dirtySince`.
+  await activateAnalyticsRun(database, context, {
+    expectedStatisticCount: expected,
+    inputFingerprint: "d".repeat(64),
+    now: calculatedAt,
+    runId: run.id,
+  });
+
+  return run.id;
 }
 
 function requestInput(overrides: Record<string, unknown> = {}) {
@@ -752,5 +806,110 @@ describe("reading a strategy from another workspace", () => {
         },
       }),
     ).resolves.toBe(0);
+  });
+});
+
+/**
+ * A strategy about every linked account, rather than about one of them.
+ *
+ * These need a database because the whole question is which rows a pooled
+ * request actually selects. The scope column takes a null, the posts query has
+ * to drop its account bound rather than match null against a NOT NULL column,
+ * and the generation has to be written with no account connected at all — none
+ * of which a stub can be wrong about in the same way SQL can.
+ */
+describe("pooling every linked account", () => {
+  it("draws its evidence from the posts of every account, not the first", async () => {
+    const second = await createAccount("haydenrichardsonn");
+    await seedComparablePosts(accountId);
+    await seedComparablePosts(second);
+    await publishPooledCalculation();
+
+    const loaded = await loadStrategyEvidenceCandidates(database, context, {
+      formatEmphasis: [],
+      instagramAccountId: null,
+      pillarEmphasis: [],
+      primaryMetric: "engagement_rate_reach",
+    });
+
+    if (loaded === null) throw new Error("expected the pooled calculation to be readable");
+
+    // Twenty-four posts exist and both accounts published twelve. Matching the
+    // null against `instagram_posts.instagram_account_id` — a NOT NULL column —
+    // would have returned none of them, and the screen would have read that as
+    // an account with no history rather than as a query that could never match.
+    expect(loaded.counts.analysedPostCount).toBeGreaterThan(12);
+
+    const owners = await database.instagramPost.findMany({
+      distinct: ["instagramAccountId"],
+      select: { instagramAccountId: true },
+      where: { workspaceId: developmentWorkspace.id },
+    });
+    expect(owners).toHaveLength(2);
+  });
+
+  it("freezes a generation that belongs to no account and names the workspace as its resource", async () => {
+    const second = await createAccount("haydenrichardsonn");
+    await seedComparablePosts(accountId);
+    await seedComparablePosts(second);
+    await publishPooledCalculation();
+
+    const outcome = await requestStrategyGeneration(
+      database,
+      context,
+      requestInput({ instagramAccountId: null }),
+    );
+    if (!outcome.requested) throw new Error(`refused: ${outcome.reason}`);
+
+    const generation = await database.strategyGeneration.findFirstOrThrow({
+      where: { id: outcome.strategyGenerationId },
+    });
+
+    expect(generation.instagramAccountId).toBeNull();
+
+    const job = await database.backgroundJob.findFirstOrThrow({
+      where: { queueName: "strategy.generate" },
+    });
+
+    // The workspace, because the pooled scope has no account row to point at.
+    // An account-typed resource holding a workspace id would route the job as
+    // though the workspace were one of the accounts it pools.
+    expect(job.resourceType).toBe("workspace");
+    expect(job.resourceId).toBe(developmentWorkspace.id);
+  });
+
+  it("keeps a pooled request and an account's apart over the same evidence", async () => {
+    const second = await createAccount("haydenrichardsonn");
+    await seedComparablePosts(accountId);
+    await seedComparablePosts(second);
+    await publishCalculation();
+    await publishPooledCalculation();
+
+    const pooled = await requestStrategyGeneration(
+      database,
+      context,
+      requestInput({ instagramAccountId: null }),
+    );
+    const single = await requestStrategyGeneration(database, context, requestInput());
+    if (!pooled.requested || !single.requested) throw new Error("expected both to be requested");
+
+    // Two questions about two populations. Collapsing them would hand whoever
+    // asked second the other one's answer, and nothing on the page would say so.
+    expect(pooled.strategyGenerationId).not.toBe(single.strategyGenerationId);
+    expect(pooled.manifestHash).not.toBe(single.manifestHash);
+    await expect(
+      database.backgroundJob.count({ where: { queueName: "strategy.generate" } }),
+    ).resolves.toBe(2);
+  });
+
+  it("refuses a pooled request when no pooled calculation has published", async () => {
+    await seedComparableAccount();
+
+    // The account's own calculation is ACTIVE, and it is not the pooled one. A
+    // request that fell back to it would publish a strategy claiming to be about
+    // every linked account while arguing from exactly one.
+    await expect(
+      requestStrategyGeneration(database, context, requestInput({ instagramAccountId: null })),
+    ).resolves.toMatchObject({ reason: "no_active_calculation", requested: false });
   });
 });

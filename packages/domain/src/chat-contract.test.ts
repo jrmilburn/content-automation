@@ -58,6 +58,23 @@ describe("validateChatReplyV1", () => {
     expect(result.issues.map((issue) => issue.code)).toContain("CAUSAL_OR_ALGORITHM_CLAIM");
   });
 
+  it("keeps the disclaimer the prompt requires, which names the same words", () => {
+    // The prompt tells the assistant never to promise reach and to write an
+    // expectation as an association to be tested. A model that complies writes
+    // a sentence naming the metric it is refusing to promise, and matching on
+    // the verb alone discarded the whole answer for it — roughly a third of
+    // well-formed replies, and most often on the question a reader asks first.
+    const result = validateChatReplyV1(
+      reply({
+        reply:
+          "Open on the question and hold the pillar steady. This is an association measured in this period rather than a guarantee of reach or views.",
+      }),
+      manifest,
+    );
+
+    expect(result.valid).toBe(true);
+  });
+
   it("refuses a causal performance claim in a follow-up as well as in the reply", () => {
     const result = validateChatReplyV1(
       reply({ followUps: ["Which hook will increase reach the most?"] }),

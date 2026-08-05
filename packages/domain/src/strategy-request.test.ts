@@ -79,9 +79,9 @@ function eligibilityInput(
     analysedPostCount: 20,
     analyticsDirty: false,
     comparablePostCount: 16,
-    instagramAccountId: "account_1",
     primaryMetric: "engagement_rate_reach",
     publicationWeekCount: 8,
+    scope: { instagramAccountId: "account_1", kind: "account" },
     ...overrides,
   };
 }
@@ -127,6 +127,33 @@ describe("strategy eligibility", () => {
       eligible: false,
       reason: "no_active_calculation",
     });
+  });
+
+  it("admits the pooled scope, and still refuses an account it cannot find", () => {
+    // The two were one value, and the refusal won: a request naming every
+    // linked account was answered with "connect an Instagram account", which
+    // the workspace already had two of. They decide opposite things, so they
+    // are now different shapes rather than the same null.
+    expect(evaluateStrategyEligibility(eligibilityInput({ scope: { kind: "pooled" } }))).toEqual({
+      eligible: true,
+      mode: "evidence_led",
+    });
+
+    expect(evaluateStrategyEligibility(eligibilityInput({ scope: null }))).toMatchObject({
+      eligible: false,
+      reason: "account_not_found",
+    });
+  });
+
+  it("hashes a pooled manifest differently from any account's over the same run", () => {
+    // Otherwise a pooled request and an account's could collapse onto one
+    // request signature, and the second asker would be handed the first's
+    // answer about a different population.
+    const { entries } = selectStrategyEvidence([candidate({ referenceId: "stat_1" })]);
+    const pooled = createStrategyManifestHash({ ...identity, instagramAccountId: null }, entries);
+    const account = createStrategyManifestHash(identity, entries);
+
+    expect(pooled).not.toBe(account);
   });
 
   it("makes a thin account exploratory only when that is confirmed", () => {

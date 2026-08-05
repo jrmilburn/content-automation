@@ -222,8 +222,91 @@ describe("runChatTurn", () => {
       { gemini: fake.adapter, geminiConfig, store },
     );
 
-    expect(written[1]?.failureCode).toBe("RESPONSE_INVALID");
+    // The rule that refused it, not merely that one did. Every rejection used
+    // to store `RESPONSE_INVALID`, which is why establishing why a live answer
+    // was discarded meant re-running the turn against the real provider.
+    expect(written[1]?.failureCode).toBe("RESPONSE_CAUSAL_CLAIM");
     expect(written[1]?.content).toBe("");
+  });
+
+  it("asks once more when a rule refused the answer, and names the rule", async () => {
+    const { store, written } = createStore();
+    const fake = createFakeGemini({
+      defaultResponseText: validReply({
+        reply: "A question hook will increase reach on every post.",
+      }),
+    });
+
+    // Refused first, acceptable second — the case the repair exists for. A
+    // model that wrote a whole answer and phrased one sentence as a promise is
+    // not making a random mistake, so being told which rule it broke is the
+    // only thing that changes the outcome.
+    const gemini = {
+      ...fake.adapter,
+      generateStructuredText: async (
+        request: Parameters<typeof fake.adapter.generateStructuredText>[0],
+      ) => {
+        const result = await fake.adapter.generateStructuredText(request);
+        fake.setResponse({ text: validReply() });
+        return result;
+      },
+    };
+
+    const outcome = await runChatTurn(
+      context,
+      { question: "What should I make next?", sessionId },
+      { gemini, geminiConfig, store },
+    );
+
+    expect(outcome.answered).toBe(true);
+    expect(written).toHaveLength(2);
+    expect(written[1]?.failureCode).toBeNull();
+    expect(written[1]?.content).toContain("Open the next video on a direct question");
+
+    const instructions = fake.instructions();
+    expect(instructions).toHaveLength(2);
+    expect(instructions[1]).toContain("causes, drives, guarantees or leads to");
+    // The refused sentence is the model's own output. Quoting it back would put
+    // untrusted prose after the rules that govern it.
+    expect(instructions[1]).not.toContain("will increase reach on every post");
+  });
+
+  it("does not ask again when the provider itself failed", async () => {
+    const { store, written } = createStore();
+    const fake = createFakeGemini({ defaultResponseText: validReply() });
+    fake.failNext({
+      error: new GeminiError({ operation: "generateStructuredText", responseClass: "timeout" }),
+      operation: "generateStructuredText",
+    });
+
+    await runChatTurn(
+      context,
+      { question: "What should I make next?", sessionId },
+      { gemini: fake.adapter, geminiConfig, store },
+    );
+
+    // A request that never reached a model has nothing to repair, and a second
+    // identical call would spend another one to meet the same wall.
+    expect(fake.instructions()).toHaveLength(0);
+    expect(written[1]?.failureCode).toBe("TIMEOUT");
+  });
+
+  it("stops after one repair rather than asking until it gives up", async () => {
+    const { store, written } = createStore();
+    const fake = createFakeGemini({
+      defaultResponseText: validReply({
+        reply: "A question hook will increase reach on every post.",
+      }),
+    });
+
+    await runChatTurn(
+      context,
+      { question: "What should I make next?", sessionId },
+      { gemini: fake.adapter, geminiConfig, store },
+    );
+
+    expect(fake.instructions()).toHaveLength(2);
+    expect(written[1]?.failureCode).toBe("RESPONSE_CAUSAL_CLAIM");
   });
 
   it("drops a citation the context never offered, and keeps the answer", async () => {

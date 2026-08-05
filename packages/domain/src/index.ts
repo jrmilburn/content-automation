@@ -433,6 +433,7 @@ export {
   strategyManifestCaps,
   strategyRefusalReasons,
   strategyRetrievalVersion,
+  strategyScopeAccountId,
   toStrategyManifestEvidence,
   type StrategyEligibility,
   type StrategyEligibilityInput,
@@ -442,6 +443,7 @@ export {
   type StrategyEvidenceSelection,
   type StrategyManifestIdentity,
   type StrategyRefusalReason,
+  type StrategyRequestScope,
 } from "./strategy-request.js";
 export {
   acceptedVideoContentTypes,

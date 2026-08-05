@@ -5,10 +5,13 @@ import {
   type DerivedMetric,
   type StrategyMode,
   type StrategyRefusalReason,
+  type StrategyRequestScope,
 } from "@studio-parallel/domain";
 
+import { OperationalError } from "@studio-parallel/observability";
+
 import { enqueueBackgroundJobInTransaction } from "./background-jobs.js";
-import type { PrismaClient } from "./generated/prisma/client.js";
+import { Prisma, type PrismaClient } from "./generated/prisma/client.js";
 import { createId } from "./id.js";
 import {
   buildStrategyManifest,
@@ -32,17 +35,39 @@ import type { WorkspaceContext } from "./workspace-context.js";
  * same strategy over the same evidence produce one job and one provider call; an
  * explicit regeneration is a different ordinal and therefore a different
  * request, even though the evidence has not moved.
+ *
+ * A request is made against one calculation scope: a single account, or every
+ * linked account measured together. The pooled scope is a null account id
+ * throughout, matching the column it writes and the analytics run it argues
+ * from, and it is not the same thing as an account that could not be found —
+ * `resolveScope` is where those two stop being one value.
+ *
+ * A freeze that fails says which kind of failure it was. Every path here used to
+ * surface as one unexplained error above, so the screen could only ever offer
+ * "something went wrong" and a correlation id.
  */
 
 /** How far back a request reads by default, in publication days. */
 export const strategyDefaultPeriodDays = 180;
+
+/**
+ * What a pooled job names as its resource.
+ *
+ * The pooled scope has no `instagram_accounts` row to point at, so the
+ * workspace is the only thing that identifies it — the same choice the
+ * analytics recalculation already made for the same reason.
+ */
+export const strategyPooledResourceType = "workspace";
+
+const accountResourceType = "instagram_account";
 
 export type StrategyRequestInput = Readonly<{
   acceptExploratory: boolean;
   correlationId: string;
   editorialConstraint: string | null;
   formatEmphasis: readonly string[];
-  instagramAccountId: string;
+  /** One account, or null for every linked account measured together. */
+  instagramAccountId: string | null;
   pillarEmphasis: readonly string[];
   primaryMetric: DerivedMetric;
   regeneratedFromId?: string | null;
@@ -74,12 +99,54 @@ export type StrategyRequestOutcome =
     }>
   | Readonly<{ reason: StrategyRefusalReason; requested: false }>;
 
+/**
+ * Whether the scope a caller named is one this workspace has.
+ *
+ * The pooled scope resolves without a lookup: it is every linked account, so
+ * there is no row that could fail to exist. Whether it has anything to argue
+ * from is a separate question, answered by its ACTIVE run further down — which
+ * is the distinction that used to be lost, because a null account id meant both
+ * "pooled" and "no such account" and the second answer won.
+ */
+async function resolveScope(
+  database: PrismaClient,
+  context: WorkspaceContext,
+  instagramAccountId: string | null,
+): Promise<Readonly<{ analyticsDirty: boolean; scope: StrategyRequestScope }> | null> {
+  if (instagramAccountId === null) {
+    // A pooled calculation is owed a rerun while any of the accounts it pools
+    // is. The markers live on the accounts because only an account's own run
+    // clears one, so the pooled scope has to read all of them rather than a
+    // marker of its own.
+    const dirtyAccounts = await database.instagramAccount.count({
+      where: { analyticsDirtySince: { not: null }, workspaceId: context.workspaceId },
+    });
+
+    return Object.freeze({
+      analyticsDirty: dirtyAccounts > 0,
+      scope: Object.freeze({ kind: "pooled" as const }),
+    });
+  }
+
+  const account = await database.instagramAccount.findFirst({
+    select: { analyticsDirtySince: true, id: true },
+    where: { id: instagramAccountId, workspaceId: context.workspaceId },
+  });
+
+  if (!account) return null;
+
+  return Object.freeze({
+    analyticsDirty: account.analyticsDirtySince !== null,
+    scope: Object.freeze({ instagramAccountId: account.id, kind: "account" as const }),
+  });
+}
+
 async function readEligibility(
   database: PrismaClient,
   context: WorkspaceContext,
   input: Readonly<{
     acceptExploratory: boolean;
-    instagramAccountId: string;
+    instagramAccountId: string | null;
     primaryMetric: DerivedMetric;
   }>,
 ): Promise<
@@ -88,12 +155,9 @@ async function readEligibility(
     loaded: StrategyEvidenceCandidates | null;
   }>
 > {
-  const account = await database.instagramAccount.findFirst({
-    select: { analyticsDirtySince: true, id: true },
-    where: { id: input.instagramAccountId, workspaceId: context.workspaceId },
-  });
+  const resolved = await resolveScope(database, context, input.instagramAccountId);
 
-  if (!account) {
+  if (resolved === null) {
     return Object.freeze({
       decision: evaluateStrategyEligibility({
         acceptExploratory: input.acceptExploratory,
@@ -101,9 +165,9 @@ async function readEligibility(
         analysedPostCount: 0,
         analyticsDirty: false,
         comparablePostCount: 0,
-        instagramAccountId: null,
         primaryMetric: input.primaryMetric,
         publicationWeekCount: 0,
+        scope: null,
       }),
       loaded: null,
     });
@@ -111,7 +175,7 @@ async function readEligibility(
 
   const loaded = await loadStrategyEvidenceCandidates(database, context, {
     formatEmphasis: [],
-    instagramAccountId: account.id,
+    instagramAccountId: input.instagramAccountId,
     pillarEmphasis: [],
     primaryMetric: input.primaryMetric,
   });
@@ -121,11 +185,11 @@ async function readEligibility(
       acceptExploratory: input.acceptExploratory,
       activeRunId: loaded?.analyticsRunId ?? null,
       analysedPostCount: loaded?.counts.analysedPostCount ?? 0,
-      analyticsDirty: account.analyticsDirtySince !== null,
+      analyticsDirty: resolved.analyticsDirty,
       comparablePostCount: loaded?.counts.comparablePostCount ?? 0,
-      instagramAccountId: account.id,
       primaryMetric: input.primaryMetric,
       publicationWeekCount: loaded?.counts.publicationWeekCount ?? 0,
+      scope: resolved.scope,
     }),
     loaded,
   });
@@ -144,7 +208,8 @@ export async function previewStrategyRequest(
   context: WorkspaceContext,
   input: Readonly<{
     acceptExploratory: boolean;
-    instagramAccountId: string;
+    /** One account, or null for every linked account measured together. */
+    instagramAccountId: string | null;
     primaryMetric: DerivedMetric;
   }>,
 ): Promise<StrategyRequestPreview> {
@@ -242,26 +307,42 @@ export async function requestStrategyGeneration(
   const now = new Date();
   const entries = manifest.entries;
 
-  return database.$transaction(
+  // A pooled generation belongs to no account, so it connects none and names
+  // the workspace as the job's resource. Both have to be omitted together: a
+  // `connect` on a null id is a Prisma type error rather than a null column,
+  // and an account-typed resource with a workspace id would route the job as
+  // though the workspace were an account.
+  const accountConnect =
+    input.instagramAccountId === null
+      ? {}
+      : {
+          account: {
+            connect: {
+              workspaceId_id: { id: input.instagramAccountId, workspaceId: context.workspaceId },
+            },
+          },
+        };
+
+  const jobResource =
+    input.instagramAccountId === null
+      ? { resourceId: context.workspaceId, resourceType: strategyPooledResourceType }
+      : { resourceId: input.instagramAccountId, resourceType: accountResourceType };
+
+  const frozen = database.$transaction(
     async (transaction) => {
       const enqueued = await enqueueBackgroundJobInTransaction(transaction, context, {
         correlationId: input.correlationId,
         handlerVersion: 1,
         idempotencyKey: strategyGenerateKey(requestSignature),
         queueName: "strategy.generate",
-        resourceId: input.instagramAccountId,
-        resourceType: "instagram_account",
+        ...jobResource,
       });
 
       const strategyGenerationId = createId();
 
       await transaction.strategyGeneration.create({
         data: {
-          account: {
-            connect: {
-              workspaceId_id: { id: input.instagramAccountId, workspaceId: context.workspaceId },
-            },
-          },
+          ...accountConnect,
           ageWindow: withEmphasis.ageWindow,
           analysedPostCount: withEmphasis.counts.analysedPostCount,
           analysisSchemaVersion: manifest.identity.analysisSchemaVersion,
@@ -357,6 +438,91 @@ export async function requestStrategyGeneration(
     // budget the request is designed to spend.
     { maxWait: 10_000, timeout: 20_000 },
   );
+
+  try {
+    return await frozen;
+  } catch (error) {
+    // The enqueue already says what went wrong in its own terms.
+    if (error instanceof OperationalError) throw error;
+
+    // The other submit won the race. Both callers asked the same question over
+    // the same evidence, so the honest answer is the generation that exists
+    // rather than a failure — which is what the pre-transaction check was for,
+    // and it cannot close the window because it runs before the transaction
+    // opens. Re-read rather than construct: the winner owns the ids.
+    if (prismaErrorCode(error) === "P2002") {
+      const winner = await database.strategyGeneration.findFirst({
+        select: { backgroundJobId: true, id: true },
+        where: { requestSignature, workspaceId: context.workspaceId },
+      });
+
+      if (winner) {
+        return Object.freeze({
+          backgroundJobId: winner.backgroundJobId,
+          created: false,
+          manifestHash: manifest.manifestHash,
+          mode: decision.mode,
+          requested: true as const,
+          strategyGenerationId: winner.id,
+        });
+      }
+    }
+
+    throw toStrategyRequestError(error);
+  }
+}
+
+/** The Prisma error code, for the failures this command can tell apart. */
+function prismaErrorCode(error: unknown): string | null {
+  return error instanceof Prisma.PrismaClientKnownRequestError ? error.code : null;
+}
+
+/**
+ * What a failed freeze is, in terms the screen above can act on.
+ *
+ * Every one of these used to arrive as the same unexplained error, and the
+ * reader was handed a correlation id for a failure no log explained. They are
+ * kept apart because the responses differ: a stale schema is nobody's to retry,
+ * a timeout is worth pressing again, and a missing dependency means the session
+ * is describing a workspace that has moved underneath it.
+ *
+ * No provider text, no SQL and no column name travels with these. The code is
+ * the whole payload, and the correlation id is how it is joined to the log.
+ */
+function toStrategyRequestError(error: unknown): OperationalError {
+  switch (prismaErrorCode(error)) {
+    // The deployed code is ahead of the database. Retrying cannot help, and
+    // this repository has shipped it three times: a merge deploys code, and
+    // migrations are applied by hand.
+    case "P2021":
+    case "P2022":
+      return new OperationalError({
+        code: "STRATEGY_SCHEMA_BEHIND",
+        errorClass: "dependency",
+        statusCode: 503,
+      });
+    case "P2025":
+      return new OperationalError({
+        code: "STRATEGY_REQUEST_DEPENDENCY_MISSING",
+        errorClass: "conflict",
+        statusCode: 409,
+      });
+    case "P2024":
+    case "P2028":
+      return new OperationalError({
+        code: "STRATEGY_REQUEST_TIMED_OUT",
+        errorClass: "dependency",
+        retryable: true,
+        statusCode: 503,
+      });
+    default:
+      return new OperationalError({
+        code: "STRATEGY_REQUEST_FAILED",
+        errorClass: "dependency",
+        retryable: true,
+        statusCode: 503,
+      });
+  }
 }
 
 /**
@@ -370,7 +536,11 @@ export async function requestStrategyGeneration(
 async function nextRegenerationOrdinal(
   database: PrismaClient,
   context: WorkspaceContext,
-  input: Readonly<{ instagramAccountId: string; manifestHash: string; regenerate: boolean }>,
+  input: Readonly<{
+    instagramAccountId: string | null;
+    manifestHash: string;
+    regenerate: boolean;
+  }>,
 ): Promise<number> {
   const previous = await database.strategyGeneration.findFirst({
     orderBy: { regenerationOrdinal: "desc" },

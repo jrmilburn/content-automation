@@ -14,11 +14,14 @@ import {
   chatSchemaVersion,
   createChatInstruction,
   validateChatReplyV1,
+  type ChatReplyV1,
 } from "@studio-parallel/domain";
 import { GeminiError, type GeminiAdapter } from "@studio-parallel/integrations";
+import { parseCorrelationId, type JsonLogger } from "@studio-parallel/observability";
 
 import { createWebGeminiAdapter } from "./chat-gemini";
 import { getChatStore, type ChatStore } from "./chat-store";
+import { webLogger } from "./observability";
 
 /**
  * One turn of a conversation, from a question to a stored answer.
@@ -29,15 +32,26 @@ import { getChatStore, type ChatStore } from "./chat-store";
  * reason code, which is what the screen turns into "this one did not work, ask
  * again" rather than a conversation that appears to have ignored someone.
  *
- * There is no repair attempt. Strategy generation makes one, because a rejected
- * strategy costs a job, a manifest and a wait; here the same recovery is the
- * reader pressing send again, and a silent second call would double what a turn
- * costs to rescue a case `responseMimeType: application/json` makes rare.
+ * One repair attempt, and only for a reply this product refused rather than one
+ * the provider mangled. The distinction is why the attempt exists at all: a
+ * malformed response is rare, because `responseMimeType: application/json`
+ * makes it rare, and asking again is a fair recovery for something that
+ * happens by accident. A reply refused for its language is not an accident —
+ * the model wrote a complete, well-cited answer and phrased one sentence in a
+ * way the product will not publish, and asking the same question again re-rolls
+ * the same dice. So the second attempt is told exactly which rule it broke,
+ * which is information the reader pressing send again does not have.
  *
- * Nothing here reaches a log. The instruction contains captions, transcripts
+ * The allowance is a local flag rather than a stored column, unlike strategy
+ * generation's. A turn is one request and is never redelivered, so there is no
+ * second delivery that could spend it twice.
+ *
+ * Only reason codes reach a log. The instruction contains captions, transcripts
  * and the reader's own words, and the provider's error text routinely quotes
  * the request back, so failures are reduced to a class and a code before they
- * leave this function.
+ * leave this function. Recording the code is what makes a discarded answer
+ * diagnosable at all: for want of one, establishing why a reply was refused
+ * meant re-running the turn against the live provider.
  */
 
 export const chatRefusalReasons = [
@@ -59,9 +73,36 @@ export type ChatTurnResult =
 export type ChatTurnDependencies = Readonly<{
   gemini?: GeminiAdapter;
   geminiConfig?: GeminiConfig;
+  logger?: JsonLogger;
   now?: () => number;
   store?: ChatStore;
 }>;
+
+/**
+ * What a refused reply is told about its own refusal.
+ *
+ * One line per rule, naming the rule rather than quoting the sentence back:
+ * the offending text is the model's own output and repeating it into the next
+ * instruction would put untrusted prose above the rules that govern it.
+ *
+ * Kept beside the codes they answer so that adding a validation rule without a
+ * repair note is a visibly incomplete change.
+ */
+const repairNotes: Readonly<Record<string, string>> = Object.freeze({
+  CAUSAL_OR_ALGORITHM_CLAIM:
+    "Your previous answer was rejected because a sentence in it asserted that a creative choice causes, drives, guarantees or leads to reach, views or engagement, or that Instagram rewards one. Write the same answer again with every such sentence rephrased as an association measured in this period, or removed. Do not add a disclaimer about causation; leave the claim out instead.",
+  CONTROL_CHARACTER:
+    "Your previous answer was rejected because it contained control characters. Write it again using ordinary text and blank lines only.",
+  SCHEMA:
+    "Your previous answer did not match the required JSON shape. Write it again, emitting every required property and nothing else.",
+});
+
+/** The stored code for a refused reply, so the row says which rule fired. */
+const refusalCodes: Readonly<Record<string, string>> = Object.freeze({
+  CAUSAL_OR_ALGORITHM_CLAIM: "RESPONSE_CAUSAL_CLAIM",
+  CONTROL_CHARACTER: "RESPONSE_CONTROL_CHARACTER",
+  SCHEMA: "RESPONSE_SCHEMA_INVALID",
+});
 
 /**
  * Reads a title out of the first thing somebody asked.
@@ -79,6 +120,73 @@ export function deriveChatTitle(question: string): string {
   return `${(lastSpace > 24 ? clipped.slice(0, lastSpace) : clipped).trimEnd()}…`;
 }
 
+type CheckedReply =
+  | Readonly<{ data: ChatReplyV1; valid: true }>
+  | Readonly<{ failureCode: string; issueCode: string; valid: false }>;
+
+/**
+ * Parses one response and holds it to the contract.
+ *
+ * Returns the rule that refused it rather than the fact that something did.
+ * Both callers need it: the repair has to name the rule to the model, and the
+ * stored row has to name it to whoever reads the record afterwards. Collapsing
+ * every rejection into `RESPONSE_INVALID` is what made a refused answer
+ * impossible to explain without re-running the turn.
+ */
+function check(text: string, evidenceIds: readonly string[]): CheckedReply {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Distinguished from a rule violation: the provider's own response mime
+    // type was asked to guarantee this much, so it is the request shape failing
+    // rather than the answer.
+    return Object.freeze({
+      failureCode: "RESPONSE_NOT_JSON",
+      issueCode: "NOT_JSON",
+      valid: false as const,
+    });
+  }
+
+  const validated = validateChatReplyV1(parsed, { evidenceIds });
+  if (validated.valid) return Object.freeze({ data: validated.data, valid: true as const });
+
+  const issueCode = validated.issues[0]?.code ?? "UNKNOWN";
+
+  return Object.freeze({
+    failureCode: refusalCodes[issueCode] ?? "RESPONSE_INVALID",
+    issueCode,
+    valid: false as const,
+  });
+}
+
+/**
+ * The one line a failed turn leaves behind.
+ *
+ * A code and a correlation id, and nothing else. The reader is told a sentence
+ * on screen; this is what makes the same event findable afterwards, which it
+ * previously was not — no failed turn reached a log at all, so a recorded
+ * failure could only be studied by asking the question again and hoping.
+ */
+function recordFailure(
+  logger: JsonLogger,
+  correlationId: string | undefined,
+  failureCode: string,
+): void {
+  const parsed = correlationId === undefined ? undefined : parseCorrelationId(correlationId);
+
+  // Without an id the line could not be joined to anything, and an invented one
+  // would join it to the wrong thing. A caller that supplied none is a caller
+  // that cannot be traced, and saying so by writing nothing is honest.
+  if (parsed === undefined) return;
+
+  logger.warn("chat.turn.not_answered", {
+    correlationId: parsed,
+    reasonCode: failureCode,
+    stage: "chat",
+  });
+}
+
 function failureOf(error: unknown): Readonly<{ failureClass: string; failureCode: string }> {
   if (error instanceof GeminiError) {
     return Object.freeze({
@@ -94,7 +202,7 @@ function failureOf(error: unknown): Readonly<{ failureClass: string; failureCode
 
 export async function runChatTurn(
   context: WorkspaceContext,
-  input: Readonly<{ question: string; sessionId: string }>,
+  input: Readonly<{ correlationId?: string; question: string; sessionId: string }>,
   dependencies: ChatTurnDependencies = {},
 ): Promise<ChatTurnResult> {
   const store = dependencies.store ?? getChatStore();
@@ -145,6 +253,7 @@ export async function runChatTurn(
   const instruction = createChatInstruction({ context: assembly.text, turns });
   const geminiConfig = dependencies.geminiConfig ?? loadGeminiConfig();
   const gemini = dependencies.gemini ?? createWebGeminiAdapter();
+  const logger = dependencies.logger ?? webLogger;
 
   const provenance = {
     contextHash: assembly.hash,
@@ -161,21 +270,40 @@ export async function runChatTurn(
     followUps: Object.freeze([]),
   } as const;
 
-  let result;
-  try {
-    result = await gemini.generateStructuredText({
-      instruction,
-      maxOutputTokens: geminiConfig.GEMINI_CHAT_MAX_OUTPUT_TOKENS,
-    });
-  } catch (error) {
-    const failure = failureOf(error);
+  const ask = async (
+    text: string,
+  ): Promise<
+    | Readonly<{ ok: true; result: Awaited<ReturnType<GeminiAdapter["generateStructuredText"]>> }>
+    | Readonly<{ failure: ReturnType<typeof failureOf>; ok: false }>
+  > => {
+    try {
+      return Object.freeze({
+        ok: true as const,
+        result: await gemini.generateStructuredText({
+          instruction: text,
+          maxOutputTokens: geminiConfig.GEMINI_CHAT_MAX_OUTPUT_TOKENS,
+        }),
+      });
+    } catch (error) {
+      return Object.freeze({ failure: failureOf(error), ok: false as const });
+    }
+  };
+
+  const first = await ask(instruction);
+
+  if (!first.ok) {
+    // A provider failure is not repaired. The request never reached a model
+    // that could have written anything different, so a second identical call
+    // would spend a second one to meet the same wall.
+    recordFailure(logger, input.correlationId, first.failure.failureCode);
+
     const answer = await store.appendAnswer(context, {
       answer: {
         ...empty,
         ...provenance,
         content: "",
-        failureClass: failure.failureClass,
-        failureCode: failure.failureCode,
+        failureClass: first.failure.failureClass,
+        failureCode: first.failure.failureCode,
         finishReason: null,
         inputTokens: null,
         modelVersion: null,
@@ -192,6 +320,22 @@ export async function runChatTurn(
       : Object.freeze({ answer, answered: true as const });
   }
 
+  let result = first.result;
+  let checked = check(result.text, assembly.evidenceIds);
+
+  // The one repair. Attempted only when the reply is a whole response this
+  // product declined to publish, and told which rule declined it — a second
+  // identical request would only re-run the same coin toss.
+  const repairNote = checked.valid ? null : (repairNotes[checked.issueCode] ?? null);
+
+  if (repairNote !== null) {
+    const repaired = await ask(`${instruction}\n\n${repairNote}`);
+    if (repaired.ok) {
+      result = repaired.result;
+      checked = check(result.text, assembly.evidenceIds);
+    }
+  }
+
   const telemetry = {
     finishReason: result.finishReason,
     inputTokens: result.usage.inputTokens,
@@ -201,17 +345,11 @@ export async function runChatTurn(
     totalTokens: result.usage.totalTokens,
   } as const;
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(result.text);
-  } catch {
-    parsed = null;
-  }
+  if (!checked.valid) {
+    // The code only. The reply is untrusted text that routinely quotes the
+    // question and the context back, so it never reaches a log or a stored row.
+    recordFailure(logger, input.correlationId, checked.failureCode);
 
-  const validated =
-    parsed === null ? null : validateChatReplyV1(parsed, { evidenceIds: assembly.evidenceIds });
-
-  if (validated === null || !validated.valid) {
     const answer = await store.appendAnswer(context, {
       answer: {
         ...empty,
@@ -219,7 +357,7 @@ export async function runChatTurn(
         ...telemetry,
         content: "",
         failureClass: "response",
-        failureCode: validated === null ? "RESPONSE_NOT_JSON" : "RESPONSE_INVALID",
+        failureCode: checked.failureCode,
       },
       sequence: asked.sequence + 1,
       sessionId: input.sessionId,
@@ -234,11 +372,11 @@ export async function runChatTurn(
     answer: {
       ...provenance,
       ...telemetry,
-      citedEvidenceKeys: validated.data.citedEvidenceIds,
-      content: validated.data.reply,
+      citedEvidenceKeys: checked.data.citedEvidenceIds,
+      content: checked.data.reply,
       failureClass: null,
       failureCode: null,
-      followUps: validated.data.followUps,
+      followUps: checked.data.followUps,
     },
     sequence: asked.sequence + 1,
     sessionId: input.sessionId,

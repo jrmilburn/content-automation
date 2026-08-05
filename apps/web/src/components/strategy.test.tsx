@@ -166,10 +166,13 @@ function detail(overrides: Partial<StrategyDetail> = {}): StrategyDetail {
 
 function snapshot(overrides: Partial<StrategySnapshot> = {}): StrategySnapshot {
   return {
+    accountDefaulted: false,
     accounts: [{ id: accountId, label: "@studioparallel" }],
     current: detail(),
     hasAccount: true,
     history: [summary()],
+    pooled: false,
+    pooledAvailable: false,
     preview: {
       ageWindow: "day_30",
       analysedPostCount: 24,

@@ -22,9 +22,11 @@ import {
   strategyRequestStateLabels,
   strategyRequestStateTone,
   strategyScope,
+  strategyScopeValue,
   strategySectionEmptyText,
   strategySectionTitles,
 } from "../lib/strategy";
+import { pooledAccountValue } from "../lib/trends";
 import { EmptyState, ErrorSummary } from "./states";
 import { PageHeader } from "./page-header";
 import { StatusBadge } from "./status-badge";
@@ -476,6 +478,7 @@ function RequestPanel({ snapshot }: Readonly<{ snapshot: StrategySnapshot }>) {
   if (preview === null) return null;
 
   const refusal = describeStrategyRefusal(preview.reason);
+  const scope: AnalyticsScope = snapshot.pooled ? "pooled" : "account";
 
   return (
     <section aria-labelledby="strategy-request-heading" className="strategy-request">
@@ -519,13 +522,13 @@ function RequestPanel({ snapshot }: Readonly<{ snapshot: StrategySnapshot }>) {
           <StatusBadge tone={preview.mode === "evidence_led" ? "success" : "warning"}>
             {strategyModeLabels[preview.mode]}
           </StatusBadge>{" "}
-          {strategyModeDescription(preview.mode, "account")}
+          {strategyModeDescription(preview.mode, scope)}
         </p>
       )}
       {refusal === null ? (
         <StrategyRequestControl
-          accountId={snapshot.selectedAccountId ?? ""}
           exploratory={preview.mode === "exploratory"}
+          scope={strategyScopeValue(snapshot.selectedAccountId)}
         />
       ) : (
         <p className="strategy-request__refusal">{refusal}</p>
@@ -534,11 +537,77 @@ function RequestPanel({ snapshot }: Readonly<{ snapshot: StrategySnapshot }>) {
   );
 }
 
+/**
+ * Which calculation the screen is showing, and how to show another.
+ *
+ * The scope is named even when there is only one, because every count and every
+ * claim below belongs to it. A pooled strategy and an account's are separate
+ * documents built from separate calculations, and a reader who cannot see which
+ * one they are reading has no way to tell that "31 analysed posts" means the
+ * workspace rather than the account they had in mind.
+ */
+function ScopePicker({ snapshot }: Readonly<{ snapshot: StrategySnapshot }>) {
+  if (snapshot.accounts.length === 0) return null;
+
+  const selectedValue = snapshot.pooled
+    ? pooledAccountValue
+    : (snapshot.selectedAccountId ?? pooledAccountValue);
+  const selectedAccount = snapshot.accounts.find(
+    (account) => account.id === snapshot.selectedAccountId,
+  );
+  const label = snapshot.pooled
+    ? "every linked account, pooled"
+    : (selectedAccount?.label ?? "this account");
+
+  const choosable = snapshot.accounts.length > 1 || snapshot.pooledAvailable;
+
+  return (
+    <section aria-labelledby="strategy-scope-heading" className="strategy-scope">
+      <h2 className="visually-hidden" id="strategy-scope-heading">
+        Which accounts this strategy is about
+      </h2>
+      <p className="strategy-scope__line">
+        <span className="strategy-scope__account">Showing {label}</span>
+        {snapshot.accountDefaulted && choosable ? (
+          <span className="strategy-scope__note">
+            {" "}
+            — no scope was chosen, so{" "}
+            {snapshot.pooled
+              ? "every linked account is pooled into one calculation"
+              : "the first connected account is shown"}
+            . Choose another below.
+          </span>
+        ) : null}
+      </p>
+      {choosable ? (
+        <form action="/strategy" className="strategy-scope__form" method="get">
+          <label>
+            <span>Accounts</span>
+            <select defaultValue={selectedValue} name="account">
+              {snapshot.pooledAvailable ? (
+                <option value={pooledAccountValue}>All linked accounts</option>
+              ) : null}
+              {snapshot.accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="button button--secondary" type="submit">
+            Show this scope
+          </button>
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
 export function StrategyScreen({ snapshot }: Readonly<{ snapshot: StrategySnapshot }>) {
   return (
     <div className="page-stack">
       <PageHeader
-        description="What this account's measured evidence suggests to make next, with the evidence under every claim."
+        description="What the measured evidence suggests to make next, with the evidence under every claim."
         title="Strategy"
       />
 
@@ -550,12 +619,18 @@ export function StrategyScreen({ snapshot }: Readonly<{ snapshot: StrategySnapsh
         />
       )}
 
+      {snapshot.hasAccount ? <ScopePicker snapshot={snapshot} /> : null}
+
       {snapshot.hasAccount ? <RequestPanel snapshot={snapshot} /> : null}
 
       {snapshot.current === null && snapshot.hasAccount ? (
         <EmptyState
           action={{ href: "/trends", label: "Review trends" }}
-          description="No strategy has been generated for this account yet. One reads the trends already calculated from analysed posts."
+          description={
+            snapshot.pooled
+              ? "No strategy has been generated across the linked accounts yet. One reads the trends already calculated from their analysed posts."
+              : "No strategy has been generated for this account yet. One reads the trends already calculated from analysed posts."
+          }
           title="No strategy generated yet"
         />
       ) : null}

@@ -529,10 +529,35 @@ describe("strategy semantic validation", () => {
     "Instagram rewards this hook format.",
     "This idea guarantees more engagement.",
     "The change will increase reach.",
+    // Denied in the first clause, asserted in the second. A negation governs
+    // its own clause and not the one coordinated after it, so this is still an
+    // assertion however it was introduced.
+    "This is not a guarantee of reach, and question hooks drive engagement.",
   ])("rejects causal or algorithm language: %s", (claim) => {
     const input = createEvidenceLedStrategy();
     input.recommendations[0]!.rationale = claim;
     expectInvalidCode(input, "CAUSAL_OR_ALGORITHM_CLAIM");
+  });
+
+  it.each([
+    "This proposal is an expectation to test rather than a guarantee of reach or views.",
+    "There is no evidence this will improve engagement.",
+    "Nothing here can tell you what leads to more views.",
+    "We cannot say, from this evidence, what drives engagement.",
+    "That is not evidence that Instagram rewards question hooks.",
+    "It isn't clear that shorter cuts drive engagement.",
+  ])("accepts the same words used to deny the claim: %s", (denial) => {
+    // The rule bans asserting causation, and every sentence this product asks a
+    // model to write about causation denies it. Matching on the verb alone
+    // refused the disclaimer the prompt requires, which discarded whole
+    // well-formed answers — most often on the performance questions a reader
+    // asks first.
+    const input = createEvidenceLedStrategy();
+    input.recommendations[0]!.rationale = denial;
+
+    const result = validateStrategyV1(input, createContext());
+
+    expect(result.valid).toBe(true);
   });
 
   it("treats manifest prompt injection as untrusted and rejects it when echoed", () => {

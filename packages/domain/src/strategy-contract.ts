@@ -890,9 +890,43 @@ function validateUniqueKeys(strategy: StrategyV1, issues: StrategyValidationIssu
 }
 
 const prohibitedClaimPatterns = [
-  /\b(?:instagram|the algorithm|algorithm)\b.{0,60}\b(?:rewards?|prefers?|boosts?|penali[sz]es?|suppresses?)\b/iu,
-  /\b(?:causes?|guarantees?|will (?:increase|boost|improve)|drives?|leads? to|results? in)\b.{0,80}\b(?:reach|views?|plays?|engagement|likes?|comments?|shares?|saves?|follows?|performance|distribution|virality|viral)\b/iu,
+  /\b(?:instagram|the algorithm|algorithm)\b.{0,60}\b(?:rewards?|prefers?|boosts?|penali[sz]es?|suppresses?)\b/giu,
+  /\b(?:causes?|guarantees?|will (?:increase|boost|improve)|drives?|leads? to|results? in)\b.{0,80}\b(?:reach|views?|plays?|engagement|likes?|comments?|shares?|saves?|follows?|performance|distribution|virality|viral)\b/giu,
 ] as const;
+
+/**
+ * Words that deny the claim standing after them.
+ *
+ * The patterns above match a verb and a metric, and a match alone says nothing
+ * about whether the sentence asserted the claim or refused it. Every sentence
+ * this product asks a model to write about causation is a refusal — "this is
+ * not a guarantee of reach", "no evidence this will improve engagement",
+ * "nothing here can tell you what leads to more views" — and each of those
+ * matches. The prompt requires the disclaimer and the validator then rejected
+ * the answer for containing it, so roughly a third of well-formed replies were
+ * discarded, most often on exactly the questions a reader asks first.
+ *
+ * The lexicon is deliberately small. Every entry is a word that reverses the
+ * polarity of what follows it, and nothing is included because it merely
+ * softens a claim: "may increase reach" is still a promise about reach, and
+ * hedging is not the same as denying.
+ */
+const claimDenialPattern =
+  /(?:\b(?:no|not|never|none|nothing|neither|nor|cannot|without|rather than|instead of)\b|\w+n['’]t\b)/iu;
+
+/**
+ * Where a denial stops carrying.
+ *
+ * A negation governs its own clause and not the one coordinated after it. In
+ * "this is not a guarantee of reach, and question hooks drive engagement" the
+ * second half is an assertion however the first half was framed, so the split
+ * happens at the coordinator. Bare commas are not boundaries: "we cannot say,
+ * from this evidence, what drives engagement" is one clause with a parenthetical
+ * in it, and splitting there would refuse the sentence for the phrase it exists
+ * to deny.
+ */
+const clauseBoundaryPattern =
+  /[.!?;:\n]+|\s+[–—-]{1,2}\s+|,\s*(?:and|but|so|yet|while|whereas|however|although|though|which)\b/giu;
 
 /**
  * Whether one string makes a causal or algorithmic claim this product refuses.
@@ -902,9 +936,26 @@ const prohibitedClaimPatterns = [
  * first time either was edited. The rule is a property of what may be claimed
  * about an account, not of the strategy document that happens to enforce it
  * first.
+ *
+ * Read clause by clause, and a clause is only a claim when nothing before the
+ * match denied it. That is the whole of the polarity rule: it does not parse,
+ * and it is not trying to. It distinguishes "X drives engagement" from "nothing
+ * here says what drives engagement", which is the distinction the product's own
+ * house style makes on every page — and it still refuses the assertion when a
+ * denial elsewhere in the sentence was about something else.
  */
 export function containsProhibitedClaim(value: string): boolean {
-  return prohibitedClaimPatterns.some((pattern) => pattern.test(value));
+  return value.split(clauseBoundaryPattern).some(assertsProhibitedClaim);
+}
+
+function assertsProhibitedClaim(clause: string): boolean {
+  for (const pattern of prohibitedClaimPatterns) {
+    for (const match of clause.matchAll(pattern)) {
+      if (!claimDenialPattern.test(clause.slice(0, match.index))) return true;
+    }
+  }
+
+  return false;
 }
 
 function walkStrings(
