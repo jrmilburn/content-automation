@@ -184,7 +184,7 @@ async function readEligibility(
     decision: evaluateStrategyEligibility({
       acceptExploratory: input.acceptExploratory,
       activeRunId: loaded?.analyticsRunId ?? null,
-      analysedPostCount: loaded?.counts.analysedPostCount ?? 0,
+      analysedPostCount: loaded?.counts.analysedPostCount ?? (await countAnalysedPosts()),
       analyticsDirty: resolved.analyticsDirty,
       comparablePostCount: loaded?.counts.comparablePostCount ?? 0,
       primaryMetric: input.primaryMetric,
@@ -193,6 +193,28 @@ async function readEligibility(
     }),
     loaded,
   });
+
+  /**
+   * How much this scope has analysed, when no calculation has counted it.
+   *
+   * The counts above are the run's, so a scope with no ACTIVE run has none —
+   * and passing a zero said "no posts have been analysed yet" to a workspace
+   * that had analysed forty-one. The two refusals lead to opposite next
+   * actions: one is "analyse a post", the other is "wait for the calculation".
+   * Only read on the path that has no run, so the ordinary request still costs
+   * exactly the queries it did.
+   */
+  async function countAnalysedPosts(): Promise<number> {
+    return database.instagramPost.count({
+      where: {
+        currentAnalysis: { analyticsEligible: true },
+        workspaceId: context.workspaceId,
+        ...(input.instagramAccountId === null
+          ? {}
+          : { instagramAccountId: input.instagramAccountId }),
+      },
+    });
+  }
 }
 
 /**

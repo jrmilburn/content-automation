@@ -285,32 +285,32 @@ async function analysedPost(
   return postId;
 }
 
-function inputRequest() {
+function inputRequest(owner: string = accountId) {
   return {
     ageWindow: "day_30",
-    instagramAccountId: accountId,
+    instagramAccountId: owner,
     publishedFrom,
     publishedTo,
   } as const;
 }
 
 /** Builds and publishes one calculation, the way the handler does. */
-async function publishCalculation(): Promise<string> {
+async function publishCalculation(owner: string = accountId): Promise<string> {
   // Activation clears the marker it started from, so the account has to be dirty
   // for the run to publish — which is the state a real recalculation runs in.
   const dirtySince = new Date(calculatedAt.getTime() - 60_000);
   await database.instagramAccount.updateMany({
     data: { analyticsDirtySince: dirtySince },
-    where: { id: accountId, workspaceId: developmentWorkspace.id },
+    where: { id: owner, workspaceId: developmentWorkspace.id },
   });
 
-  const inputs = await loadAnalyticsInputs(database, context, inputRequest());
-  const families = buildFeatureRequests(inputRequest(), inputs);
+  const inputs = await loadAnalyticsInputs(database, context, inputRequest(owner));
+  const families = buildFeatureRequests(inputRequest(owner), inputs);
   const run = await startAnalyticsRun(database, context, {
     ageWindow: "day_30",
     analysisCount: inputs.posts.length,
     inputFingerprint: "c".repeat(64),
-    instagramAccountId: accountId,
+    instagramAccountId: owner,
     now: calculatedAt,
     publishedFrom,
     publishedTo,
@@ -333,7 +333,7 @@ async function publishCalculation(): Promise<string> {
     dirtySince,
     expectedStatisticCount: expected,
     inputFingerprint: "c".repeat(64),
-    instagramAccountId: accountId,
+    instagramAccountId: owner,
     now: calculatedAt,
     runId: run.id,
   });
@@ -345,6 +345,25 @@ async function publishCalculation(): Promise<string> {
 async function seedComparableAccount(): Promise<void> {
   await seedComparablePosts(accountId);
   await publishCalculation();
+}
+
+/**
+ * Two accounts with history, then every calculation the scheduler would run.
+ *
+ * The per-account runs publish first because activation is what clears an
+ * account's debounce marker, and a pooled request is refused while any account
+ * it pools is owed a recalculation. That is the order the scheduler produces,
+ * and seeding the pooled run alone would leave both accounts permanently dirty —
+ * a state the product never actually reaches.
+ */
+async function seedPooledWorkspace(): Promise<string> {
+  const second = await createAccount("haydenrichardsonn");
+  await seedComparablePosts(accountId);
+  await seedComparablePosts(second);
+  await publishCalculation(accountId);
+  await publishCalculation(second);
+  await publishPooledCalculation();
+  return second;
 }
 
 async function seedComparablePosts(owner: string): Promise<void> {
@@ -820,10 +839,7 @@ describe("reading a strategy from another workspace", () => {
  */
 describe("pooling every linked account", () => {
   it("draws its evidence from the posts of every account, not the first", async () => {
-    const second = await createAccount("haydenrichardsonn");
-    await seedComparablePosts(accountId);
-    await seedComparablePosts(second);
-    await publishPooledCalculation();
+    await seedPooledWorkspace();
 
     const loaded = await loadStrategyEvidenceCandidates(database, context, {
       formatEmphasis: [],
@@ -849,10 +865,7 @@ describe("pooling every linked account", () => {
   });
 
   it("freezes a generation that belongs to no account and names the workspace as its resource", async () => {
-    const second = await createAccount("haydenrichardsonn");
-    await seedComparablePosts(accountId);
-    await seedComparablePosts(second);
-    await publishPooledCalculation();
+    await seedPooledWorkspace();
 
     const outcome = await requestStrategyGeneration(
       database,
@@ -879,11 +892,7 @@ describe("pooling every linked account", () => {
   });
 
   it("keeps a pooled request and an account's apart over the same evidence", async () => {
-    const second = await createAccount("haydenrichardsonn");
-    await seedComparablePosts(accountId);
-    await seedComparablePosts(second);
-    await publishCalculation();
-    await publishPooledCalculation();
+    await seedPooledWorkspace();
 
     const pooled = await requestStrategyGeneration(
       database,
@@ -908,8 +917,22 @@ describe("pooling every linked account", () => {
     // The account's own calculation is ACTIVE, and it is not the pooled one. A
     // request that fell back to it would publish a strategy claiming to be about
     // every linked account while arguing from exactly one.
+    //
+    // The reason matters as much as the refusal. The counts a request reads are
+    // the run's, so a scope with no run has none — and reporting those absent
+    // counts as zero told a workspace with twelve analysed posts that it had
+    // analysed nothing, which is a different problem with a different remedy.
     await expect(
       requestStrategyGeneration(database, context, requestInput({ instagramAccountId: null })),
     ).resolves.toMatchObject({ reason: "no_active_calculation", requested: false });
+  });
+
+  it("still says nothing is analysed when nothing is", async () => {
+    // The other side of the same boundary: an empty workspace has to keep the
+    // refusal that names the first thing to do, rather than being told to wait
+    // for a calculation that has nothing to calculate.
+    await expect(
+      requestStrategyGeneration(database, context, requestInput({ instagramAccountId: null })),
+    ).resolves.toMatchObject({ reason: "no_analysed_posts", requested: false });
   });
 });

@@ -561,11 +561,14 @@ function ScopePicker({ snapshot }: Readonly<{ snapshot: StrategySnapshot }>) {
 
   const choosable = snapshot.accounts.length > 1 || snapshot.pooledAvailable;
 
+  // No heading, which is the trends scope line's arrangement and is deliberate
+  // twice over. The select carries its own label, so nothing here needs a
+  // heading to be reachable; and the level-two headings on this screen are the
+  // strategy's own sections, whose order is an acceptance criterion — decisions
+  // lead, caveats close. A heading here would sit inside that sequence and say
+  // something that is not one of them.
   return (
-    <section aria-labelledby="strategy-scope-heading" className="strategy-scope">
-      <h2 className="visually-hidden" id="strategy-scope-heading">
-        Which accounts this strategy is about
-      </h2>
+    <div className="strategy-scope">
       <p className="strategy-scope__line">
         <span className="strategy-scope__account">Showing {label}</span>
         {snapshot.accountDefaulted && choosable ? (
@@ -599,7 +602,7 @@ function ScopePicker({ snapshot }: Readonly<{ snapshot: StrategySnapshot }>) {
           </button>
         </form>
       ) : null}
-    </section>
+    </div>
   );
 }
 
