@@ -28,6 +28,12 @@ export const geminiResponseClasses = [
   "safety_blocked",
   "timeout",
   "transient",
+  // A response that ran out of output budget before it finished. Separate from
+  // `no_candidate` because the two need opposite responses: an empty candidate
+  // may succeed on a retry, and a truncated one will hit the same ceiling every
+  // time until the ceiling moves. Collapsing them told a reader to ask again
+  // when asking again could not work.
+  "truncated",
 ] as const;
 
 export type GeminiResponseClass = (typeof geminiResponseClasses)[number];

@@ -42,6 +42,7 @@ describe("toJobFailure", () => {
     ["file_failed", "TRANSIENT", "ANALYSIS_PROVIDER_FILE_FAILED"],
     ["safety_blocked", "SEMANTIC_OUTPUT", "ANALYSIS_RESPONSE_BLOCKED"],
     ["no_candidate", "SEMANTIC_OUTPUT", "ANALYSIS_RESPONSE_EMPTY"],
+    ["truncated", "SEMANTIC_OUTPUT", "ANALYSIS_RESPONSE_TRUNCATED"],
     ["authorisation", "UNKNOWN", "ANALYSIS_PROVIDER_UNAUTHORISED"],
     ["invalid_request", "INVALID_INPUT", "ANALYSIS_REQUEST_REJECTED"],
   ] as const)("maps a %s response to %s", (responseClass, errorClass, errorCode) => {
@@ -95,7 +96,7 @@ describe("toJobFailure", () => {
     ).not.toBe("CREDENTIAL");
   });
 
-  it.each(["safety_blocked", "no_candidate"] as const)(
+  it.each(["safety_blocked", "no_candidate", "truncated"] as const)(
     "stops retrying a %s response rather than paying to re-read the video",
     (responseClass) => {
       // SEMANTIC_OUTPUT gets two attempts, not eight. A blocked or empty

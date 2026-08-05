@@ -106,6 +106,14 @@ export function toJobFailure(error: GeminiError): JobHandlerFailure {
         errorClass: "SEMANTIC_OUTPUT",
         errorCode: "ANALYSIS_RESPONSE_EMPTY",
       });
+    case "truncated":
+      // Retrying reruns the same request against the same ceiling, so this
+      // needs a person to raise `GEMINI_MAX_OUTPUT_TOKENS` rather than another
+      // attempt. It is kept apart from an empty response for that reason.
+      return new JobHandlerFailure({
+        errorClass: "SEMANTIC_OUTPUT",
+        errorCode: "ANALYSIS_RESPONSE_TRUNCATED",
+      });
     case "authorisation":
       // A project API key is not something a user can reconnect, so this is an
       // operator problem rather than a credential the product can repair.

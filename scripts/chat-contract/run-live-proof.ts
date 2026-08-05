@@ -1,5 +1,6 @@
 import { argv, env, exit } from "node:process";
 
+import { loadGeminiConfig } from "@studio-parallel/config";
 import {
   assembleChatContext,
   chatModelRequested,
@@ -121,7 +122,16 @@ async function main(): Promise<void> {
             role: "user",
           },
         ],
-        generationConfig: { maxOutputTokens: 2_048, responseMimeType: "application/json" },
+        generationConfig: {
+          // Read from configuration rather than written here. This literal was
+          // 2048, which is what an assistant turn actually ran against in
+          // production: the model spent the whole budget reasoning and returned
+          // a truncated response with no answer in it. A proof that carries its
+          // own copy of a limit proves the limit it carries, not the one that
+          // ships.
+          maxOutputTokens: loadGeminiConfig().GEMINI_CHAT_MAX_OUTPUT_TOKENS,
+          responseMimeType: "application/json",
+        },
       }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
@@ -146,6 +156,16 @@ async function main(): Promise<void> {
   console.log(`accepted in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
   console.log(`finishReason: ${candidate?.finishReason ?? "unknown"}`);
   console.log(`usage: ${JSON.stringify(body.usageMetadata)}`);
+
+  // Reported before anything is parsed, because this is the failure that
+  // actually happened: the reasoning tokens and the answer share one ceiling,
+  // and a request that hits it comes back with no answer in it.
+  if (candidate?.finishReason === "MAX_TOKENS") {
+    console.error(
+      `\nTRUNCATED: the response hit GEMINI_CHAT_MAX_OUTPUT_TOKENS (${String(loadGeminiConfig().GEMINI_CHAT_MAX_OUTPUT_TOKENS)}). Reasoning is billed against it, so raise it rather than retrying.`,
+    );
+    exit(1);
+  }
 
   const text = candidate?.content?.parts?.[0]?.text ?? "";
   let parsed: unknown;

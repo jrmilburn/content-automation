@@ -25,7 +25,7 @@ export const chatTitleMaxLength = 120;
  */
 const failureMessages: Readonly<Record<string, string>> = Object.freeze({
   INVALID_REQUEST: "This question could not be sent in a form the model accepts. Try rewording it.",
-  NO_CANDIDATE: "The answer came back incomplete, so none of it is shown. Ask again.",
+  NO_CANDIDATE: "The model returned nothing at all. Ask again.",
   QUOTA: "The assistant has reached its usage limit for now. Try again later.",
   RESPONSE_INVALID:
     "The answer did not follow the rules this product holds itself to, so it was discarded. Ask again.",
@@ -33,6 +33,11 @@ const failureMessages: Readonly<Record<string, string>> = Object.freeze({
   SAFETY_BLOCKED: "The model declined to answer this one. Try asking it a different way.",
   TIMEOUT: "The answer took longer than the assistant waits. Ask again.",
   TRANSIENT: "The assistant could not be reached. Ask again in a moment.",
+  // The one failure here that asking again cannot fix: the same request meets
+  // the same ceiling every time. Saying "ask again" would send a reader round a
+  // loop that has no exit, so this one names the setting instead.
+  TRUNCATED:
+    "The answer ran out of room before it was written. Asking again will hit the same limit — GEMINI_CHAT_MAX_OUTPUT_TOKENS needs raising.",
 });
 
 export const chatFallbackFailureMessage =
