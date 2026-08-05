@@ -178,12 +178,30 @@ describe("weak directional signal", () => {
     ).toBe("weak_directional_signal");
   });
 
-  it("stays weak when one campaign dominates an otherwise supported group", () => {
-    const result = calculateFeatureStatistic(supported({ groupDominatedByCampaign: true }));
+  it("stays weak when one source dominates an otherwise supported comparison", () => {
+    const result = calculateFeatureStatistic(supported({ dominatedByOneSource: true }));
 
     expect(result).toMatchObject({
       classification: "weak_directional_signal",
-      reason: "campaign_dominates_group",
+      reason: "one_source_dominates_sample",
+    });
+  });
+
+  it("demotes a dominated comparison that would only have been moderate", () => {
+    // The demotion is decided before any strength class, so it does not depend
+    // on the comparison having been large enough to reach the supported one.
+    const result = calculateFeatureStatistic(
+      supported({
+        comparison: values(12, 0.1),
+        distinctPublicationWeeks: 3,
+        dominatedByOneSource: true,
+        group: values(8, 0.2),
+      }),
+    );
+
+    expect(result).toMatchObject({
+      classification: "weak_directional_signal",
+      reason: "one_source_dominates_sample",
     });
   });
 });
@@ -212,6 +230,26 @@ describe("moderate association", () => {
       classification: "moderate_association",
       reason: "multiple_testing_rejected",
     });
+  });
+
+  it("caps a comparison whose observations cluster, however strong it looks", () => {
+    // The interval this class is gated on resamples independently, so over
+    // clustered observations it is narrower than the data earns.
+    const result = calculateFeatureStatistic(supported({ observationsClusterBySource: true }));
+
+    expect(result).toMatchObject({
+      classification: "moderate_association",
+      reason: "interval_ignores_clustering",
+    });
+  });
+
+  it("keeps the interval it was capped on, rather than reporting none", () => {
+    // A reader shown a capped result still has to be able to see the range the
+    // cap was applied to.
+    expect(
+      calculateFeatureStatistic(supported({ observationsClusterBySource: true })).interval
+        ?.excludesNoDifference,
+    ).toBe(true);
   });
 });
 

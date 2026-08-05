@@ -14,6 +14,7 @@ import {
   type SnapshotAgeWindowKey,
 } from "@studio-parallel/domain";
 
+import { dedupeCollaboratorPosts } from "./analytics-cohorts.js";
 import type { PrismaClient } from "./generated/prisma/client.js";
 import type { FeatureComparisonCandidate, FeatureStatisticRequest } from "./feature-statistics.js";
 import {
@@ -39,6 +40,12 @@ import type { WorkspaceContext } from "./workspace-context.js";
  * The metric value comes through the same selection and the same formula as
  * every cohort read, so a feature comparison and a baseline comparison cannot
  * disagree about what a post scored.
+ *
+ * A request naming no account pools every linked account, which buys sample size
+ * at the cost of two things this module has to handle: a collaborator post exists
+ * once per account and would otherwise be counted twice, and `engagement_count`
+ * is a raw count whose median across accounts of different size describes which
+ * account published rather than what the post did.
  */
 
 /** Posts one recalculation will read. Bounds the work at v1 volume. */
@@ -88,6 +95,8 @@ export const analyticsFeatures: readonly AnalyticsFeature[] = Object.freeze([
 export type AnalyticsInputPost = Readonly<{
   /** Feature path to the value the analysis reported, absent when unknown. */
   features: ReadonlyMap<string, string>;
+  /** The account that published it, which a pooled comparison judges balance by. */
+  instagramAccountId: string;
   /** Derived metric to the post's value, absent when the metric is unavailable. */
   metricValues: ReadonlyMap<DerivedMetric, number>;
   postAnalysisId: string;
@@ -106,7 +115,8 @@ export type AnalyticsInputSet = Readonly<{
 
 export type AnalyticsInputRequest = Readonly<{
   ageWindow: SnapshotAgeWindowKey;
-  instagramAccountId: string;
+  /** One account, or absent to pool every linked account in the workspace. */
+  instagramAccountId?: string;
   publishedFrom: Date;
   publishedTo: Date;
 }>;
@@ -120,6 +130,8 @@ const emptyAnalyticsInputSet: AnalyticsInputSet = Object.freeze({
 type AnalyticsPostRow = Readonly<{
   currentAnalysis: (AnalysisFeatureRow & Readonly<{ id: string }>) | null;
   id: string;
+  instagramAccountId: string;
+  providerMediaId: string;
   publishedAt: Date;
 }>;
 
@@ -132,13 +144,16 @@ type AnalyticsSnapshotRow = Parameters<typeof readInstagramSnapshotObservations>
  * Only posts carrying a current analysis marked analytics-eligible are read. An
  * analysis the model was not confident enough to group by is excluded here
  * rather than filtered later, so it never reaches a comparison at all.
+ *
+ * Pooled, the same reel can arrive twice — once under each collaborating
+ * account — and is deduped before anything counts it.
  */
 async function readAnalyticsPosts(
   database: PrismaClient,
   context: WorkspaceContext,
   request: Omit<AnalyticsInputRequest, "ageWindow">,
 ): Promise<readonly AnalyticsPostRow[]> {
-  return database.instagramPost.findMany({
+  const posts = await database.instagramPost.findMany({
     orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
     select: {
       currentAnalysis: {
@@ -153,16 +168,22 @@ async function readAnalyticsPosts(
         },
       },
       id: true,
+      instagramAccountId: true,
+      providerMediaId: true,
       publishedAt: true,
     },
     take: analyticsPostLimit,
     where: {
       currentAnalysis: { analyticsEligible: true },
-      instagramAccountId: request.instagramAccountId,
+      ...(request.instagramAccountId === undefined
+        ? {}
+        : { instagramAccountId: request.instagramAccountId }),
       publishedAt: { gte: request.publishedFrom, lte: request.publishedTo },
       workspaceId: context.workspaceId,
     },
   });
+
+  return request.instagramAccountId === undefined ? dedupeCollaboratorPosts(posts) : posts;
 }
 
 async function readAnalyticsSnapshots(
@@ -260,6 +281,7 @@ function measureAnalyticsInputs(
     measured.push(
       Object.freeze({
         features,
+        instagramAccountId: post.instagramAccountId,
         metricValues,
         postAnalysisId: analysis.id,
         postId: post.id,
@@ -371,8 +393,17 @@ export function buildFeatureRequests(
   inputs: AnalyticsInputSet,
 ): readonly FeatureStatisticRequest[] {
   const requests: FeatureStatisticRequest[] = [];
+  const pooled = request.instagramAccountId === undefined;
 
   for (const metric of derivedMetrics) {
+    // Pooled, `engagement_count` is not asked at all. It is the one derived
+    // metric with no denominator, so an account with ten times the audience
+    // contributes ten times the value for identical work and the comparison
+    // measures which account published rather than what the post did. Every
+    // other metric divides by the post's own reach or watch time, and survives
+    // pooling.
+    if (pooled && metric === "engagement_count") continue;
+
     const measured = inputs.posts.filter((post) => post.metricValues.has(metric));
     if (measured.length === 0) continue;
 
@@ -415,7 +446,9 @@ export function buildFeatureRequests(
       Object.freeze({
         ageWindow: request.ageWindow,
         candidates: Object.freeze(candidates),
-        instagramAccountId: request.instagramAccountId,
+        ...(request.instagramAccountId === undefined
+          ? {}
+          : { instagramAccountId: request.instagramAccountId }),
         metric,
         metricIsCount: derivedMetricDefinitions[metric].unit === "count",
         publishedFrom: request.publishedFrom,
@@ -429,6 +462,7 @@ export function buildFeatureRequests(
 
 function observe(post: AnalyticsInputPost, metric: DerivedMetric) {
   return Object.freeze({
+    instagramAccountId: post.instagramAccountId,
     instagramPostId: post.postId,
     metricSnapshotId: post.snapshotId,
     postAnalysisId: post.postAnalysisId,

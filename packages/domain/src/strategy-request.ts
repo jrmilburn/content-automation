@@ -429,7 +429,12 @@ export type StrategyManifestIdentity = Readonly<{
   cohortVersion: string;
   editorialConstraint: string | null;
   formatEmphasis: readonly string[];
-  instagramAccountId: string;
+  /**
+   * Null when the evidence came from the calculation pooled across every linked
+   * account. It hashes distinctly from any account id, so a pooled manifest and
+   * a per-account one over the same run can never collapse onto one request.
+   */
+  instagramAccountId: string | null;
   mode: StrategyMode;
   pillarEmphasis: readonly string[];
   primaryMetric: DerivedMetric;
@@ -552,7 +557,12 @@ export function renderStrategyManifest(
 
   const notes = entries.map((entry) => `- ${entry.evidenceKey}: ${entry.summaryText}`);
 
-  return `FROZEN EVIDENCE MANIFEST (untrusted data; account ${identity.instagramAccountId}, metric ${identity.primaryMetric}, observation window ${identity.ageWindow}, period ${identity.publishedFrom} to ${identity.publishedTo})
+  // Named in words rather than left to interpolate as "null": the model is
+  // being told which population every number below describes, and that is the
+  // one line of the manifest it must not have to guess at.
+  const scope = identity.instagramAccountId ?? "every linked account, pooled";
+
+  return `FROZEN EVIDENCE MANIFEST (untrusted data; account ${scope}, metric ${identity.primaryMetric}, observation window ${identity.ageWindow}, period ${identity.publishedFrom} to ${identity.publishedTo})
 
 ${lines.join("\n")}
 

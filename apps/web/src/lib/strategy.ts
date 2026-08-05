@@ -6,6 +6,7 @@ import type {
 import {
   derivedMetrics,
   presentMetric,
+  type AnalyticsScope,
   type DerivedMetric,
   type StrategyEvidenceClass,
   type StrategyMode,
@@ -22,6 +23,12 @@ import {
  * Language is fixed rather than composed. "Appears associated in this account"
  * and "creative proposal" are the contract's terms, and paraphrasing them would
  * let a proposal read as a finding.
+ *
+ * The one thing that does vary is who a claim is about. A strategy argues from
+ * one analytics run, and that run measured either a single account or every
+ * linked account pooled — so wherever the contract's term names a population,
+ * it is stored per scope rather than once. The scope comes from the stored
+ * generation, never from whichever account the reader happens to be looking at.
  */
 
 export const strategySections = [
@@ -58,7 +65,7 @@ export const strategySectionEmptyText: Readonly<Record<StrategySectionKey, strin
     pillars: "No allocation was proposed for this period.",
     recommendations: "No videos were proposed.",
     tests: "No experiments were proposed.",
-    weak: "Nothing was identified as working against this account in this period.",
+    weak: "Nothing was identified as working against the measured history in this period.",
     working:
       "Nothing reached the evidence needed to call it a working pattern. That is not a finding that nothing works.",
   },
@@ -69,9 +76,16 @@ export const strategySectionEmptyText: Readonly<Record<StrategySectionKey, strin
  *
  * Taken verbatim from the capability's terminology. A creative proposal is
  * never described in the language of evidence, however confident it sounds.
+ *
+ * Two of the terms name the population they hold in, so those two are stored
+ * per scope. A badge reading "Appears associated in this account" over a claim
+ * drawn from every linked account pooled would be a false statement in the
+ * shortest, most quotable string on the screen.
  */
-export const strategyClassificationLabels: Readonly<Record<StrategyEvidenceClass, string>> =
-  Object.freeze({
+const classificationLabels: Readonly<
+  Record<AnalyticsScope, Readonly<Record<StrategyEvidenceClass, string>>>
+> = Object.freeze({
+  account: Object.freeze({
     creative_recommendation: "Creative proposal",
     insufficient_evidence: "Insufficient evidence",
     moderate_association: "Appears associated in this account",
@@ -79,7 +93,34 @@ export const strategyClassificationLabels: Readonly<Record<StrategyEvidenceClass
     statistically_supported_association: "Statistically supported in this account",
     unsupported: "Unsupported",
     weak_directional_signal: "Directional signal",
-  });
+  }),
+  pooled: Object.freeze({
+    creative_recommendation: "Creative proposal",
+    insufficient_evidence: "Insufficient evidence",
+    moderate_association: "Appears associated across the linked accounts",
+    single_post_outlier: "Single-post outlier",
+    statistically_supported_association: "Statistically supported across the linked accounts",
+    unsupported: "Unsupported",
+    weak_directional_signal: "Directional signal",
+  }),
+});
+
+export function strategyClassificationLabel(
+  classification: StrategyEvidenceClass,
+  scope: AnalyticsScope,
+): string {
+  return classificationLabels[scope][classification];
+}
+
+/**
+ * Whose history a stored strategy argued from.
+ *
+ * Read off the generation rather than off the screen's selected account: the
+ * two can disagree, and the generation is the one that was measured.
+ */
+export function strategyScope(instagramAccountId: string | null): AnalyticsScope {
+  return instagramAccountId === null ? "pooled" : "account";
+}
 
 export type StrategyTone = "danger" | "information" | "success" | "warning";
 
@@ -109,12 +150,25 @@ export const strategyModeLabels: Readonly<Record<StrategyMode, string>> = Object
  * An exploratory strategy has to say so before anything it proposes is read,
  * because its proposals look exactly like an evidence-led one's.
  */
-export const strategyModeDescriptions: Readonly<Record<StrategyMode, string>> = Object.freeze({
-  evidence_led:
-    "Built from this account's measured comparisons. Every empirical claim links to the evidence behind it.",
-  exploratory:
-    "Built with less evidence than an evidence-led strategy requires. Nothing here is a supported finding; it proposes experiments and data to collect.",
-});
+const modeDescriptions: Readonly<Record<AnalyticsScope, Readonly<Record<StrategyMode, string>>>> =
+  Object.freeze({
+    account: Object.freeze({
+      evidence_led:
+        "Built from this account's measured comparisons. Every empirical claim links to the evidence behind it.",
+      exploratory:
+        "Built with less evidence than an evidence-led strategy requires. Nothing here is a supported finding; it proposes experiments and data to collect.",
+    }),
+    pooled: Object.freeze({
+      evidence_led:
+        "Built from comparisons measured across every linked account together, so nothing here is a finding about one of them. Every empirical claim links to the evidence behind it.",
+      exploratory:
+        "Built across every linked account together, with less evidence than an evidence-led strategy requires. Nothing here is a supported finding; it proposes experiments and data to collect.",
+    }),
+  });
+
+export function strategyModeDescription(mode: StrategyMode, scope: AnalyticsScope): string {
+  return modeDescriptions[scope][mode];
+}
 
 export function strategyDetailHref(strategyId: string): string {
   return `/strategy/${strategyId}`;

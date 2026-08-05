@@ -27,6 +27,11 @@ import type { WorkspaceContext } from "./workspace-context.js";
  * any of them again in a request would produce a number the stored evidence
  * cannot account for.
  *
+ * A run is scoped either to one account or to every linked account pooled, and
+ * `instagramAccountId` carries that scope on the way out as well as in: the two
+ * measure different populations, so a screen that could not tell them apart
+ * would have no way to caption its own figures honestly.
+ *
  * Decimals cross the boundary as numbers and dates as ISO strings, matching the
  * post list, so a caller cannot depend on a `Prisma.Decimal` or a `Date`
  * surviving serialisation into a client component.
@@ -38,7 +43,13 @@ export const trendPageSize = 200;
 export type TrendListFilters = Readonly<{
   confidence?: ConfidenceClass;
   featurePath?: string;
-  instagramAccountId?: string;
+  /**
+   * Which calculation to read: an id reads that account's, `null` reads the one
+   * pooled across every linked account, and an absent key reads nothing. The
+   * three are kept apart because "no scope was resolved" is a caller bug, not a
+   * request for the pooled set.
+   */
+  instagramAccountId?: string | null;
   /** Set when a supplied filter value was invalid, so the result is empty. */
   matchesNothing?: boolean;
   metric?: DerivedMetric;
@@ -50,6 +61,8 @@ export type TrendCalculation = Readonly<{
   analyticsVersion: string;
   durationMs: number | null;
   id: string;
+  /** Null when the run pooled every linked account rather than measuring one. */
+  instagramAccountId: string | null;
   publishedFrom: string;
   publishedTo: string;
   /** Posts the run read. Not the number of trends it produced. */
@@ -147,6 +160,7 @@ const runSelect = {
   analyticsVersion: true,
   durationMs: true,
   id: true,
+  instagramAccountId: true,
   publishedFrom: true,
   publishedTo: true,
   statisticCount: true,
@@ -154,11 +168,12 @@ const runSelect = {
 } as const;
 
 /**
- * Loads the trends of an account's published calculation.
+ * Loads the trends of one published calculation, per the requested scope.
  *
  * Returns a null calculation rather than throwing when nothing has been
- * published. A newly connected account genuinely has no statistics, and that is
- * a state the screen has to explain rather than an error it should report.
+ * published. A newly connected account genuinely has no statistics, and a
+ * workspace whose pooled run has not landed yet is in the same position; both
+ * are states the screen has to explain rather than errors it should report.
  */
 export async function loadAccountTrends(
   database: PrismaClient,
@@ -167,17 +182,14 @@ export async function loadAccountTrends(
 ): Promise<TrendList> {
   const generatedAt = new Date().toISOString();
 
-  if (filters.matchesNothing || !filters.instagramAccountId) {
+  const scope = filters.instagramAccountId;
+  if (filters.matchesNothing || scope === undefined || (scope !== null && !isUuidV7(scope))) {
     return Object.freeze({ calculation: null, generatedAt, trends: Object.freeze([]) });
   }
 
   const run = await database.accountAnalyticsRun.findFirst({
     select: runSelect,
-    where: {
-      instagramAccountId: filters.instagramAccountId,
-      state: "ACTIVE",
-      workspaceId: context.workspaceId,
-    },
+    where: { instagramAccountId: scope, state: "ACTIVE", workspaceId: context.workspaceId },
   });
 
   if (run === null || run.activatedAt === null) {
@@ -218,17 +230,14 @@ export async function loadAccountTrends(
 export async function loadTrendDetail(
   database: PrismaClient,
   context: WorkspaceContext,
-  input: Readonly<{ instagramAccountId: string; statisticId: string }>,
+  input: Readonly<{ instagramAccountId: string | null; statisticId: string }>,
 ): Promise<TrendDetail | null> {
-  if (!isUuidV7(input.statisticId) || !isUuidV7(input.instagramAccountId)) return null;
+  const scope = input.instagramAccountId;
+  if (!isUuidV7(input.statisticId) || (scope !== null && !isUuidV7(scope))) return null;
 
   const run = await database.accountAnalyticsRun.findFirst({
     select: runSelect,
-    where: {
-      instagramAccountId: input.instagramAccountId,
-      state: "ACTIVE",
-      workspaceId: context.workspaceId,
-    },
+    where: { instagramAccountId: scope, state: "ACTIVE", workspaceId: context.workspaceId },
   });
 
   if (run === null || run.activatedAt === null) return null;
@@ -246,9 +255,12 @@ export async function loadTrendDetail(
     where: { statisticId: input.statisticId, workspaceId: context.workspaceId },
   });
 
-  // One query for the page rather than one per contributor, and scoped to the
-  // account as well as the workspace: a membership row names a post id, and a
-  // detail screen must not become a way to read a post from elsewhere.
+  // One query for the page rather than one per contributor, and bounded by the
+  // scope the statistic was measured under: a membership row names a post id,
+  // and a detail screen must not become a way to read a post from elsewhere. A
+  // pooled statistic drops the account bound rather than widening it — its
+  // cohort was drawn across the workspace's accounts, so the workspace is the
+  // same bound the calculation itself used.
   //
   // Captions are provider text. This screen's stated purpose is to let an
   // authorised same-workspace user inspect the posts behind a claim, so it opts
@@ -257,7 +269,7 @@ export async function loadTrendDetail(
     select: { caption: true, id: true, permalink: true, publishedAt: true },
     where: {
       id: { in: members.map((member) => member.instagramPostId) },
-      instagramAccountId: input.instagramAccountId,
+      ...(scope === null ? {} : { instagramAccountId: scope }),
       workspaceId: context.workspaceId,
     },
   });
@@ -293,9 +305,9 @@ export async function loadTrendDetail(
 export async function listTrendFeaturePaths(
   database: PrismaClient,
   context: WorkspaceContext,
-  instagramAccountId: string,
+  instagramAccountId: string | null,
 ): Promise<readonly string[]> {
-  if (!isUuidV7(instagramAccountId)) return Object.freeze([]);
+  if (instagramAccountId !== null && !isUuidV7(instagramAccountId)) return Object.freeze([]);
 
   const run = await database.accountAnalyticsRun.findFirst({
     select: { id: true },
@@ -314,6 +326,31 @@ export async function listTrendFeaturePaths(
   });
 
   return Object.freeze(rows.map((row) => row.featurePath));
+}
+
+/**
+ * The scopes a workspace has a published calculation for; null is the pooled one.
+ *
+ * A screen has to know this before it reads anything, because the scope it
+ * offers and the scope it defaults to are decisions it cannot make from an
+ * empty result: "no pooled calculation has run yet" and "the pooled calculation
+ * found nothing" would otherwise arrive as the same empty list.
+ */
+export async function listPublishedTrendScopes(
+  database: PrismaClient,
+  context: WorkspaceContext,
+): Promise<readonly (string | null)[]> {
+  const runs = await database.accountAnalyticsRun.findMany({
+    orderBy: { instagramAccountId: "asc" },
+    select: { instagramAccountId: true },
+    where: {
+      activatedAt: { not: null },
+      state: "ACTIVE",
+      workspaceId: context.workspaceId,
+    },
+  });
+
+  return Object.freeze(runs.map((run) => run.instagramAccountId));
 }
 
 export function isConfidenceClass(value: string): value is ConfidenceClass {
@@ -343,6 +380,7 @@ function toCalculation(
     analyticsVersion: run.analyticsVersion,
     durationMs: run.durationMs,
     id: run.id,
+    instagramAccountId: run.instagramAccountId,
     publishedFrom: run.publishedFrom.toISOString(),
     publishedTo: run.publishedTo.toISOString(),
     statisticCount: run.statisticCount,

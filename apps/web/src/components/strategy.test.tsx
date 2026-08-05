@@ -18,6 +18,8 @@ vi.mock("./strategy-request-control", () => ({
 
 const { StrategyReport, StrategyScreen } = await import("./strategy");
 
+const accountId = "019a0000-0000-7000-8000-000000000301";
+
 function summary(overrides: Partial<StrategySummary> = {}): StrategySummary {
   return {
     analysedPostCount: 24,
@@ -26,7 +28,7 @@ function summary(overrides: Partial<StrategySummary> = {}): StrategySummary {
     failureCode: null,
     generatedAt: "2026-08-04T02:00:00.000Z",
     id: "019a0000-0000-7000-8000-0000000005a1",
-    instagramAccountId: "019a0000-0000-7000-8000-000000000301",
+    instagramAccountId: accountId,
     mode: "evidence_led",
     primaryMetric: "engagement_rate_reach",
     publicationWeekCount: 9,
@@ -164,7 +166,7 @@ function detail(overrides: Partial<StrategyDetail> = {}): StrategyDetail {
 
 function snapshot(overrides: Partial<StrategySnapshot> = {}): StrategySnapshot {
   return {
-    accounts: [{ id: summary().instagramAccountId, label: "@studioparallel" }],
+    accounts: [{ id: accountId, label: "@studioparallel" }],
     current: detail(),
     hasAccount: true,
     history: [summary()],
@@ -178,7 +180,7 @@ function snapshot(overrides: Partial<StrategySnapshot> = {}): StrategySnapshot {
       publishedTo: "2026-08-04T00:00:00.000Z",
       reason: null,
     },
-    selectedAccountId: summary().instagramAccountId,
+    selectedAccountId: accountId,
     ...overrides,
   };
 }
@@ -213,6 +215,20 @@ describe("StrategyReport", () => {
 
     expect(within(claim).getByText("Appears associated in this account")).toBeTruthy();
     expect(within(claim).getByText("12 posts")).toBeTruthy();
+  });
+
+  it("never calls a pooled strategy's claim this account's", () => {
+    // A strategy keeps the scope of the run it argued from wherever it is later
+    // read, and the badge is the shortest, most quotable string on the screen.
+    render(<StrategyReport detail={detail({ summary: summary({ instagramAccountId: null }) })} />);
+
+    const claim = screen.getByRole("article", {
+      name: /Question hooks appear associated/u,
+    });
+
+    expect(within(claim).getByText("Appears associated across the linked accounts")).toBeTruthy();
+    expect(screen.getByText("Every linked account, pooled into one calculation")).toBeTruthy();
+    expect(screen.queryByText(/Built from this account's measured comparisons/u)).toBeNull();
   });
 
   it("calls a recommendation a creative proposal, never a finding", () => {

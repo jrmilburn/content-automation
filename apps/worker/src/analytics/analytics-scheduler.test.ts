@@ -14,8 +14,27 @@ vi.mock("@studio-parallel/db", () => ({
   listAccountsDueForAnalytics: (...args: unknown[]) => listAccountsDueForAnalytics(...args),
 }));
 
-const { analyticsRecalculateKey, createAnalyticsScheduler } =
+const { analyticsRecalculateKey, createAnalyticsScheduler, pooledAnalyticsRecalculateKey } =
   await import("./analytics-scheduler.js");
+
+type EnqueueInput = Readonly<{ idempotencyKey: string; resourceId: string; resourceType: string }>;
+
+/** Only the fields that say what was scheduled, so equality can be exact. */
+function enqueuedJobs(): readonly EnqueueInput[] {
+  return enqueueBackgroundJob.mock.calls.map((call) => {
+    const input = call[2] as EnqueueInput;
+
+    return {
+      idempotencyKey: input.idempotencyKey,
+      resourceId: input.resourceId,
+      resourceType: input.resourceType,
+    };
+  });
+}
+
+function pooledJobs(): readonly EnqueueInput[] {
+  return enqueuedJobs().filter((job) => job.resourceType === "workspace");
+}
 
 const dirtySince = new Date("2026-08-03T06:00:00.000Z");
 
@@ -53,8 +72,9 @@ describe("createAnalyticsScheduler", () => {
 
     const { scheduler } = createScheduler(() => new Date("2026-08-03T06:10:00.000Z"));
 
-    await expect(scheduler.sweep()).resolves.toBe(2);
-    expect(enqueueBackgroundJob).toHaveBeenCalledTimes(2);
+    // Two accounts in two workspaces: a per-account job each, and a pooled job
+    // for each workspace they belong to.
+    await expect(scheduler.sweep()).resolves.toBe(4);
     expect(enqueueBackgroundJob.mock.calls[0]?.[1]).toEqual({ workspaceId });
     expect(enqueueBackgroundJob.mock.calls[0]?.[2]).toMatchObject({
       queueName: "analytics.recalculate",
@@ -70,13 +90,13 @@ describe("createAnalyticsScheduler", () => {
 
     const { scheduler } = createScheduler(() => new Date("2026-08-03T06:10:00.000Z"));
     await scheduler.sweep();
-    const first = enqueueBackgroundJob.mock.calls[0]?.[2] as { idempotencyKey: string };
+    const first = enqueuedJobs();
 
     const later = createScheduler(() => new Date("2026-08-03T06:20:00.000Z"));
     await later.scheduler.sweep();
-    const second = enqueueBackgroundJob.mock.calls[1]?.[2] as { idempotencyKey: string };
+    const second = enqueuedJobs().slice(first.length);
 
-    expect(second.idempotencyKey).toBe(first.idempotencyKey);
+    expect(second.map((job) => job.idempotencyKey)).toEqual(first.map((job) => job.idempotencyKey));
   });
 
   it("earns a new job when a later change moves the anchor", async () => {
@@ -114,8 +134,85 @@ describe("createAnalyticsScheduler", () => {
 
     const { errorMonitor, scheduler } = createScheduler(() => new Date("2026-08-03T06:10:00.000Z"));
 
-    await expect(scheduler.sweep()).resolves.toBe(1);
+    await expect(scheduler.sweep()).resolves.toBe(3);
     expect(errorMonitor.captureException).toHaveBeenCalledTimes(1);
+  });
+
+  it("schedules a pooled run alongside the account's", async () => {
+    // The pooled scope has no marker of its own, so one dirty account is what
+    // makes its workspace due.
+    listAccountsDueForAnalytics.mockResolvedValue([dueAccount()]);
+
+    const { scheduler } = createScheduler(() => new Date("2026-08-03T06:10:00.000Z"));
+
+    await expect(scheduler.sweep()).resolves.toBe(2);
+    expect(pooledJobs()).toEqual([
+      {
+        idempotencyKey: pooledAnalyticsRecalculateKey(workspaceId, dirtySince),
+        resourceId: workspaceId,
+        resourceType: "workspace",
+      },
+    ]);
+    expect(enqueueBackgroundJob.mock.calls[1]?.[1]).toEqual({ workspaceId });
+  });
+
+  it("names the pooled job in the form the job store accepts", async () => {
+    // The enqueue is mocked here, so a key or a resource type the store would
+    // reject has nothing else to catch it before production.
+    listAccountsDueForAnalytics.mockResolvedValue([dueAccount()]);
+
+    const { scheduler } = createScheduler(() => new Date("2026-08-03T06:10:00.000Z"));
+    await scheduler.sweep();
+    const [pooled] = pooledJobs();
+
+    expect(pooled?.idempotencyKey).toMatch(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$/u);
+    expect(pooled?.resourceType).toMatch(/^[a-z][a-z0-9_]{0,63}$/u);
+  });
+
+  it("collapses a workspace's dirty accounts onto one pooled run", async () => {
+    // Two accounts, two per-account runs, one pooled run. A pooled run per dirty
+    // account would recalculate the same workspace-wide set twice.
+    const later = new Date("2026-08-03T06:04:00.000Z");
+    listAccountsDueForAnalytics.mockResolvedValue([
+      dueAccount(),
+      dueAccount({ dirtySince: later, instagramAccountId: otherAccountId }),
+    ]);
+
+    const { scheduler } = createScheduler(() => new Date("2026-08-03T06:10:00.000Z"));
+
+    await expect(scheduler.sweep()).resolves.toBe(3);
+    expect(pooledJobs()).toEqual([
+      {
+        // The newest anchor of the two, so that the later account's changes are
+        // not published under a key the earlier one already consumed.
+        idempotencyKey: pooledAnalyticsRecalculateKey(workspaceId, later),
+        resourceId: workspaceId,
+        resourceType: "workspace",
+      },
+    ]);
+  });
+
+  it("leaves per-account scheduling untouched by the pooled run", async () => {
+    listAccountsDueForAnalytics.mockResolvedValue([
+      dueAccount(),
+      dueAccount({ instagramAccountId: otherAccountId }),
+    ]);
+
+    const { scheduler } = createScheduler(() => new Date("2026-08-03T06:10:00.000Z"));
+    await scheduler.sweep();
+
+    expect(enqueuedJobs().filter((job) => job.resourceType === "instagram_account")).toEqual([
+      {
+        idempotencyKey: analyticsRecalculateKey(accountId, dirtySince),
+        resourceId: accountId,
+        resourceType: "instagram_account",
+      },
+      {
+        idempotencyKey: analyticsRecalculateKey(otherAccountId, dirtySince),
+        resourceId: otherAccountId,
+        resourceType: "instagram_account",
+      },
+    ]);
   });
 
   it("does not overlap sweeps", async () => {

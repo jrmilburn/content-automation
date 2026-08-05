@@ -5,6 +5,7 @@ import {
   createRunInputFingerprint,
   createWorkspaceContext,
   failAnalyticsRun,
+  findActiveRunFingerprint,
   loadBestAnalyticsInputs,
   runIdempotentJobHandler,
   startAnalyticsRun,
@@ -24,7 +25,13 @@ import {
 import { parseCorrelationId, type JsonLogger } from "@studio-parallel/observability";
 
 /**
- * Recalculates and publishes one account's statistics.
+ * Recalculates and publishes the statistics for one scope.
+ *
+ * A scope is either one account or every linked account pooled, and the job's
+ * resource says which. The two produce independent published sets — a pooled run
+ * never replaces a per-account one — so a reader can ask what holds for an
+ * account and what holds across the workspace and get two answers rather than a
+ * blend.
  *
  * Publication is the whole design. Every statistic is written under a `BUILDING`
  * run that no reader can see, and the run becomes `ACTIVE` in a single
@@ -47,6 +54,15 @@ export const analyticsRecalculateQueue = {
 } as const;
 
 const accountResourceType = "instagram_account";
+
+/**
+ * What a pooled job names as its resource.
+ *
+ * The debounce markers live on `instagram_accounts`, so the pooled scope has no
+ * row of its own to point at; the workspace is the only thing that identifies
+ * it.
+ */
+export const pooledResourceType = "workspace";
 
 /**
  * The windows a run may publish for, in the order they are offered.
@@ -102,6 +118,89 @@ export function createAnalyticsRecalculateHandler(
   });
 }
 
+type RecalculationScope =
+  | Readonly<{
+      /** The unprocessed change this run is measuring, and all it may clear. */
+      dirtySince: Date;
+      instagramAccountId: string;
+      kind: "account";
+    }>
+  /** Every linked account together. It owns no marker, so it carries no anchor. */
+  | Readonly<{ kind: "pooled" }>
+  /** Nothing to publish, and the reason a reader of the logs would want. */
+  | Readonly<{ kind: "skip"; reasonCode: "ALREADY_CURRENT" | "NOTHING_TO_POOL" }>;
+
+/**
+ * What the job is asking to be recalculated, and — for an account — the change
+ * that owes it.
+ *
+ * A pooled job carries the workspace rather than an account, because the
+ * debounce columns live on `instagram_accounts` and the pooled scope has no row
+ * of its own. It deliberately reads no marker at all: the markers belong to the
+ * accounts, whose own runs are enqueued by the same sweep and clear them as they
+ * publish, so a pooled run that took them as its cue would find them clear and
+ * conclude it had nothing to do. Whether it is current is settled against what
+ * it last published instead, once the inputs have been read.
+ *
+ * It does need two accounts to pool. Over one, the pooled calculation is the
+ * account's own calculation wearing a different scope — and a worse one, since
+ * every comparison then draws 100% of both sides from a single source and is
+ * demoted for it. Publishing that would give the trends screen a second scope to
+ * offer, defaulted to, on which every result reads weaker than the same numbers
+ * do on the account's own.
+ */
+async function loadScope(
+  database: DatabaseClient,
+  workspace: ReturnType<typeof createWorkspaceContext>,
+  job: Readonly<{ resourceId: string; resourceType: string | null }>,
+): Promise<RecalculationScope> {
+  if (job.resourceType === pooledResourceType) {
+    // The resource is the workspace itself. A job naming another workspace's id
+    // would be routed here by its envelope and read this workspace's accounts,
+    // so the two have to agree before anything is read.
+    if (job.resourceId !== workspace.workspaceId) {
+      throw new JobHandlerFailure({
+        errorClass: "INVALID_INPUT",
+        errorCode: "ANALYTICS_RESOURCE_INVALID",
+      });
+    }
+
+    const poolable = await database.instagramAccount.count({
+      where: { connectionStatus: "ACTIVE", workspaceId: workspace.workspaceId },
+    });
+
+    return poolable < 2
+      ? Object.freeze({ kind: "skip" as const, reasonCode: "NOTHING_TO_POOL" as const })
+      : Object.freeze({ kind: "pooled" as const });
+  }
+
+  if (job.resourceType !== accountResourceType) {
+    throw new JobHandlerFailure({
+      errorClass: "INVALID_INPUT",
+      errorCode: "ANALYTICS_RESOURCE_INVALID",
+    });
+  }
+
+  const account = await database.instagramAccount.findFirst({
+    select: { analyticsDirtySince: true, id: true },
+    where: { id: job.resourceId, workspaceId: workspace.workspaceId },
+  });
+  if (!account) {
+    throw new JobHandlerFailure({
+      errorClass: "INVALID_INPUT",
+      errorCode: "ANALYTICS_ACCOUNT_MISSING",
+    });
+  }
+
+  return account.analyticsDirtySince === null
+    ? Object.freeze({ kind: "skip" as const, reasonCode: "ALREADY_CURRENT" as const })
+    : Object.freeze({
+        dirtySince: account.analyticsDirtySince,
+        instagramAccountId: account.id,
+        kind: "account" as const,
+      });
+}
+
 async function recalculate(input: {
   dependencies: AnalyticsRecalculateDependencies;
   envelope: QueueJobEnvelope;
@@ -126,35 +225,23 @@ async function recalculate(input: {
     select: { resourceId: true, resourceType: true },
     where: { id: envelope.domainJobId, workspaceId: workspace.workspaceId },
   });
-  if (!job || job.resourceType !== accountResourceType || !job.resourceId) {
+  if (!job || !job.resourceId) {
     throw new JobHandlerFailure({
       errorClass: "INVALID_INPUT",
       errorCode: "ANALYTICS_RESOURCE_INVALID",
     });
   }
 
-  const account = await database.instagramAccount.findFirst({
-    select: { analyticsDirtySince: true, id: true },
-    where: { id: job.resourceId, workspaceId: workspace.workspaceId },
+  const scope = await loadScope(database, workspace, {
+    resourceId: job.resourceId,
+    resourceType: job.resourceType,
   });
-  if (!account) {
-    throw new JobHandlerFailure({
-      errorClass: "INVALID_INPUT",
-      errorCode: "ANALYTICS_ACCOUNT_MISSING",
-    });
-  }
 
-  // Read before the calculation and compared at activation. Clearing a marker
-  // that moved while the run was building would lose the change that arrived,
-  // so the value it started from is what activation is allowed to clear.
-  const dirtySince = account.analyticsDirtySince;
-  if (dirtySince === null) {
-    // Something else already published for this account. Repeating the work
-    // would produce the same set and collapse onto the same rows.
+  if (scope.kind === "skip") {
     logger.info("analytics.recalculate.skipped", {
       correlationId,
       jobId: envelope.domainJobId,
-      reasonCode: "ALREADY_CURRENT",
+      reasonCode: scope.reasonCode,
       stage: "loading_account",
       workspaceId: workspace.workspaceId,
     });
@@ -162,9 +249,21 @@ async function recalculate(input: {
     return Object.freeze({ commit: async () => undefined });
   }
 
+  // An absent key is the pooled scope, not a missing value, and it has to reach
+  // the reads, the run row and the activation identically — one of the three
+  // disagreeing would publish a set under a scope it was not measured for. The
+  // marker travels with the scope at activation because clearing one is only
+  // ever an account's business.
+  const accountBound =
+    scope.kind === "account" ? { instagramAccountId: scope.instagramAccountId } : {};
+  const activationBound =
+    scope.kind === "account"
+      ? { dirtySince: scope.dirtySince, instagramAccountId: scope.instagramAccountId }
+      : {};
+
   const startedAt = now();
   const window = Object.freeze({
-    instagramAccountId: account.id,
+    ...accountBound,
     publishedFrom: new Date(startedAt.getTime() - recalculationHistoryDays * 24 * 60 * 60 * 1_000),
     publishedTo: startedAt,
   });
@@ -192,11 +291,16 @@ async function recalculate(input: {
 
     return Object.freeze({
       commit: async (transaction) => {
+        // A pooled run clears nothing, for the reason activation does not: it
+        // owns no marker, and one anchor could not say which accounts' windows
+        // it had consumed anyway.
+        if (scope.kind !== "account") return;
+
         await transaction.instagramAccount.updateMany({
           data: { analyticsDirtySince: null, analyticsDueAt: null },
           where: {
-            analyticsDirtySince: dirtySince,
-            id: account.id,
+            analyticsDirtySince: scope.dirtySince,
+            id: scope.instagramAccountId,
             workspaceId: workspace.workspaceId,
           },
         });
@@ -231,6 +335,26 @@ async function recalculate(input: {
     snapshotIds: inputs.snapshotIds,
   });
 
+  // The pooled scope's answer to the question a debounce marker answers for an
+  // account: it has already published exactly these inputs, so building the run
+  // would collapse onto the rows it published last time and supersede itself for
+  // nothing. Asked here rather than up front because the fingerprint is only
+  // knowable once the inputs have been read.
+  if (
+    scope.kind === "pooled" &&
+    (await findActiveRunFingerprint(database, workspace, null)) === inputFingerprint
+  ) {
+    logger.info("analytics.recalculate.skipped", {
+      correlationId,
+      jobId: envelope.domainJobId,
+      reasonCode: "ALREADY_CURRENT",
+      stage: "reading_inputs",
+      workspaceId: workspace.workspaceId,
+    });
+
+    return Object.freeze({ commit: async () => undefined });
+  }
+
   const families = buildFeatureRequests(request, inputs);
   const expectedStatisticCount = families.reduce(
     (total, family) => total + family.candidates.length,
@@ -243,7 +367,7 @@ async function recalculate(input: {
     ageWindow: request.ageWindow,
     analysisCount: inputs.posts.length,
     inputFingerprint,
-    instagramAccountId: account.id,
+    ...accountBound,
     now: startedAt,
     publishedFrom: request.publishedFrom,
     publishedTo: request.publishedTo,
@@ -273,10 +397,9 @@ async function recalculate(input: {
     return Object.freeze({
       commit: async (transaction) => {
         const activation = await activateAnalyticsRun(transaction, workspace, {
-          dirtySince,
+          ...activationBound,
           expectedStatisticCount,
           inputFingerprint,
-          instagramAccountId: account.id,
           now: now(),
           runId: run.id,
         });

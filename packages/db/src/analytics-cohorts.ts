@@ -29,12 +29,21 @@ import type { WorkspaceContext } from "./workspace-context.js";
 /**
  * Comparable cohort queries.
  *
- * Every query is bounded three ways before it reaches the database: to the
- * workspace, to one Instagram account, and to a publication window. The
- * workspace bound is the authorisation boundary the whole data layer relies on;
- * the account bound is a correctness one, since two accounts have different
- * audiences and a median across both describes neither; and the publication bound
- * is what stops a cohort growing without limit as history accumulates.
+ * Every query is bounded to the workspace and to a publication window before it
+ * reaches the database, and optionally to one Instagram account. The workspace
+ * bound is the authorisation boundary the whole data layer relies on, and the
+ * publication bound is what stops a cohort growing without limit as history
+ * accumulates.
+ *
+ * The account bound is a question about scope rather than an absolute rule. Ten
+ * of the eleven derived metrics are per-post ratios, each divided by that post's
+ * own reach or its own watch time, so a value does not carry the size of the
+ * audience behind it and a median may honestly span accounts.
+ * `engagement_count` is the exception: a raw count, whose median across two
+ * accounts of different size measures which account published the post. So pool
+ * for a ratio, and keep the account bound whenever the metric is a count or the
+ * question is about one account's own audience — a cohort a post is compared
+ * against is usually that second thing.
  *
  * Selection reads `postAgeSeconds`, never the stored `ageBucket`. See
  * `analytics-cohorts.ts` in the domain package for why those are different
@@ -53,7 +62,8 @@ export type CohortRequest = Readonly<{
   ageWindow: SnapshotAgeWindowKey;
   /** Excluded from its own comparison when present. */
   focalPostId?: string;
-  instagramAccountId: string;
+  /** One account, or absent to pool every linked account in the workspace. */
+  instagramAccountId?: string;
   /** Restricts a `category` cohort to one versioned media category. */
   mediaCategory?: string;
   metric: DerivedMetric;
@@ -80,8 +90,32 @@ export type Cohort = Readonly<{
 
 type PostRow = Readonly<{
   id: string;
+  providerMediaId: string;
   publishedAt: Date;
 }>;
+
+/**
+ * Drops the second copy of a post two linked accounts both published.
+ *
+ * A collaborator reel is imported once under each account, as two rows carrying
+ * the same `providerMediaId`. Pooled, that is one video counted twice — in the
+ * median, in the sample size a confidence class is decided from, and in the share
+ * of a group one account is judged to have supplied. The query's ordering is
+ * total, so which copy survives is stable between runs rather than whichever the
+ * planner returned first.
+ */
+export function dedupeCollaboratorPosts<Row extends Readonly<{ providerMediaId: string }>>(
+  posts: readonly Row[],
+): readonly Row[] {
+  const seen = new Set<string>();
+
+  return posts.filter((post) => {
+    if (seen.has(post.providerMediaId)) return false;
+    seen.add(post.providerMediaId);
+
+    return true;
+  });
+}
 
 /**
  * Loads one comparison cohort.
@@ -104,12 +138,14 @@ export async function loadCohort(
   const posts = await database.instagramPost.findMany({
     orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
     // The category filter runs in SQL, so the category itself is never read back.
-    select: { id: true, publishedAt: true },
+    select: { id: true, providerMediaId: true, publishedAt: true },
     // A recent cohort is defined as the previous N eligible posts, so the bound
     // is part of its meaning rather than a page size.
     take: kind === "recent" ? recentCohortPostLimit + 1 : cohortPostLimit,
     where: {
-      instagramAccountId: request.instagramAccountId,
+      ...(request.instagramAccountId === undefined
+        ? {}
+        : { instagramAccountId: request.instagramAccountId }),
       publishedAt: { gte: publishedFrom, lte: request.publishedTo },
       workspaceId: context.workspaceId,
       ...(kind === "category" && request.mediaCategory
@@ -121,14 +157,19 @@ export async function loadCohort(
   // The focal post is removed before the recent limit is applied, so excluding it
   // does not silently shrink the comparison to nineteen posts. One extra row was
   // read above for exactly this reason.
-  const all = asMembersOfPost(posts);
+  const all = asMembersOfPost(
+    request.instagramAccountId === undefined ? dedupeCollaboratorPosts(posts) : posts,
+  );
   const eligible = request.focalPostId ? excludeFocalPost(all, request.focalPostId) : all;
   const bounded = kind === "recent" ? eligible.slice(0, recentCohortPostLimit) : eligible;
 
   const definition: CohortDefinition = Object.freeze({
     ageWindow: request.ageWindow,
     categoryValue: kind === "category" ? (request.mediaCategory ?? null) : null,
-    instagramAccountId: request.instagramAccountId,
+    // Null is the pooled scope, and it reaches the fingerprint through the
+    // definition — so a pooled cohort and an account's cohort over the same
+    // snapshots are two answers rather than one.
+    instagramAccountId: request.instagramAccountId ?? null,
     kind,
     metric: request.metric,
     publishedFrom: publishedFrom.toISOString(),

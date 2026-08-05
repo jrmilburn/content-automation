@@ -29,6 +29,11 @@ import type { WorkspaceContext } from "./workspace-context.js";
  * against every metric and reporting whichever came out strongest is exactly how
  * noise becomes a finding, so the family is the whole set generated in one pass
  * and every member is corrected against it.
+ *
+ * A request naming no account pools every linked account. Only that scope is
+ * treated with the two extra reservations below — dominance and clustering —
+ * because both are statements about drawing on several accounts, and neither can
+ * be true of a family drawn from one.
  */
 
 const confidenceColumns: Readonly<Record<ConfidenceClass, string>> = Object.freeze({
@@ -40,6 +45,8 @@ const confidenceColumns: Readonly<Record<ConfidenceClass, string>> = Object.free
 });
 
 export type FeatureObservation = Readonly<{
+  /** The account that published the post, for the pooled dominance share. */
+  instagramAccountId: string;
   instagramPostId: string;
   metricSnapshotId: string;
   postAnalysisId: string;
@@ -62,7 +69,8 @@ export type FeatureComparisonCandidate = Readonly<{
 export type FeatureStatisticRequest = Readonly<{
   ageWindow: SnapshotAgeWindowKey;
   candidates: readonly FeatureComparisonCandidate[];
-  instagramAccountId: string;
+  /** One account, or absent for every linked account pooled together. */
+  instagramAccountId?: string;
   metric: DerivedMetric;
   /** Counts support a contribution share; rates do not. */
   metricIsCount: boolean;
@@ -105,6 +113,35 @@ function missingRatioOf(candidate: FeatureComparisonCandidate): number {
 }
 
 /**
+ * Share of one side a single account may supply before the pooled result is
+ * demoted.
+ *
+ * Above this the group is that account with a feature attached: its posting
+ * habits, its audience and its feature mix all move together, and the comparison
+ * cannot separate them from the feature it claims to be about.
+ */
+export const maximumPooledSourceShare = 0.7;
+
+/** Largest share of one side that any single account supplied, 0–1. */
+function dominantSourceShare(observations: readonly FeatureObservation[]): number {
+  if (observations.length === 0) return 0;
+
+  const counts = new Map<string, number>();
+
+  for (const observation of observations) {
+    counts.set(
+      observation.instagramAccountId,
+      (counts.get(observation.instagramAccountId) ?? 0) + 1,
+    );
+  }
+
+  return Math.max(...counts.values()) / observations.length;
+}
+
+/** Stands in for the pooled scope, which has no account id to name. */
+const pooledScopeKey = "pooled";
+
+/**
  * Fingerprints exactly what produced a statistic.
  *
  * Covers the contributing posts, snapshots and analyses plus every version that
@@ -131,7 +168,11 @@ export function createStatisticFingerprint(
     statisticsVersion,
     cohortSelectionVersion,
     analysisSchemaVersion,
-    input.request.instagramAccountId,
+    // The scope, not merely the account. A pooled comparison and an account's
+    // comparison can rest on the very same posts and still classify differently,
+    // so a fingerprint blind to scope would claim two different answers were the
+    // same calculation.
+    input.request.instagramAccountId ?? pooledScopeKey,
     input.request.ageWindow,
     input.metric,
     input.candidate.featurePath,
@@ -160,6 +201,20 @@ export type CalculatedComparison = Readonly<{
 export function calculateFeatureFamily(
   request: FeatureStatisticRequest,
 ): readonly CalculatedComparison[] {
+  // Set for a pooled family only. Within one account every observation shares a
+  // source, so a dominance share would read 100% for every comparison and the
+  // clustering the cap guards against cannot arise — passing either flag there
+  // would demote perfectly sound per-account results.
+  const pooledScopeFlags = (candidate: FeatureComparisonCandidate) =>
+    request.instagramAccountId !== undefined
+      ? {}
+      : {
+          dominatedByOneSource:
+            dominantSourceShare(candidate.group) > maximumPooledSourceShare ||
+            dominantSourceShare(candidate.comparison) > maximumPooledSourceShare,
+          observationsClusterBySource: true,
+        };
+
   const build = (
     candidate: FeatureComparisonCandidate,
     survivesMultipleTesting: boolean | null,
@@ -174,6 +229,7 @@ export function calculateFeatureFamily(
       distinctPublicationWeeks: distinct(
         candidate.group.map((observation) => isoWeek(new Date(observation.publishedAt))),
       ),
+      ...pooledScopeFlags(candidate),
       group: groupValues,
       key: `${candidate.featurePath}=${candidate.featureValue}|${request.metric}|${request.ageWindow}`,
       metricIsCount: request.metricIsCount,
@@ -269,7 +325,10 @@ export async function storeFeatureStatistics(
         featurePath: entry.candidate.featurePath,
         featureValue: entry.candidate.featureValue,
         inputFingerprint: entry.fingerprint,
-        instagramAccountId: request.instagramAccountId,
+        // Explicitly null for the pooled scope. Prisma reads an `undefined`
+        // filter as no filter at all, which would let a pooled calculation
+        // collapse onto whichever account's row it happened to match.
+        instagramAccountId: request.instagramAccountId ?? null,
         metric: request.metric,
         workspaceId: context.workspaceId,
       },
@@ -292,14 +351,20 @@ export async function storeFeatureStatistics(
         data: {
           // Three relations share `workspaceId`, so Prisma requires the checked
           // input: each composite key is connected rather than set as a scalar.
-          account: {
-            connect: {
-              workspaceId_id: {
-                id: request.instagramAccountId,
-                workspaceId: context.workspaceId,
-              },
-            },
-          },
+          // The account is left unconnected for a pooled row, and the null that
+          // leaves behind is what carries the scope.
+          ...(request.instagramAccountId === undefined
+            ? {}
+            : {
+                account: {
+                  connect: {
+                    workspaceId_id: {
+                      id: request.instagramAccountId,
+                      workspaceId: context.workspaceId,
+                    },
+                  },
+                },
+              }),
           ageWindow: request.ageWindow,
           analysisSchemaVersion,
           analyticsVersion,

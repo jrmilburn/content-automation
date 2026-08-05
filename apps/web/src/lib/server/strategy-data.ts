@@ -124,6 +124,7 @@ export async function loadStrategyDetail(strategyId: string): Promise<StrategyDe
  * still covers what a reader sees.
  */
 async function testSnapshot(): Promise<StrategySnapshot> {
+  const testAccountId = "019a0000-0000-7000-8000-000000000301";
   const summary: StrategySummary = Object.freeze({
     analysedPostCount: 24,
     comparablePostCount: 20,
@@ -131,7 +132,7 @@ async function testSnapshot(): Promise<StrategySnapshot> {
     failureCode: null,
     generatedAt: "2026-08-04T02:00:00.000Z",
     id: "019a0000-0000-7000-8000-0000000005a1",
-    instagramAccountId: "019a0000-0000-7000-8000-000000000301",
+    instagramAccountId: testAccountId,
     mode: "evidence_led",
     primaryMetric: "engagement_rate_reach",
     publicationWeekCount: 9,
@@ -275,9 +276,7 @@ async function testSnapshot(): Promise<StrategySnapshot> {
   });
 
   return Object.freeze({
-    accounts: Object.freeze([
-      Object.freeze({ id: summary.instagramAccountId, label: "@studioparallel" }),
-    ]),
+    accounts: Object.freeze([Object.freeze({ id: testAccountId, label: "@studioparallel" })]),
     current: Object.freeze({
       analyticsVersion: "account-analytics-v1.0.0",
       evidence: manifest,
@@ -299,6 +298,6 @@ async function testSnapshot(): Promise<StrategySnapshot> {
       publishedTo: "2026-08-04T00:00:00.000Z",
       reason: null,
     }),
-    selectedAccountId: summary.instagramAccountId,
+    selectedAccountId: testAccountId,
   });
 }
