@@ -44,3 +44,18 @@ CREATE UNIQUE INDEX "account_analytics_runs_one_active_per_scope"
     ON "account_analytics_runs" ("workspace_id", "instagram_account_id")
     NULLS NOT DISTINCT
     WHERE "state" = 'ACTIVE';
+
+-- A strategy argues from one analytics run, so it inherits that run's scope: a
+-- strategy built on the pooled calculation is about every linked account and
+-- has no account of its own to name. Without this the read path could offer a
+-- pooled trend as evidence for a strategy that claims to be one account's,
+-- which is the same lie the trends screen is being taught not to tell.
+--
+-- No unique index on this table includes `instagram_account_id` — the identity
+-- keys are `(workspace_id, id)`, `(workspace_id, background_job_id)` and
+-- `(workspace_id, request_signature)` — so unlike the two indexes above,
+-- nothing here needs `NULLS NOT DISTINCT` to keep meaning what it says. The
+-- composite foreign key is MATCH SIMPLE and so is simply not checked for a null
+-- account, and `strategy_generations_account_requested_idx` is a lookup index
+-- where nulls grouping together is exactly what a pooled history wants.
+ALTER TABLE "strategy_generations" ALTER COLUMN "instagram_account_id" DROP NOT NULL;

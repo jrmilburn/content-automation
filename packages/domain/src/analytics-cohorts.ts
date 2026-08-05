@@ -528,7 +528,8 @@ export type CohortDefinition = Readonly<{
   ageWindow: SnapshotAgeWindowKey;
   /** Set for a `category` cohort, null otherwise. */
   categoryValue: string | null;
-  instagramAccountId: string;
+  /** The cohort's scope: one account, or null for every linked account pooled. */
+  instagramAccountId: string | null;
   kind: CohortKind;
   /** Inclusive publication bounds, as ISO strings. */
   publishedFrom: string;

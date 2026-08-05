@@ -1,5 +1,5 @@
 import type { StrategyDetail, StrategyEvidenceEntry, StrategySummary } from "@studio-parallel/db";
-import type { StrategyEvidenceClass, StrategyV1 } from "@studio-parallel/domain";
+import type { AnalyticsScope, StrategyEvidenceClass, StrategyV1 } from "@studio-parallel/domain";
 import Link from "next/link";
 
 import type { StrategySnapshot } from "../lib/server/strategy-data";
@@ -10,17 +10,18 @@ import {
   formatStrategyPeriod,
   formatStrategyTimestamp,
   resolveStrategyEvidence,
-  strategyClassificationLabels,
+  strategyClassificationLabel,
   strategyClassificationTone,
   strategyDetailHref,
   strategyEvidenceTombstone,
   strategyMetricLabel,
-  strategyModeDescriptions,
+  strategyModeDescription,
   strategyModeLabels,
   strategyPrimaryMetric,
   strategyRequestState,
   strategyRequestStateLabels,
   strategyRequestStateTone,
+  strategyScope,
   strategySectionEmptyText,
   strategySectionTitles,
 } from "../lib/strategy";
@@ -46,11 +47,16 @@ import { StrategyRequestControl } from "./strategy-request-control";
 function Classification({
   classification,
   sampleSize,
-}: Readonly<{ classification: StrategyEvidenceClass; sampleSize?: number | null }>) {
+  scope,
+}: Readonly<{
+  classification: StrategyEvidenceClass;
+  sampleSize?: number | null;
+  scope: AnalyticsScope;
+}>) {
   return (
     <p className="strategy-claim__classification">
       <StatusBadge tone={strategyClassificationTone(classification)}>
-        {strategyClassificationLabels[classification]}
+        {strategyClassificationLabel(classification, scope)}
       </StatusBadge>
       {typeof sampleSize === "number" ? (
         <span className="strategy-claim__sample">
@@ -135,9 +141,11 @@ function Section({
 function Claims({
   claims,
   manifest,
+  scope,
 }: Readonly<{
   claims: StrategyV1["workingPatterns"] | StrategyV1["weakPatterns"];
   manifest: readonly StrategyEvidenceEntry[];
+  scope: AnalyticsScope;
 }>) {
   return (
     <ol className="strategy-claims">
@@ -145,7 +153,11 @@ function Claims({
         <li className="strategy-claim" key={claim.key}>
           <article aria-label={claim.statement}>
             <h3 className="strategy-claim__statement">{claim.statement}</h3>
-            <Classification classification={claim.classification} sampleSize={claim.sampleSize} />
+            <Classification
+              classification={claim.classification}
+              sampleSize={claim.sampleSize}
+              scope={scope}
+            />
             <p className="strategy-claim__why">{claim.whyItMatters}</p>
             <Evidence manifest={manifest} references={claim.evidence} />
           </article>
@@ -200,9 +212,11 @@ function Experiments({
 function Recommendations({
   manifest,
   recommendations,
+  scope,
 }: Readonly<{
   manifest: readonly StrategyEvidenceEntry[];
   recommendations: StrategyV1["recommendations"];
+  scope: AnalyticsScope;
 }>) {
   return (
     <ol className="strategy-recommendations">
@@ -215,7 +229,7 @@ function Recommendations({
               says so before the hooks are read, because a list of ready-to-film
               ideas is the easiest thing on the page to mistake for evidence.
             */}
-            <Classification classification={recommendation.classification} />
+            <Classification classification={recommendation.classification} scope={scope} />
             <dl className="strategy-recommendation__facts">
               <div>
                 <dt>Pillar</dt>
@@ -252,7 +266,12 @@ function Recommendations({
 function Pillars({
   manifest,
   plan,
-}: Readonly<{ manifest: readonly StrategyEvidenceEntry[]; plan: StrategyV1["pillarPlan"] }>) {
+  scope,
+}: Readonly<{
+  manifest: readonly StrategyEvidenceEntry[];
+  plan: StrategyV1["pillarPlan"];
+  scope: AnalyticsScope;
+}>) {
   return (
     <ul className="strategy-pillars">
       {plan.map((entry) => (
@@ -261,7 +280,7 @@ function Pillars({
             <span className="strategy-pillar__name">{entry.pillar}</span>
             <span className="strategy-pillar__share">{entry.allocationPercent}%</span>
           </p>
-          <Classification classification={entry.classification} />
+          <Classification classification={entry.classification} scope={scope} />
           <p>{entry.rationale}</p>
           <Evidence manifest={manifest} references={entry.evidence} />
         </li>
@@ -273,6 +292,10 @@ function Pillars({
 /** The strategy itself, in the order a reader decides in. */
 export function StrategyReport({ detail }: Readonly<{ detail: StrategyDetail }>) {
   const { evidence: manifest, strategy, summary } = detail;
+  // The population every claim below is about. Taken from the generation, not
+  // from the account the reader has selected: a strategy argues from one
+  // analytics run, and it keeps that run's scope wherever it is later read.
+  const scope = strategyScope(summary.instagramAccountId);
 
   if (strategy === null) {
     return (
@@ -293,10 +316,21 @@ export function StrategyReport({ detail }: Readonly<{ detail: StrategyDetail }>)
           </StatusBadge>
         </p>
         <p className="strategy-summary__mode-description">
-          {strategyModeDescriptions[summary.mode]}
+          {strategyModeDescription(summary.mode, scope)}
         </p>
         <p>{strategy.periodSummary}</p>
         <dl className="strategy-summary__facts">
+          {/* Stated as a fact of the strategy rather than left to the badges,
+              so a reader who scans the summary and skips the claims still
+              knows which population the whole document is about. */}
+          <div>
+            <dt>Measured across</dt>
+            <dd>
+              {scope === "pooled"
+                ? "Every linked account, pooled into one calculation"
+                : "One account's own posts"}
+            </dd>
+          </div>
           <div>
             <dt>Period</dt>
             <dd>{formatStrategyPeriod(summary)}</dd>
@@ -322,7 +356,7 @@ export function StrategyReport({ detail }: Readonly<{ detail: StrategyDetail }>)
         id="strategy-working-heading"
         title={strategySectionTitles.working}
       >
-        <Claims claims={strategy.workingPatterns} manifest={manifest} />
+        <Claims claims={strategy.workingPatterns} manifest={manifest} scope={scope} />
       </Section>
 
       <Section
@@ -331,7 +365,7 @@ export function StrategyReport({ detail }: Readonly<{ detail: StrategyDetail }>)
         id="strategy-weak-heading"
         title={strategySectionTitles.weak}
       >
-        <Claims claims={strategy.weakPatterns} manifest={manifest} />
+        <Claims claims={strategy.weakPatterns} manifest={manifest} scope={scope} />
       </Section>
 
       <Section
@@ -349,7 +383,11 @@ export function StrategyReport({ detail }: Readonly<{ detail: StrategyDetail }>)
         id="strategy-recommendations-heading"
         title={strategySectionTitles.recommendations}
       >
-        <Recommendations manifest={manifest} recommendations={strategy.recommendations} />
+        <Recommendations
+          manifest={manifest}
+          recommendations={strategy.recommendations}
+          scope={scope}
+        />
       </Section>
 
       <Section
@@ -358,7 +396,7 @@ export function StrategyReport({ detail }: Readonly<{ detail: StrategyDetail }>)
         id="strategy-pillars-heading"
         title={strategySectionTitles.pillars}
       >
-        <Pillars manifest={manifest} plan={strategy.pillarPlan} />
+        <Pillars manifest={manifest} plan={strategy.pillarPlan} scope={scope} />
       </Section>
 
       <Section
@@ -481,7 +519,7 @@ function RequestPanel({ snapshot }: Readonly<{ snapshot: StrategySnapshot }>) {
           <StatusBadge tone={preview.mode === "evidence_led" ? "success" : "warning"}>
             {strategyModeLabels[preview.mode]}
           </StatusBadge>{" "}
-          {strategyModeDescriptions[preview.mode]}
+          {strategyModeDescription(preview.mode, "account")}
         </p>
       )}
       {refusal === null ? (

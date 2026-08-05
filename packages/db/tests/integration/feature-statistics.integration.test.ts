@@ -33,6 +33,7 @@ let runId: string;
 
 function observations(count: number, value: number, dayOffset = 0): FeatureObservation[] {
   return Array.from({ length: count }, (_unused, index) => ({
+    instagramAccountId: accountId,
     instagramPostId: createId(),
     metricSnapshotId: createId(),
     postAnalysisId: createId(),

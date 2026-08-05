@@ -8,10 +8,16 @@ import type { WorkspaceContext } from "./workspace-context.js";
  * Reading strategies for a person rather than for a handler.
  *
  * The existing readers are all worker-scoped and resolve through a background
- * job, which is right for a handler and useless here: a reader arrives with an
- * account or a strategy id and no job at all. These read by those instead, and
+ * job, which is right for a handler and useless here: a reader arrives with a
+ * scope or a strategy id and no job at all. These read by those instead, and
  * every one of them is scoped by workspace in its `where` rather than filtered
  * afterwards, so a crafted id returns nothing rather than someone else's work.
+ *
+ * A strategy's scope is the analytics scope it argued from: an account id for a
+ * strategy built on one account's calculation, and null for one built on the
+ * pooled calculation across every linked account. The two are never merged into
+ * a single list, because a claim about one account and a claim about all of
+ * them are not interchangeable no matter how alike they read.
  *
  * The stored result is parsed rather than cast. It was validated when it was
  * written, but it has been sitting in a `Json` column since, and a reader that
@@ -53,7 +59,8 @@ export type StrategySummary = Readonly<{
   failureCode: string | null;
   generatedAt: string | null;
   id: string;
-  instagramAccountId: string;
+  /** Null when the strategy argued from the pooled calculation across every linked account. */
+  instagramAccountId: string | null;
   mode: StrategyMode;
   primaryMetric: string;
   publicationWeekCount: number;
@@ -102,7 +109,7 @@ type GenerationRow = Readonly<{
   failureCode: string | null;
   generatedAt: Date | null;
   id: string;
-  instagramAccountId: string;
+  instagramAccountId: string | null;
   mode: string;
   modelVersion: string | null;
   primaryMetric: string;
@@ -225,17 +232,25 @@ function toDetail(row: GenerationRow, evidence: readonly StrategyEvidenceEntry[]
 }
 
 /**
- * The strategy an account currently stands behind.
+ * The strategy a scope currently stands behind.
  *
- * Resolved through the account's own pointer rather than by taking the newest
+ * An account resolves through its own pointer rather than through the newest
  * generation, so a failed or still-running request never displaces the one a
  * reader was last shown.
+ *
+ * The pooled scope has no row to hold such a pointer — it is every linked
+ * account rather than any one of them — so it takes the newest SUCCEEDED
+ * generation instead. That is the same guarantee by a different route: a
+ * pending or failed generation is not SUCCEEDED, so it cannot displace anything
+ * either. Adding a workspace-level pointer column would have bought nothing
+ * except a second place for the two answers to disagree.
  */
 export async function loadCurrentStrategy(
   executor: Executor,
   context: WorkspaceContext,
-  instagramAccountId: string,
+  instagramAccountId: string | null,
 ): Promise<StrategyDetail | null> {
+  if (instagramAccountId === null) return loadCurrentPooledStrategy(executor, context);
   if (!isUuidV7(instagramAccountId)) return null;
 
   const account = await executor.instagramAccount.findFirst({
@@ -250,27 +265,52 @@ export async function loadCurrentStrategy(
   return toDetail(row, await readEvidence(executor, context, row.id));
 }
 
+async function loadCurrentPooledStrategy(
+  executor: Executor,
+  context: WorkspaceContext,
+): Promise<StrategyDetail | null> {
+  const current = await executor.strategyGeneration.findFirst({
+    orderBy: [{ generatedAt: "desc" }, { id: "desc" }],
+    select: generationSelect,
+    where: {
+      instagramAccountId: null,
+      state: "SUCCEEDED",
+      workspaceId: context.workspaceId,
+    },
+  });
+
+  if (!current) return null;
+
+  const row = current as GenerationRow;
+  return toDetail(row, await readEvidence(executor, context, row.id));
+}
+
 /**
- * Every generation an account has requested, newest first.
+ * Every generation a scope has requested, newest first.
  *
  * Pending and failed requests are included. A history that showed only what
  * succeeded would leave a reader unable to tell "nothing was asked for" from
  * "it was asked for and did not work", which is the question history exists to
  * answer.
+ *
+ * A null account is the pooled history rather than "every generation in the
+ * workspace": mixing the two scopes into one list would put a claim about one
+ * account and a claim about all of them under the same heading.
  */
 export async function listStrategyGenerations(
   executor: Executor,
   context: WorkspaceContext,
-  input: Readonly<{ instagramAccountId: string; limit?: number }>,
+  input: Readonly<{ instagramAccountId: string | null; limit?: number }>,
 ): Promise<readonly StrategySummary[]> {
-  if (!isUuidV7(input.instagramAccountId)) return Object.freeze([]);
+  const scope = input.instagramAccountId;
+  if (scope !== null && !isUuidV7(scope)) return Object.freeze([]);
 
   const rows = await executor.strategyGeneration.findMany({
     orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
     select: generationSelect,
     take: Math.min(Math.max(input.limit ?? strategyHistoryLimit, 1), 100),
     where: {
-      instagramAccountId: input.instagramAccountId,
+      instagramAccountId: scope,
       workspaceId: context.workspaceId,
     },
   });

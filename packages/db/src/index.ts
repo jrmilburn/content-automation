@@ -125,6 +125,7 @@ export {
   createRunInputFingerprint,
   failAnalyticsRun,
   findActiveAnalyticsRun,
+  findActiveRunFingerprint,
   listAccountsDueForAnalytics,
   markAnalyticsDirty,
   startAnalyticsRun,
@@ -146,6 +147,7 @@ export {
 export {
   calculateFeatureFamily,
   createStatisticFingerprint,
+  maximumPooledSourceShare,
   storeFeatureStatistics,
   type CalculatedComparison,
   type FeatureComparisonCandidate,
@@ -185,6 +187,7 @@ export {
 export {
   isConfidenceClass,
   isDerivedMetric,
+  listPublishedTrendScopes,
   listTrendFeaturePaths,
   loadAccountTrends,
   loadTrendDetail,

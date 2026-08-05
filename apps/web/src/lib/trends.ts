@@ -8,9 +8,10 @@ import {
   presentFeatureValue,
   presentMetric,
   trendSectionFor,
-  trendSections,
+  trendSectionsFor,
   type ConfidenceClass,
   type DerivedMetric,
+  type AnalyticsScope,
   type TrendSectionKey,
 } from "@studio-parallel/domain";
 
@@ -22,8 +23,8 @@ import type { StatusTone } from "../components/status-badge";
  * An unrecognised filter value sets `matchesNothing` rather than being dropped,
  * as on the posts list. On this screen the cost of getting that wrong is higher:
  * a silently widened filter reads as "here is everything we found", and a
- * silently emptied one reads as "this account has no patterns" — a conclusion
- * the data never supported.
+ * silently emptied one reads as "there are no patterns here" — a conclusion the
+ * data never supported.
  *
  * The wording of every evidence claim comes from the domain package, not from
  * here and not from a component. The analytics contract constrains it, and a
@@ -32,7 +33,11 @@ import type { StatusTone } from "../components/status-badge";
 
 export type TrendsSearchParams = Record<string, string | string[] | undefined>;
 
+/** The query value that asks for every linked account pooled into one calculation. */
+export const pooledAccountValue = "all";
+
 export type TrendsFilterValues = Readonly<{
+  /** An account id, `pooledAccountValue`, or empty for "the reader did not say". */
   account: string;
   confidence: "all" | ConfidenceClass;
   feature: string;
@@ -42,7 +47,12 @@ export type TrendsFilterValues = Readonly<{
 export type TrendsFilters = Readonly<{
   confidence?: ConfidenceClass;
   featurePath?: string;
-  instagramAccountId?: string;
+  /**
+   * Null asks for the pooled calculation and an id asks for that account's. An
+   * absent key is not a third scope: it says the reader named none, which the
+   * loader answers with a default it then has to admit to.
+   */
+  instagramAccountId?: string | null;
   matchesNothing?: boolean;
   metric?: DerivedMetric;
 }>;
@@ -64,8 +74,9 @@ export function parseTrendsFilters(searchParams: TrendsSearchParams): Readonly<{
   const rawMetric = firstValue(searchParams.metric);
   let matchesNothing = false;
 
+  const pooled = rawAccount === pooledAccountValue;
   const instagramAccountId = isUuidV7(rawAccount) ? rawAccount : undefined;
-  if (rawAccount && rawAccount !== "all" && !instagramAccountId) matchesNothing = true;
+  if (rawAccount && !pooled && !instagramAccountId) matchesNothing = true;
 
   const confidence = isConfidence(rawConfidence) ? rawConfidence : undefined;
   if (rawConfidence && rawConfidence !== "all" && !confidence) matchesNothing = true;
@@ -82,12 +93,12 @@ export function parseTrendsFilters(searchParams: TrendsSearchParams): Readonly<{
     filters: Object.freeze({
       ...(confidence ? { confidence } : {}),
       ...(featurePath ? { featurePath } : {}),
-      ...(instagramAccountId ? { instagramAccountId } : {}),
+      ...scopeFilter(pooled, instagramAccountId),
       ...(matchesNothing ? { matchesNothing: true } : {}),
       ...(metric ? { metric } : {}),
     }),
     values: Object.freeze({
-      account: instagramAccountId ?? (rawAccount === "all" ? "" : rawAccount),
+      account: pooled ? pooledAccountValue : (instagramAccountId ?? rawAccount),
       confidence: confidence ?? "all",
       feature: featurePath ?? "",
       metric: metric ?? "all",
@@ -95,16 +106,36 @@ export function parseTrendsFilters(searchParams: TrendsSearchParams): Readonly<{
   });
 }
 
-export function hasActiveTrendFilters(values: TrendsFilterValues): boolean {
-  return (
-    values.account !== "" ||
-    values.confidence !== "all" ||
-    values.feature !== "" ||
-    values.metric !== "all"
-  );
+/**
+ * The scope, or nothing at all.
+ *
+ * A separate function rather than an inline expression because `null` and
+ * absent are both meaningful here and a conditional spread that has to express
+ * three cases stops being readable at the second one.
+ */
+function scopeFilter(
+  pooled: boolean,
+  instagramAccountId: string | undefined,
+): Pick<TrendsFilters, "instagramAccountId"> {
+  if (pooled) return Object.freeze({ instagramAccountId: null });
+
+  return instagramAccountId ? Object.freeze({ instagramAccountId }) : Object.freeze({});
 }
 
-/** The account filter has to survive into a detail link, or the detail 404s. */
+/**
+ * Whether the reader narrowed the comparisons shown.
+ *
+ * The scope is deliberately not one of them. Choosing an account, or every
+ * account pooled, picks which calculation is read rather than which of its
+ * comparisons are hidden — and an empty screen that answered "these filters
+ * exclude every comparison" for a scope that simply has nothing published would
+ * be describing a filter the reader never applied.
+ */
+export function hasActiveTrendFilters(values: TrendsFilterValues): boolean {
+  return values.confidence !== "all" || values.feature !== "" || values.metric !== "all";
+}
+
+/** The scope has to survive into a detail link, or the detail 404s. */
 export function trendDetailHref(statisticId: string, values: TrendsFilterValues): string {
   const params = new URLSearchParams();
   if (values.account) params.set("account", values.account);
@@ -128,9 +159,12 @@ export type TrendGroup = Readonly<{
  * absent section reads as "there were none to show", which is the same shape as
  * "we did not look".
  */
-export function groupTrends(trends: readonly TrendListItem[]): readonly TrendGroup[] {
+export function groupTrends(
+  trends: readonly TrendListItem[],
+  scope: AnalyticsScope,
+): readonly TrendGroup[] {
   return Object.freeze(
-    trendSections.map((section) =>
+    trendSectionsFor(scope).map((section) =>
       Object.freeze({
         description: section.description,
         key: section.key,
@@ -159,9 +193,9 @@ export function confidenceTone(classification: ConfidenceClass): StatusTone {
  * The one-line heading of a trend card.
  *
  * Deliberately descriptive rather than advisory. "Use question hooks" is a
- * recommendation the statistics do not license; naming the feature, the metric
- * and the account leaves the reader to draw the conclusion the evidence
- * actually supports.
+ * recommendation the statistics do not license; naming the feature and the
+ * value it took leaves the reader to draw the conclusion the evidence actually
+ * supports.
  */
 export function trendHeadline(trend: TrendListItem): string {
   return `${presentFeaturePath(trend.featurePath)}: ${presentFeatureValue(
@@ -233,7 +267,7 @@ export function presentInterval(trend: TrendListItem): string {
   )}`;
 }
 
-/** Missingness as the reader's question: how much of the account could be read. */
+/** Missingness as the reader's question: how much of the measured history could be read. */
 export function presentMissingness(trend: TrendListItem): string {
   const percent = trend.missingRatio * 100;
 

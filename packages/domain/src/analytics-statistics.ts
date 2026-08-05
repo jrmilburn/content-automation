@@ -41,14 +41,15 @@ export type ConfidenceClass = (typeof confidenceClasses)[number];
 /** Why a comparison landed in its class. Stored so a reader can see the reason. */
 export const classificationReasons = [
   "below_minimum_samples",
-  "campaign_dominates_group",
   "effect_below_threshold",
   "few_publication_dates",
+  "interval_ignores_clustering",
   "interval_includes_no_difference",
   "meets_moderate_thresholds",
   "meets_supported_thresholds",
   "missingness_too_high",
   "multiple_testing_rejected",
+  "one_source_dominates_sample",
   "sensitivity_changes_materiality",
   "single_eligible_post",
   "top_post_dominates_total",
@@ -349,15 +350,17 @@ export type FeatureComparisonInput = Readonly<{
   distinctPublicationDates: number;
   /** Distinct ISO publication weeks across the group. */
   distinctPublicationWeeks: number;
+  /** True when one source — a campaign, an account — supplied most of a side. */
+  dominatedByOneSource?: boolean;
   group: readonly number[];
-  /** True when one campaign accounts for most of the group. */
-  groupDominatedByCampaign?: boolean;
   /** Stable key for this comparison; seeds the bootstrap. */
   key: string;
   /** Share of otherwise eligible posts with no usable value, 0–1. */
   missingRatio: number;
   /** Count metrics support a contribution share; rates do not. */
   metricIsCount: boolean;
+  /** True when the observations arrive in clusters rather than independently. */
+  observationsClusterBySource?: boolean;
   /** Set when the family has been corrected; null when correction did not apply. */
   survivesMultipleTesting?: boolean | null;
 }>;
@@ -447,6 +450,13 @@ export function calculateFeatureStatistic(input: FeatureComparisonInput): Featur
     return settle("weak_directional_signal", "effect_below_threshold");
   }
 
+  // Decided before any strength class, like the outlier checks above it: a side
+  // most of whose posts came from one source measures that source, and no sample
+  // size turns that into a fact about the feature.
+  if (input.dominatedByOneSource === true) {
+    return settle("weak_directional_signal", "one_source_dominates_sample");
+  }
+
   const seed = createBootstrapSeed({ comparison, group, key: input.key });
   const supportedInterval = bootstrapMedianDifference({
     comparison,
@@ -461,8 +471,12 @@ export function calculateFeatureStatistic(input: FeatureComparisonInput): Featur
     input.distinctPublicationWeeks >= sampleThresholds.supported.publicationWeeks;
 
   if (meetsSupportedSamples && supportedInterval?.excludesNoDifference === true) {
-    if (input.groupDominatedByCampaign === true) {
-      return settle("weak_directional_signal", "campaign_dominates_group", supportedInterval);
+    // The bootstrap resamples observations independently, so an interval drawn
+    // over clustered ones is narrower than the data earns — and this class is
+    // gated on that interval excluding zero. Capped rather than discarded: what
+    // the moderate class claims is still true of it.
+    if (input.observationsClusterBySource === true) {
+      return settle("moderate_association", "interval_ignores_clustering", supportedInterval);
     }
     if (input.survivesMultipleTesting === false) {
       return settle("moderate_association", "multiple_testing_rejected", supportedInterval);

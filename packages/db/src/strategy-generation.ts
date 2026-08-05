@@ -39,7 +39,8 @@ export type FrozenStrategyGeneration = Readonly<{
   editorialConstraint: string | null;
   entries: readonly StrategyEvidenceEntry[];
   id: string;
-  instagramAccountId: string;
+  /** Null for a strategy frozen against the pooled calculation across every linked account. */
+  instagramAccountId: string | null;
   manifest: readonly StrategyManifestEvidence[];
   manifestHash: string;
   mode: StrategyMode;
@@ -238,7 +239,8 @@ export type PublishStrategyInput = Readonly<{
   finishReason: string | null;
   generatedAt: Date;
   inputTokens: number | null;
-  instagramAccountId: string;
+  /** Null for a pooled strategy, which no account row stands behind. */
+  instagramAccountId: string | null;
   modelVersion: string | null;
   outputTokens: number | null;
   providerLatencyMs: number | null;
@@ -251,7 +253,7 @@ export type PublishStrategyInput = Readonly<{
 export type PublishStrategyResult = Readonly<{ published: boolean }>;
 
 /**
- * Stores one validated strategy and makes it the account's current one.
+ * Stores one validated strategy and makes it the scope's current one.
  *
  * Idempotent by reading the result column first: a redelivered job that already
  * published finds its own row and changes nothing, rather than writing a second
@@ -295,10 +297,16 @@ export async function publishStrategyGeneration(
 
   // Same transaction as the result, so a reader never sees a published strategy
   // the account does not point at, or a pointer to a strategy with no result.
-  await executor.instagramAccount.updateMany({
-    data: { currentStrategyId: input.strategyGenerationId },
-    where: { id: input.instagramAccountId, workspaceId: context.workspaceId },
-  });
+  //
+  // A pooled strategy sets no pointer, because there is no row that stands for
+  // "every linked account" to hold one. Its reader takes the newest SUCCEEDED
+  // pooled generation instead, which the update above has just made this one.
+  if (input.instagramAccountId !== null) {
+    await executor.instagramAccount.updateMany({
+      data: { currentStrategyId: input.strategyGenerationId },
+      where: { id: input.instagramAccountId, workspaceId: context.workspaceId },
+    });
+  }
 
   return Object.freeze({ published: true });
 }

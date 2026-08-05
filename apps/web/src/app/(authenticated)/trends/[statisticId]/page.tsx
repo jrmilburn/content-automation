@@ -15,14 +15,14 @@ export default async function TrendDetailPage({
   searchParams: Promise<TrendsSearchParams>;
 }>) {
   const { statisticId } = await params;
-  // The account travels in the query so a shared link resolves the same
-  // comparison. Without it a workspace with two accounts would fall back to the
-  // first and report the statistic as missing.
-  const { values } = parseTrendsFilters(await searchParams);
+  // The scope travels in the query so a shared link resolves the same
+  // comparison. Without it a workspace with two accounts and a pooled run would
+  // fall back to whichever scope is default and report the statistic as missing.
+  const { filters } = parseTrendsFilters(await searchParams);
   let detail: Awaited<ReturnType<typeof loadTrendDetailSnapshot>>;
 
   try {
-    detail = await loadTrendDetailSnapshot(statisticId, values.account || null);
+    detail = await loadTrendDetailSnapshot(statisticId, filters.instagramAccountId);
   } catch (error) {
     const requestContext = createWebRequestContext(await headers());
     reportError(

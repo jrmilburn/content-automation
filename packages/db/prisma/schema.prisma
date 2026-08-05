@@ -992,10 +992,17 @@ model AccountFeatureStatistic {
   @@unique([workspaceId, id])
   // One row per identical question and identical inputs, so a repeat
   // calculation over unchanged data collapses instead of accumulating
-  // duplicates. Declared in the migration rather than here: the workspace-wide
-  // scope stores a null account, and without `NULLS NOT DISTINCT` — which
-  // Prisma cannot express — every pooled row would be unique from every other
-  // on the strength of that null and the key would quietly stop collapsing.
+  // duplicates.
+  //
+  // The migration rebuilds this index `NULLS NOT DISTINCT`, which Prisma has no
+  // syntax for and — more to the point — cannot see: its introspection reads
+  // `indisunique` and `indpred` from `pg_index` and never `indnullsnotdistinct`.
+  // So the property is the migration's to own, and the index still has to be
+  // declared here or `migrate diff` would read it as an index nobody asked for
+  // and drift would want it dropped. Unlike the partial unique index on
+  // `account_analytics_runs`, which introspection does set aside on its
+  // predicate, this one is plain as far as Prisma is concerned.
+  @@unique([workspaceId, instagramAccountId, featurePath, featureValue, metric, ageWindow, inputFingerprint], map: "account_feature_statistics_question_inputs_key")
   // Explicit names: the generated ones truncate to the same string.
   @@index([workspaceId, instagramAccountId, calculatedAt(sort: Desc)], map: "account_feature_statistics_account_calculated_at_idx")
   @@index([workspaceId, instagramAccountId, confidence], map: "account_feature_statistics_account_confidence_idx")
@@ -1188,7 +1195,9 @@ enum StrategyEvidenceCategory {
 model StrategyGeneration {
   id                         String                  @id @db.Uuid
   workspaceId                String                  @map("workspace_id") @db.Uuid
-  instagramAccountId         String                  @map("instagram_account_id") @db.Uuid
+  // Null when the strategy argues from the pooled calculation, which measures
+  // every linked account together and therefore belongs to none of them.
+  instagramAccountId         String?                 @map("instagram_account_id") @db.Uuid
   backgroundJobId            String                  @map("background_job_id") @db.Uuid
   analyticsRunId             String                  @map("analytics_run_id") @db.Uuid
   state                      StrategyGenerationState @default(PENDING)
@@ -1260,7 +1269,7 @@ model StrategyGeneration {
   createdAt                  DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                  DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
   workspace                  Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
-  account                    InstagramAccount        @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
+  account                    InstagramAccount?       @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
   backgroundJob              BackgroundJob           @relation(fields: [workspaceId, backgroundJobId], references: [workspaceId, id], onDelete: Restrict)
   analyticsRun               AccountAnalyticsRun     @relation(fields: [workspaceId, analyticsRunId], references: [workspaceId, id], onDelete: Restrict)
   requestedByUser            InternalUser?           @relation("StrategyGenerationRequestedBy", fields: [workspaceId, requestedByUserId], references: [workspaceId, id], onDelete: Restrict)

@@ -51,6 +51,7 @@ function calculation(overrides: Record<string, unknown> = {}) {
     analyticsVersion: "account-analytics-v1.0.0",
     durationMs: 8_400,
     id: runId,
+    instagramAccountId: accountId,
     publishedFrom: "2026-02-03T00:00:00.000Z",
     publishedTo: "2026-08-03T00:00:00.000Z",
     statisticCount: 1,
@@ -74,9 +75,32 @@ function snapshot(overrides: Partial<TrendsSnapshot> = {}): TrendsSnapshot {
       generatedAt: "2026-08-03T06:00:00.000Z",
       trends: [trend()],
     },
+    pooled: false,
+    pooledAvailable: false,
     selectedAccountId: accountId,
     ...overrides,
   };
+}
+
+/** The same workspace once its pooled calculation has published. */
+function pooledSnapshot(overrides: Partial<TrendsSnapshot> = {}): TrendsSnapshot {
+  const second = "019a0000-0000-7000-8000-000000000302";
+
+  return snapshot({
+    accounts: [
+      { id: accountId, label: "@studioparallel" },
+      { id: second, label: "@parallelstudio" },
+    ],
+    list: {
+      calculation: calculation({ instagramAccountId: null }),
+      generatedAt: "2026-08-03T06:00:00.000Z",
+      trends: [trend({ classificationReason: "meets_moderate_thresholds" })],
+    },
+    pooled: true,
+    pooledAvailable: true,
+    selectedAccountId: null,
+    ...overrides,
+  });
 }
 
 function contributor(overrides: Partial<TrendContributor> = {}): TrendContributor {
@@ -221,6 +245,50 @@ describe("TrendsScreen", () => {
     render(<TrendsScreen snapshot={snapshot()} values={values()} />);
 
     expect(screen.getByText(/Showing @studioparallel/u)).toBeTruthy();
+  });
+
+  it("says a pooled screen is every linked account rather than naming one", () => {
+    render(<TrendsScreen snapshot={pooledSnapshot()} values={values()} />);
+
+    expect(screen.getByText(/Showing every linked account together/u)).toBeTruthy();
+    expect(screen.getByText(/@studioparallel, @parallelstudio/u)).toBeTruthy();
+    expect(screen.getByText(/nothing below is a finding about a single account/u)).toBeTruthy();
+  });
+
+  it("never claims a pooled comparison is this account's history", () => {
+    // The card's claim is the sentence a reader quotes, and the same evidence
+    // class means something different across two audiences than within one.
+    render(<TrendsScreen snapshot={pooledSnapshot()} values={values()} />);
+
+    const card = screen.getByRole("article", { name: /Hook type: Question/u });
+
+    expect(within(card).getByText(/across the linked accounts/u)).toBeTruthy();
+    expect(within(card).queryByText(/in this account/u)).toBeNull();
+    expect(screen.queryByText(/What this account's own history shows/u)).toBeNull();
+  });
+
+  it("offers the pooled scope only once a pooled calculation has published", () => {
+    const { unmount } = render(<TrendsScreen snapshot={pooledSnapshot()} values={values()} />);
+
+    const offered = screen.getByLabelText<HTMLSelectElement>("Account");
+    // An unstated scope resolves to pooled, so the control has to show that as
+    // selected rather than leaving a blank select above pooled figures.
+    expect(offered.value).toBe("all");
+    expect(within(offered).getByRole("option", { name: "All linked accounts" })).toBeTruthy();
+    unmount();
+
+    render(
+      <TrendsScreen
+        snapshot={pooledSnapshot({ pooled: false, pooledAvailable: false })}
+        values={values()}
+      />,
+    );
+
+    expect(
+      within(screen.getByLabelText("Account")).queryByRole("option", {
+        name: "All linked accounts",
+      }),
+    ).toBeNull();
   });
 
   it("says when the account was defaulted rather than chosen", () => {
@@ -370,6 +438,27 @@ describe("TrendDetailScreen", () => {
 
     expect(screen.getByRole("region", { name: "Posts with this value" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Posts compared against" })).toBeTruthy();
+  });
+
+  it("names the population a pooled comparison was drawn from", () => {
+    // A detail page is reachable by its own URL with no snapshot behind it, so
+    // the run it was published in is the only thing that can say whose history
+    // this is.
+    render(
+      <TrendDetailScreen
+        detail={detail({
+          calculation: calculation({ instagramAccountId: null }),
+          trend: trend({
+            classificationReason: "interval_ignores_clustering",
+            confidence: "moderate_association",
+          }),
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Every linked account, pooled into one comparison")).toBeTruthy();
+    expect(screen.getByText(/across the linked accounts' combined history/u)).toBeTruthy();
+    expect(screen.getByText(/Measured across every linked account at once/u)).toBeTruthy();
   });
 
   it("names a captionless contributor rather than leaving the cell blank", () => {

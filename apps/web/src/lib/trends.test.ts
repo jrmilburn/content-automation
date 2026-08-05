@@ -2,6 +2,8 @@ import type { TrendListItem } from "@studio-parallel/db";
 import {
   confidenceClasses,
   presentConfidence,
+  presentTrendScope,
+  type AnalyticsScope,
   type ConfidenceClass,
 } from "@studio-parallel/domain";
 import { describe, expect, it } from "vitest";
@@ -89,6 +91,27 @@ describe("parseTrendsFilters", () => {
     expect(parsed.values.confidence).toBe("all");
   });
 
+  it("reads all on the account as the pooled scope rather than as no scope", () => {
+    // Null and absent are different requests: null asks for the calculation
+    // across every linked account, absent leaves the choice to the loader.
+    const pooled = parseTrendsFilters({ account: "all" });
+
+    expect(pooled.filters).toEqual({ instagramAccountId: null });
+    expect(pooled.values.account).toBe("all");
+    expect(parseTrendsFilters({}).filters).not.toHaveProperty("instagramAccountId");
+  });
+
+  it("does not count the scope as a filter on the comparisons", () => {
+    // Choosing a scope picks which calculation is read, not which of its
+    // comparisons are hidden — so an empty pooled screen must not be explained
+    // as "these filters exclude every comparison".
+    expect(hasActiveTrendFilters(parseTrendsFilters({ account: "all" }).values)).toBe(false);
+    expect(hasActiveTrendFilters(parseTrendsFilters({ account: accountId }).values)).toBe(false);
+    expect(hasActiveTrendFilters(parseTrendsFilters({ metric: "like_rate_reach" }).values)).toBe(
+      true,
+    );
+  });
+
   it.each([
     ["confidence", { confidence: "very_confident" }],
     ["metric", { metric: "vibes" }],
@@ -130,13 +153,19 @@ describe("trendDetailHref", () => {
       "/trends/019a0000-0000-7000-8000-000000000901",
     );
   });
+
+  it("carries the pooled scope, so the detail is not read from an account's run", () => {
+    expect(
+      trendDetailHref("019a0000-0000-7000-8000-000000000901", values({ account: "all" })),
+    ).toBe("/trends/019a0000-0000-7000-8000-000000000901?account=all");
+  });
 });
 
 describe("groupTrends", () => {
   it("keeps every section even when it has nothing in it", () => {
     // An absent "supported associations" heading reads as "there were none",
     // which is indistinguishable from "we did not look".
-    const groups = groupTrends([trend({ confidence: "single_post_outlier" })]);
+    const groups = groupTrends([trend({ confidence: "single_post_outlier" })], "account");
 
     expect(groups.map((group) => group.key)).toEqual([
       "supported",
@@ -149,7 +178,7 @@ describe("groupTrends", () => {
   });
 
   it.each(confidenceClasses)("places a %s result in exactly one section", (confidence) => {
-    const groups = groupTrends([trend({ confidence })]);
+    const groups = groupTrends([trend({ confidence })], "account");
     const placed = groups.filter((group) => group.trends.length === 1);
 
     expect(placed).toHaveLength(1);
@@ -158,30 +187,66 @@ describe("groupTrends", () => {
   it("reads a moderate association alongside a supported one", () => {
     // Both are findings a reader can act on; the card's own badge is what keeps
     // them apart, not a separate heading.
-    const groups = groupTrends([
-      trend({ confidence: "moderate_association", id: "a" }),
-      trend({ confidence: "statistically_supported_association", id: "b" }),
-    ]);
+    const groups = groupTrends(
+      [
+        trend({ confidence: "moderate_association", id: "a" }),
+        trend({ confidence: "statistically_supported_association", id: "b" }),
+      ],
+      "account",
+    );
 
     expect(groups[0]?.trends).toHaveLength(2);
   });
+
+  it("describes the supported group by the population it was drawn from", () => {
+    // The sections are the same four either way; only the sentence that says
+    // what "supported" holds within can be wrong for the other scope.
+    const account = groupTrends([], "account")[0]?.description ?? "";
+    const pooled = groupTrends([], "pooled")[0]?.description ?? "";
+
+    expect(account).toContain("within this account");
+    expect(pooled).not.toContain("this account");
+    expect(pooled).toContain("linked accounts");
+  });
 });
 
+const scopes: readonly AnalyticsScope[] = Object.freeze(["account", "pooled"]);
+
 describe("evidence language", () => {
-  it.each(confidenceClasses)("scopes the %s claim to this account", (confidence) => {
+  it.each(confidenceClasses)("names the population the %s claim was drawn from", (confidence) => {
+    // A cohort is bounded either to one account or to every linked account, so
+    // a claim that names neither states a general finding the data cannot
+    // carry. This used to assert one sentence containing "account"; there are
+    // now two, and each has to say which population is its own.
     const { claim } = presentConfidence(confidence);
 
-    // A cohort is bounded to one account by construction, so a claim that does
-    // not say so states a general finding the data cannot carry.
-    expect(claim.toLowerCase()).toContain("account");
+    for (const scope of scopes) expect(claim[scope].toLowerCase()).toContain("account");
+  });
+
+  it.each(confidenceClasses)("never calls a pooled %s claim this account's", (confidence) => {
+    // The pooled calculation puts two audiences in one median, so the singular
+    // possessive is the exact word that would turn a correct number into a
+    // false statement about whichever account the reader has in mind.
+    const { claim } = presentConfidence(confidence);
+
+    expect(claim.pooled.toLowerCase()).not.toContain("this account");
+    expect(claim.account.toLowerCase()).not.toContain("linked accounts");
   });
 
   it.each(confidenceClasses)("never states the %s claim as a cause", (confidence) => {
     const { claim } = presentConfidence(confidence);
 
-    for (const causal of ["because", "causes", "caused", "drives up", "will increase"]) {
-      expect(claim.toLowerCase()).not.toContain(causal);
+    for (const scope of scopes) {
+      for (const causal of ["because", "causes", "caused", "drives up", "will increase"]) {
+        expect(claim[scope].toLowerCase()).not.toContain(causal);
+      }
     }
+  });
+
+  it("describes a pooled screen without claiming it is one account's", () => {
+    expect(presentTrendScope("account").description).toContain("this account");
+    expect(presentTrendScope("pooled").description).not.toContain("this account");
+    expect(presentTrendScope("pooled").source).not.toContain("this account");
   });
 
   it("marks only the supported class as strong", () => {
@@ -193,7 +258,9 @@ describe("evidence language", () => {
   });
 
   it("says an insufficient result is not a finding of no difference", () => {
-    expect(presentConfidence("insufficient_evidence").claim).toContain("not a finding");
+    for (const scope of scopes) {
+      expect(presentConfidence("insufficient_evidence").claim[scope]).toContain("not a finding");
+    }
   });
 });
 

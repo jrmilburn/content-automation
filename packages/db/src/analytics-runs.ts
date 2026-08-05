@@ -125,7 +125,8 @@ export async function startAnalyticsRun(
     ageWindow: string;
     analysisCount: number;
     inputFingerprint: string;
-    instagramAccountId: string;
+    /** One account, or absent for a run covering every linked account. */
+    instagramAccountId?: string;
     now: Date;
     publishedFrom: Date;
     publishedTo: Date;
@@ -140,7 +141,7 @@ export async function startAnalyticsRun(
       analyticsVersion,
       id,
       inputFingerprint: input.inputFingerprint,
-      instagramAccountId: input.instagramAccountId,
+      instagramAccountId: input.instagramAccountId ?? null,
       publishedFrom: input.publishedFrom,
       publishedTo: input.publishedTo,
       startedAt: input.now,
@@ -163,8 +164,8 @@ export type ActivationResult =
  * The whole point of this function is the single moment where the previous run
  * becomes `SUPERSEDED` and this one becomes `ACTIVE`. Both statements are in the
  * caller's transaction and a partial unique index guarantees only one `ACTIVE`
- * run per account, so two concurrent activations cannot both believe they
- * published the current set.
+ * run per scope — one per account, and one for the accounts pooled — so two
+ * concurrent activations cannot both believe they published the current set.
  *
  * The dirty marker is cleared only if it has not moved since the run started. A
  * change that arrived mid-calculation leaves the account dirty, so the next
@@ -174,10 +175,15 @@ export async function activateAnalyticsRun(
   executor: Executor,
   context: WorkspaceContext,
   input: Readonly<{
-    dirtySince: Date;
+    /**
+     * The marker this run started from, supplied only by an account scope. The
+     * pooled scope clears nothing, so it has nothing to compare and passes none.
+     */
+    dirtySince?: Date;
     expectedStatisticCount: number;
     inputFingerprint: string;
-    instagramAccountId: string;
+    /** The run's scope, matching the one it was started with. */
+    instagramAccountId?: string;
     now: Date;
     runId: string;
   }>,
@@ -217,7 +223,10 @@ export async function activateAnalyticsRun(
   const previous = await executor.accountAnalyticsRun.findFirst({
     select: { id: true },
     where: {
-      instagramAccountId: input.instagramAccountId,
+      // Null is the scope, not the absence of a filter. Left as `undefined`,
+      // Prisma would drop the bound and a pooled run would supersede whichever
+      // account's run it found first.
+      instagramAccountId: input.instagramAccountId ?? null,
       state: "ACTIVE",
       workspaceId: context.workspaceId,
     },
@@ -243,14 +252,26 @@ export async function activateAnalyticsRun(
   // Only clears when the marker has not moved. A change that arrived while the
   // run was building must survive, or it is lost until something else dirties
   // the account.
-  await executor.instagramAccount.updateMany({
-    data: { analyticsDirtySince: null, analyticsDueAt: null },
-    where: {
-      analyticsDirtySince: input.dirtySince,
-      id: input.instagramAccountId,
-      workspaceId: context.workspaceId,
-    },
-  });
+  //
+  // A pooled run clears nothing. The debounce marker belongs to an account and
+  // one `dirtySince` cannot say which accounts' windows this run consumed;
+  // clearing them all against a single marker would discard a change that
+  // arrived on another account mid-run, which is the loss this guard prevents.
+  //
+  // Both halves are checked, because an absent `dirtySince` is not a filter
+  // Prisma ignores — it is no filter at all, and the clear would then fire
+  // however far the marker had moved.
+  const { dirtySince, instagramAccountId } = input;
+  if (instagramAccountId !== undefined && dirtySince !== undefined) {
+    await executor.instagramAccount.updateMany({
+      data: { analyticsDirtySince: null, analyticsDueAt: null },
+      where: {
+        analyticsDirtySince: dirtySince,
+        id: instagramAccountId,
+        workspaceId: context.workspaceId,
+      },
+    });
+  }
 
   return Object.freeze({
     activated: true as const,
@@ -275,6 +296,33 @@ export async function failAnalyticsRun(
   });
 }
 
+/**
+ * The inputs a scope's published run measured, or null if it has published none.
+ *
+ * This is how the pooled scope tells whether it is current. An account is told
+ * by its debounce marker, but the markers belong to the accounts and their own
+ * runs clear them as they publish — so a pooled run that trusted them would find
+ * them already clear and conclude it had nothing to do. What it last published
+ * is the only record of what it has actually measured.
+ */
+export async function findActiveRunFingerprint(
+  executor: Executor,
+  context: WorkspaceContext,
+  instagramAccountId: string | null,
+): Promise<string | null> {
+  const run = await executor.accountAnalyticsRun.findFirst({
+    select: { inputFingerprint: true },
+    where: {
+      activatedAt: { not: null },
+      instagramAccountId,
+      state: "ACTIVE",
+      workspaceId: context.workspaceId,
+    },
+  });
+
+  return run?.inputFingerprint ?? null;
+}
+
 export type ActiveRunSummary = Readonly<{
   activatedAt: string;
   ageWindow: string;
@@ -283,11 +331,11 @@ export type ActiveRunSummary = Readonly<{
   statisticCount: number;
 }>;
 
-/** The run whose statistics a reader should see, if any. */
+/** The run whose statistics a reader should see, if any. Null pools accounts. */
 export async function findActiveAnalyticsRun(
   executor: Executor,
   context: WorkspaceContext,
-  instagramAccountId: string,
+  instagramAccountId: string | null,
 ): Promise<ActiveRunSummary | null> {
   const run = await executor.accountAnalyticsRun.findFirst({
     select: {

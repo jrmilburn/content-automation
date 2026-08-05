@@ -8,6 +8,8 @@ import {
   presentFeaturePath,
   presentFeatureValue,
   presentMetric,
+  presentTrendScope,
+  type AnalyticsScope,
 } from "@studio-parallel/domain";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -22,6 +24,7 @@ import {
   groupTrends,
   hasActiveTrendFilters,
   metricFilterOptions,
+  pooledAccountValue,
   presentAgeWindow,
   presentInterval,
   presentMissingness,
@@ -36,12 +39,17 @@ import { EmptyState, ErrorSummary } from "./states";
 import { StatusBadge } from "./status-badge";
 
 /**
- * What the account's own history shows, and what it does not.
+ * What the measured history shows, and what it does not.
  *
  * Results are read strongest first and limitations last, so a reader who stops
  * early has seen the best-evidenced findings rather than the largest numbers. No
  * section is hidden when empty: an absent "supported associations" heading reads
  * as "there were none", which is indistinguishable from "we did not look".
+ *
+ * Every heading, claim and section description is keyed by the scope of the
+ * calculation being shown, and the scope comes from the run rather than from a
+ * prop the screen chose: a pooled set of figures under "this account's history"
+ * would be wrong in the one way a reader cannot detect.
  *
  * There is no chart. Medians and interquartile ranges describe a small, skewed
  * sample better than a plot of them would, and a table is the equivalent the
@@ -49,21 +57,24 @@ import { StatusBadge } from "./status-badge";
  * be two implementations of one truth.
  */
 
-const description = "What this account's own history shows, and how strong the evidence is.";
-
 export function TrendsScreen({
   snapshot,
   values,
 }: Readonly<{ snapshot: TrendsSnapshot; values: TrendsFilterValues }>) {
   const { list } = snapshot;
   const filtered = hasActiveTrendFilters(values);
-  const groups = groupTrends(list.trends);
+  // The snapshot's scope rather than the run's, because it is the only one that
+  // survives an empty screen: the loader queried for this scope, so a run it got
+  // back cannot disagree, and a run it did not get back still has to be
+  // explained in the right words.
+  const scope: AnalyticsScope = snapshot.pooled ? "pooled" : "account";
+  const groups = groupTrends(list.trends, scope);
 
   return (
     <div className="page-stack">
-      <PageHeader description={description} title="Trends" />
+      <PageHeader description={presentTrendScope(scope).description} title="Trends" />
 
-      <TrendsAccountScope snapshot={snapshot} />
+      <TrendsScope scope={scope} snapshot={snapshot} />
 
       {list.calculation ? <CalculationFreshness calculation={list.calculation} /> : null}
 
@@ -79,6 +90,7 @@ export function TrendsScreen({
             <TrendGroupSection
               description={group.description}
               key={group.key}
+              scope={scope}
               sectionKey={group.key}
               title={group.title}
               trends={group.trends}
@@ -100,7 +112,12 @@ export function TrendsScreen({
 export function TrendsError({ reference }: Readonly<{ reference: string }>) {
   return (
     <div className="page-stack">
-      <PageHeader description={description} title="Trends" />
+      {/* No calculation loaded, so no scope to name. The subtitle claims neither
+          one account nor all of them rather than guessing which it would be. */}
+      <PageHeader
+        description="What the measured history shows, and how strong the evidence is."
+        title="Trends"
+      />
       <ErrorSummary
         action={{ href: "/trends", label: "Try again" }}
         correlationId={reference}
@@ -112,15 +129,39 @@ export function TrendsError({ reference }: Readonly<{ reference: string }>) {
 }
 
 /**
- * Names the account every figure below belongs to.
+ * Names the population every figure below belongs to.
  *
- * A statistic belongs to one account, so the screen is only readable if the
- * reader knows which one. It says so even when the account was defaulted rather
- * than chosen: a default that presents itself as a choice is the one case where
- * a correct figure can still mislead, because the reader believes they asked
- * for it.
+ * A statistic describes either one account or all of them together, so the
+ * screen is only readable if the reader knows which. It says so even when the
+ * scope was defaulted rather than chosen: a default that presents itself as a
+ * choice is the one case where a correct figure can still mislead, because the
+ * reader believes they asked for it.
  */
-function TrendsAccountScope({ snapshot }: Readonly<{ snapshot: TrendsSnapshot }>) {
+function TrendsScope({
+  scope,
+  snapshot,
+}: Readonly<{ scope: AnalyticsScope; snapshot: TrendsSnapshot }>) {
+  if (scope === "pooled") {
+    return (
+      <p className="trends-scope">
+        <span className="trends-scope__account">
+          Showing every linked account together
+          {snapshot.accounts.length > 0
+            ? ` (${snapshot.accounts.map((account) => account.label).join(", ")})`
+            : ""}
+        </span>
+        {/* Said here rather than only on each card, because the reader has to
+            carry it down the page: every median below is drawn from posts of
+            more than one audience, and none of them describes one account. */}
+        <span className="trends-scope__note">
+          {" "}
+          — posts from all of them are pooled into one comparison, so nothing below is a finding
+          about a single account. Choose an account below to read its own history instead.
+        </span>
+      </p>
+    );
+  }
+
   const selected = snapshot.accounts.find((account) => account.id === snapshot.selectedAccountId);
   if (!selected) return null;
 
@@ -217,6 +258,11 @@ function TrendsFilters({
   snapshot,
   values,
 }: Readonly<{ snapshot: TrendsSnapshot; values: TrendsFilterValues }>) {
+  // An unstated scope resolves to the pooled calculation wherever one exists, so
+  // the control has to show that option as the selected one rather than leaving
+  // the reader looking at a blank select above pooled figures.
+  const selectedScope = values.account || (snapshot.pooledAvailable ? pooledAccountValue : "");
+
   return (
     <section aria-labelledby="trends-filters-heading" className="trends-filters">
       <div className="trends-filters__heading">
@@ -224,15 +270,21 @@ function TrendsFilters({
         <Link href="/trends">Clear all</Link>
       </div>
       <form action="/trends" className="trends-filter-form" method="get">
-        {snapshot.accounts.length > 1 ? (
+        {snapshot.accounts.length > 1 || snapshot.pooledAvailable ? (
           <label>
             <span>Account</span>
-            {/* The empty option exists so that submitting nothing is a state the
-                control can represent. Without it the browser marks the first
-                account selected, which reads as a choice the reader never made
-                even though the figures below are the same either way. */}
-            <select defaultValue={values.account} name="account">
-              <option value="">No account chosen</option>
+            <select defaultValue={selectedScope} name="account">
+              {snapshot.pooledAvailable ? (
+                <option value={pooledAccountValue}>All linked accounts</option>
+              ) : (
+                /* The empty option exists so that submitting nothing is a state
+                   the control can represent. Without it the browser marks the
+                   first account selected, which reads as a choice the reader
+                   never made even though the figures below are the same either
+                   way. Where a pooled calculation exists it is the default, so
+                   the pooled option represents that state instead. */
+                <option value="">No account chosen</option>
+              )}
               {snapshot.accounts.map((account) => (
                 <option key={account.id} value={account.id}>
                   {account.label}
@@ -289,12 +341,14 @@ function TrendsFilters({
 
 function TrendGroupSection({
   description: groupDescription,
+  scope,
   sectionKey,
   title,
   trends,
   values,
 }: Readonly<{
   description: string;
+  scope: AnalyticsScope;
   sectionKey: string;
   title: string;
   trends: readonly TrendListItem[];
@@ -312,7 +366,7 @@ function TrendGroupSection({
       {trends.length > 0 ? (
         <ol className="trends-grid">
           {trends.map((trend) => (
-            <TrendCard key={trend.id} trend={trend} values={values} />
+            <TrendCard key={trend.id} scope={scope} trend={trend} values={values} />
           ))}
         </ol>
       ) : (
@@ -337,9 +391,10 @@ function TrendGroupSection({
  * finding rather than as a magnitude.
  */
 function TrendCard({
+  scope,
   trend,
   values,
-}: Readonly<{ trend: TrendListItem; values: TrendsFilterValues }>) {
+}: Readonly<{ scope: AnalyticsScope; trend: TrendListItem; values: TrendsFilterValues }>) {
   const confidence = presentConfidence(trend.confidence);
   const metric = presentMetric(trend.metric);
   const headingId = `trend-${trend.id}`;
@@ -364,7 +419,7 @@ function TrendCard({
           <span> against posts with another value for this feature</span>
         </p>
 
-        <p className="trend-card__claim">{confidence.claim}</p>
+        <p className="trend-card__claim">{confidence.claim[scope]}</p>
 
         <dl className="trend-card__facts">
           <div>
@@ -407,6 +462,9 @@ export function TrendDetailScreen({ detail }: Readonly<{ detail: TrendDetail }>)
   const { calculation, contributors, trend } = detail;
   const confidence = presentConfidence(trend.confidence);
   const metric = presentMetric(trend.metric);
+  // There is no snapshot here — a detail page is reachable by its own URL — so
+  // the run the statistic was published in is what names the population.
+  const scope: AnalyticsScope = calculation.instagramAccountId === null ? "pooled" : "account";
   const group = contributors.filter((contributor) => contributor.membership === "group");
   const comparison = contributors.filter((contributor) => contributor.membership === "comparison");
 
@@ -415,7 +473,7 @@ export function TrendDetailScreen({ detail }: Readonly<{ detail: TrendDetail }>)
       <PageHeader
         description={`${metric.label}${
           metric.denominator ? ` per ${metric.denominator}` : ""
-        }, in this account's published calculation.`}
+        }, ${presentTrendScope(scope).source}.`}
         title={trendHeadline(trend)}
       />
 
@@ -428,7 +486,7 @@ export function TrendDetailScreen({ detail }: Readonly<{ detail: TrendDetail }>)
         <p>
           <StatusBadge tone={confidenceTone(trend.confidence)}>{confidence.label}</StatusBadge>
         </p>
-        <p>{confidence.claim}</p>
+        <p>{confidence.claim[scope]}</p>
         <p>{explainClassification(trend.classificationReason)}</p>
       </section>
 
@@ -471,6 +529,16 @@ export function TrendDetailScreen({ detail }: Readonly<{ detail: TrendDetail }>)
         <dl className="trend-detail__facts">
           <Fact label="Metric formula" value={metric.formula} />
           <Fact label="Denominator" value={metric.denominator ?? "None — this is a count"} />
+          {/* A method fact, not a caption: which posts were eligible to enter the
+              comparison is the first thing that decides what the median means. */}
+          <Fact
+            label="Measured across"
+            value={
+              scope === "pooled"
+                ? "Every linked account, pooled into one comparison"
+                : "One account's own posts"
+            }
+          />
           <Fact label="Snapshot age" value={presentAgeWindow(trend.ageWindow)} />
           <Fact
             label="Publication period"

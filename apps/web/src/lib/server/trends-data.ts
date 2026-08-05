@@ -4,6 +4,7 @@ import { loadAuthConfig } from "@studio-parallel/config";
 import {
   createWorkspaceContext,
   listInstagramAccountSummaries,
+  listPublishedTrendScopes,
   listTrendFeaturePaths,
   loadAccountTrends,
   loadTrendDetail,
@@ -19,14 +20,17 @@ import { requireShellActor } from "./shell-session";
 /**
  * Loads calculated trends plus what the filter form needs to offer.
  *
- * The account choice is resolved here rather than in the page, because the
- * screen is meaningless without one: a statistic belongs to one account, and
- * showing the union across two would put two audiences in one median. When no
- * account is named, the first connected one is used, and the fact that a default
- * was chosen travels back so the screen can say so.
+ * The scope is resolved here rather than in the page, because the screen is
+ * meaningless without one: every figure belongs either to one account or to
+ * every linked account pooled, and the two are separate calculations rather
+ * than two views of the same numbers. When the reader names neither, the pooled
+ * calculation is preferred and the first connected account is the fallback —
+ * pooled first because it is the only scope that answers "what works for us"
+ * rather than "what works for one of our accounts". Either way the fact that a
+ * default was chosen travels back so the screen can say so.
  *
  * The three empty results mean different things and are kept apart: no account
- * connected, an account whose calculation has never run, and a calculation whose
+ * connected, a scope whose calculation has never run, and a calculation whose
  * results the current filters exclude. Collapsing them would leave a reader
  * unable to tell "no patterns here" from "nothing has been measured".
  */
@@ -34,13 +38,17 @@ import { requireShellActor } from "./shell-session";
 export type TrendsAccountOption = Readonly<{ id: string; label: string }>;
 
 export type TrendsSnapshot = Readonly<{
-  /** True when the account was defaulted rather than named by the reader. */
+  /** True when the scope was defaulted rather than named by the reader. */
   accountDefaulted: boolean;
   accounts: readonly TrendsAccountOption[];
   featurePaths: readonly string[];
   hasAccount: boolean;
   list: TrendList;
-  /** The account actually read, which may be a default rather than a choice. */
+  /** True when the figures pool every linked account instead of describing one. */
+  pooled: boolean;
+  /** Whether a pooled calculation has published, so the scope can be offered. */
+  pooledAvailable: boolean;
+  /** The account actually read, or null when the scope is pooled or unresolved. */
   selectedAccountId: string | null;
 }>;
 
@@ -53,7 +61,10 @@ export async function loadTrendsSnapshot(
 
   const database = getDatabase();
   const context = createWorkspaceContext(principal.workspaceId);
-  const summaries = await listInstagramAccountSummaries(database, context, { now });
+  const [summaries, publishedScopes] = await Promise.all([
+    listInstagramAccountSummaries(database, context, { now }),
+    listPublishedTrendScopes(database, context),
+  ]);
 
   const accounts = Object.freeze(
     summaries.map((summary) =>
@@ -64,12 +75,19 @@ export async function loadTrendsSnapshot(
     ),
   );
 
-  const selectedAccountId = filters.matchesNothing
-    ? null
-    : (filters.instagramAccountId ?? accounts[0]?.id ?? null);
-  const accountDefaulted = selectedAccountId !== null && !filters.instagramAccountId;
+  const pooledAvailable = publishedScopes.includes(null);
+  const requested = filters.instagramAccountId;
+  const defaulted = requested === undefined;
+  const scope = defaulted
+    ? defaultScope(
+        pooledAvailable,
+        accounts.map((account) => account.id),
+      )
+    : requested;
 
-  if (selectedAccountId === null) {
+  // An unrecognised filter value empties the screen rather than widening it, so
+  // nothing is read even when a scope did resolve.
+  if (filters.matchesNothing || scope === undefined) {
     return Object.freeze({
       accountDefaulted: false,
       accounts,
@@ -80,28 +98,48 @@ export async function loadTrendsSnapshot(
         generatedAt: now.toISOString(),
         trends: Object.freeze([]),
       }),
+      pooled: false,
+      pooledAvailable,
       selectedAccountId: null,
     });
   }
 
   const [featurePaths, list] = await Promise.all([
-    listTrendFeaturePaths(database, context, selectedAccountId),
-    loadAccountTrends(database, context, { ...filters, instagramAccountId: selectedAccountId }),
+    listTrendFeaturePaths(database, context, scope),
+    loadAccountTrends(database, context, { ...filters, instagramAccountId: scope }),
   ]);
 
   return Object.freeze({
-    accountDefaulted,
+    accountDefaulted: defaulted,
     accounts,
     featurePaths,
     hasAccount: accounts.length > 0,
     list,
-    selectedAccountId,
+    pooled: scope === null,
+    pooledAvailable,
+    selectedAccountId: scope,
   });
+}
+
+/**
+ * The scope to read when the reader named none.
+ *
+ * Undefined rather than a guess when there is nothing to read: a workspace with
+ * no connected account and no pooled run has no scope, and inventing one would
+ * turn "connect an account" into "this account has no patterns".
+ */
+function defaultScope(
+  pooledAvailable: boolean,
+  accountIds: readonly string[],
+): string | null | undefined {
+  if (pooledAvailable) return null;
+
+  return accountIds[0];
 }
 
 export async function loadTrendDetailSnapshot(
   statisticId: string,
-  instagramAccountId: string | null,
+  instagramAccountId: string | null | undefined,
   now = new Date(),
 ): Promise<TrendDetail | null> {
   const principal = await requireShellActor();
@@ -110,14 +148,26 @@ export async function loadTrendDetailSnapshot(
   const database = getDatabase();
   const context = createWorkspaceContext(principal.workspaceId);
 
-  const accountId =
-    instagramAccountId ??
-    (await listInstagramAccountSummaries(database, context, { now }))[0]?.accountId ??
-    null;
+  if (instagramAccountId !== undefined) {
+    return loadTrendDetail(database, context, { instagramAccountId, statisticId });
+  }
 
-  if (accountId === null) return null;
+  // A link that carried no scope is resolved exactly as the list resolves one,
+  // so following a bookmark from a pooled screen does not land on an account's
+  // calculation — where the statistic would read as missing rather than pooled.
+  const [summaries, publishedScopes] = await Promise.all([
+    listInstagramAccountSummaries(database, context, { now }),
+    listPublishedTrendScopes(database, context),
+  ]);
 
-  return loadTrendDetail(database, context, { instagramAccountId: accountId, statisticId });
+  const scope = defaultScope(
+    publishedScopes.includes(null),
+    summaries.map((summary) => summary.accountId),
+  );
+
+  if (scope === undefined) return null;
+
+  return loadTrendDetail(database, context, { instagramAccountId: scope, statisticId });
 }
 
 const testAccountId = "019a0000-0000-7000-8000-000000000301";
@@ -278,6 +328,7 @@ function testCalculation(now: Date) {
     activatedAt: new Date(now.getTime() - 90 * 60 * 1_000).toISOString(),
     durationMs: 8_400,
     id: testRunId,
+    instagramAccountId: testAccountId,
     publishedFrom: "2026-02-03T00:00:00.000Z",
     publishedTo: "2026-08-03T00:00:00.000Z",
     statisticCount: testTrends.length,
@@ -297,7 +348,7 @@ function testSnapshot(filters: TrendsFilters, now: Date): TrendsSnapshot {
       );
 
   return Object.freeze({
-    accountDefaulted: !filters.matchesNothing && !filters.instagramAccountId,
+    accountDefaulted: !filters.matchesNothing && filters.instagramAccountId === undefined,
     accounts: Object.freeze([Object.freeze({ id: testAccountId, label: "@studioparallel" })]),
     featurePaths: Object.freeze([
       "callToAction.type",
@@ -312,6 +363,14 @@ function testSnapshot(filters: TrendsFilters, now: Date): TrendsSnapshot {
       generatedAt: now.toISOString(),
       trends: Object.freeze(matching),
     }),
+    pooled: false,
+    // The fixture workspace has one account and no pooled calculation, even
+    // though production prefers pooled wherever one exists. A pooled fixture
+    // would stop covering the outlier card and the strong badge — the pooled
+    // calculation excludes `engagement_count` and is capped below the supported
+    // class — and those are two of the things the browser and accessibility runs
+    // exist to check. A pooled browser run needs its own fixture workspace.
+    pooledAvailable: false,
     selectedAccountId: filters.matchesNothing ? null : testAccountId,
   });
 }
