@@ -924,9 +924,16 @@ const claimDenialPattern =
  * from this evidence, what drives engagement" is one clause with a parenthetical
  * in it, and splitting there would refuse the sentence for the phrase it exists
  * to deny.
+ *
+ * The dash branch matches exactly one space on each side rather than a run of
+ * them. `\s+[–—-]{1,2}\s+` is ambiguous about where the leading run starts, so a
+ * string of spaces with no dash after it costs the engine one attempt per space
+ * — quadratic in the length of the run, on text a model wrote. One space is what
+ * a dash is written with, and a reply padded with a thousand of them is not a
+ * clause boundary worth finding.
  */
 const clauseBoundaryPattern =
-  /[.!?;:\n]+|\s+[–—-]{1,2}\s+|,\s*(?:and|but|so|yet|while|whereas|however|although|though|which)\b/giu;
+  /[.!?;:\n]+|\s[–—-]{1,2}\s|,\s*(?:and|but|so|yet|while|whereas|however|although|though|which)\b/giu;
 
 /**
  * Whether one string makes a causal or algorithmic claim this product refuses.
