@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   analysisSchemaVersion,
   analyticsVersion,
+  businessProfileVersion,
   cohortSelectionVersion,
   createStrategyManifestHash,
   estimateStrategyPromptTokens,
@@ -487,6 +488,7 @@ function toColumn(value: string): string {
 }
 
 export const strategyContractColumns = Object.freeze({
+  businessProfileVersion,
   modelRequested: strategyModelRequested,
   strategyPromptSha256: strategyContractArtifacts.prompt.sha256,
   strategyPromptVersion,

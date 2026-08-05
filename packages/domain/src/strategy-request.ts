@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { derivedMetrics, type DerivedMetric } from "./analytics-metrics.js";
+import { businessProfileArtifacts, businessProfileVersion } from "./business-profile.js";
 import {
   strategyContractArtifacts,
   strategyModelRequested,
@@ -463,6 +464,13 @@ export function createStrategyManifestHash(
     strategyContractArtifacts.schema.sha256,
     strategyPromptVersion,
     strategyContractArtifacts.prompt.sha256,
+    // The business background travels in the instruction, so it shapes the
+    // answer as surely as the evidence does. Without it here, editing the
+    // description and regenerating over unchanged evidence would produce the
+    // same manifest hash, collapse onto the previous request signature, and
+    // hand back the old strategy as though nothing had been asked.
+    businessProfileVersion,
+    businessProfileArtifacts.profile.sha256,
     strategyModelRequested,
     identity.analyticsVersion,
     identity.statisticsVersion,

@@ -1244,6 +1244,11 @@ model StrategyGeneration {
   strategySchemaSha256       String                  @map("strategy_schema_sha256") @db.Char(64)
   strategyPromptVersion      String                  @map("strategy_prompt_version") @db.VarChar(64)
   strategyPromptSha256       String                  @map("strategy_prompt_sha256") @db.Char(64)
+  // The business background the instruction carried. Nullable because every
+  // generation written before there was one has none, and backfilling a version
+  // string onto strategies that never saw it would be a lie about what shaped
+  // them.
+  businessProfileVersion     String?                 @map("business_profile_version") @db.VarChar(64)
   modelRequested             String                  @map("model_requested") @db.VarChar(64)
   correlationId              String                  @map("correlation_id") @db.Uuid
   requestedByUserId          String?                 @map("requested_by_user_id") @db.Uuid

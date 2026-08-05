@@ -163,7 +163,7 @@ describe("chat immutable artifacts", () => {
     expect(Object.isFrozen(chatContractArtifacts.activeDefault)).toBe(true);
     expect(chatContractArtifacts.activeDefault).toEqual({
       schemaVersion: "strategy-chat-v1.0.0",
-      promptVersion: "strategy-chat-prompt-v1.0.0",
+      promptVersion: "strategy-chat-prompt-v1.1.0",
       modelRequested: "gemini-3.6-flash",
     });
     expect(digest(JSON.stringify(chatReplyJsonSchema))).toBe(chatContractArtifacts.schema.sha256);
