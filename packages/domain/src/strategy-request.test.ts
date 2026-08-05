@@ -321,6 +321,27 @@ describe("manifest hash and signature", () => {
     );
   });
 
+  /**
+   * Pinned, for the reason the prompt and schema hashes are pinned.
+   *
+   * Everything in the canonical list is an input that changed the answer, and
+   * dropping one is invisible: the function still returns a hash, requests
+   * still collapse onto signatures, and the only symptom is a regeneration that
+   * hands back an older strategy because the thing that changed was not part of
+   * what "the same request" means. That happened to be the exact risk when the
+   * business background was added, since it travels in the instruction rather
+   * than in the manifest text.
+   *
+   * A failure here is not a bug on its own. Re-pin it deliberately, having
+   * checked that the input which changed is one that should make this a
+   * different request.
+   */
+  it("pins the canonical inputs, so one silently leaving the hash is a failure", () => {
+    expect(createStrategyManifestHash(identity, entries)).toBe(
+      "b070e66952ff97e8f03436b78a246c5f6217fa16e57c85e000fe449cf5cc17e6",
+    );
+  });
+
   it("does not depend on the order emphasis values were supplied in", () => {
     const one = { ...identity, pillarEmphasis: ["process", "education"] };
     const other = { ...identity, pillarEmphasis: ["education", "process"] };

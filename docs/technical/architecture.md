@@ -175,6 +175,7 @@ Detailed policy is in `background-jobs.md`.
 - Provider API version is explicit configuration and stored with every sync/snapshot.
 - Analysis schemas are immutable, named semantic versions with JSON Schema/Zod hash and lifecycle state: draft, active, retired.
 - Prompts have immutable version/hash and evaluation notes.
+- The business background is an immutable named version with its own hash, carried in both the strategy and assistant instructions and recorded against every strategy it shaped.
 - Models use pinned stable identifiers. Model ID and returned provider metadata are stored.
 - Formula/cohort logic has an `analytics_version`; materialised statistics can be recomputed and historical versions retained when used as evidence.
 - Strategy schema/prompt/model and exact evidence manifest are immutable per generation.

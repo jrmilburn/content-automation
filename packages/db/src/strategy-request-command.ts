@@ -277,6 +277,7 @@ export async function requestStrategyGeneration(
           backgroundJob: {
             connect: { workspaceId_id: { id: enqueued.job.id, workspaceId: context.workspaceId } },
           },
+          businessProfileVersion: strategyContractColumns.businessProfileVersion,
           cohortVersion: manifest.identity.cohortVersion,
           comparablePostCount: withEmphasis.counts.comparablePostCount,
           correlationId: input.correlationId,

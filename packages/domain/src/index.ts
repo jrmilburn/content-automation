@@ -1,6 +1,13 @@
 export const serviceNames = ["web", "worker"] as const;
 
 export {
+  businessProfileArtifacts,
+  businessProfileText,
+  businessProfileVersion,
+  renderBusinessProfile,
+} from "./business-profile.js";
+
+export {
   chatContractArtifacts,
   chatHistoryTurnLimit,
   chatModelRequested,
