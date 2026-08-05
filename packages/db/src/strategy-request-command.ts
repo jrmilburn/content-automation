@@ -242,110 +242,120 @@ export async function requestStrategyGeneration(
   const now = new Date();
   const entries = manifest.entries;
 
-  return database.$transaction(async (transaction) => {
-    const enqueued = await enqueueBackgroundJobInTransaction(transaction, context, {
-      correlationId: input.correlationId,
-      handlerVersion: 1,
-      idempotencyKey: strategyGenerateKey(requestSignature),
-      queueName: "strategy.generate",
-      resourceId: input.instagramAccountId,
-      resourceType: "instagram_account",
-    });
+  return database.$transaction(
+    async (transaction) => {
+      const enqueued = await enqueueBackgroundJobInTransaction(transaction, context, {
+        correlationId: input.correlationId,
+        handlerVersion: 1,
+        idempotencyKey: strategyGenerateKey(requestSignature),
+        queueName: "strategy.generate",
+        resourceId: input.instagramAccountId,
+        resourceType: "instagram_account",
+      });
 
-    const strategyGenerationId = createId();
+      const strategyGenerationId = createId();
 
-    await transaction.strategyGeneration.create({
-      data: {
-        account: {
-          connect: {
-            workspaceId_id: { id: input.instagramAccountId, workspaceId: context.workspaceId },
-          },
-        },
-        ageWindow: withEmphasis.ageWindow,
-        analysedPostCount: withEmphasis.counts.analysedPostCount,
-        analysisSchemaVersion: manifest.identity.analysisSchemaVersion,
-        analyticsRun: {
-          connect: {
-            workspaceId_id: {
-              id: withEmphasis.analyticsRunId,
-              workspaceId: context.workspaceId,
+      await transaction.strategyGeneration.create({
+        data: {
+          account: {
+            connect: {
+              workspaceId_id: { id: input.instagramAccountId, workspaceId: context.workspaceId },
             },
           },
+          ageWindow: withEmphasis.ageWindow,
+          analysedPostCount: withEmphasis.counts.analysedPostCount,
+          analysisSchemaVersion: manifest.identity.analysisSchemaVersion,
+          analyticsRun: {
+            connect: {
+              workspaceId_id: {
+                id: withEmphasis.analyticsRunId,
+                workspaceId: context.workspaceId,
+              },
+            },
+          },
+          analyticsVersion: manifest.identity.analyticsVersion,
+          backgroundJob: {
+            connect: { workspaceId_id: { id: enqueued.job.id, workspaceId: context.workspaceId } },
+          },
+          cohortVersion: manifest.identity.cohortVersion,
+          comparablePostCount: withEmphasis.counts.comparablePostCount,
+          correlationId: input.correlationId,
+          editorialConstraint: input.editorialConstraint,
+          estimatedInputTokens: manifest.estimatedInputTokens,
+          evidenceCount: entries.length,
+          formatEmphasis: [...input.formatEmphasis],
+          frozenAt: now,
+          id: strategyGenerationId,
+          manifestHash: manifest.manifestHash,
+          modelRequested: strategyContractColumns.modelRequested,
+          mode: decision.mode === "evidence_led" ? "EVIDENCE_LED" : "EXPLORATORY",
+          pillarEmphasis: [...input.pillarEmphasis],
+          postEvidenceCount: entries.filter((entry) => entry.evidenceType === "post").length,
+          primaryMetric: input.primaryMetric,
+          publicationWeekCount: withEmphasis.counts.publicationWeekCount,
+          publishedFrom: withEmphasis.publishedFrom,
+          publishedTo: withEmphasis.publishedTo,
+          regenerationOrdinal,
+          requestSignature,
+          requestedAt: now,
+          requestedPeriodDays: strategyDefaultPeriodDays,
+          retrievalVersion: strategyContractColumns.retrievalVersion,
+          statisticEvidenceCount: entries.filter(
+            (entry) => entry.evidenceType === "feature_statistic",
+          ).length,
+          statisticsVersion: manifest.identity.statisticsVersion,
+          strategyPromptSha256: strategyContractColumns.strategyPromptSha256,
+          strategyPromptVersion: strategyContractColumns.strategyPromptVersion,
+          strategySchemaSha256: strategyContractColumns.strategySchemaSha256,
+          strategySchemaVersion: strategyContractColumns.strategySchemaVersion,
+          workspace: { connect: { id: context.workspaceId } },
+          ...(input.requestedByUserId
+            ? {
+                requestedByUser: {
+                  connect: {
+                    workspaceId_id: {
+                      id: input.requestedByUserId,
+                      workspaceId: context.workspaceId,
+                    },
+                  },
+                },
+              }
+            : {}),
+          ...(input.regeneratedFromId
+            ? {
+                regeneratedFrom: {
+                  connect: {
+                    workspaceId_id: {
+                      id: input.regeneratedFromId,
+                      workspaceId: context.workspaceId,
+                    },
+                  },
+                },
+              }
+            : {}),
         },
-        analyticsVersion: manifest.identity.analyticsVersion,
-        backgroundJob: {
-          connect: { workspaceId_id: { id: enqueued.job.id, workspaceId: context.workspaceId } },
-        },
-        cohortVersion: manifest.identity.cohortVersion,
-        comparablePostCount: withEmphasis.counts.comparablePostCount,
-        correlationId: input.correlationId,
-        editorialConstraint: input.editorialConstraint,
-        estimatedInputTokens: manifest.estimatedInputTokens,
-        evidenceCount: entries.length,
-        formatEmphasis: [...input.formatEmphasis],
-        frozenAt: now,
-        id: strategyGenerationId,
+      });
+
+      await writeStrategyEvidence(transaction, context, { entries, strategyGenerationId });
+
+      return Object.freeze({
+        backgroundJobId: enqueued.job.id,
+        created: enqueued.created,
         manifestHash: manifest.manifestHash,
-        modelRequested: strategyContractColumns.modelRequested,
-        mode: decision.mode === "evidence_led" ? "EVIDENCE_LED" : "EXPLORATORY",
-        pillarEmphasis: [...input.pillarEmphasis],
-        postEvidenceCount: entries.filter((entry) => entry.evidenceType === "post").length,
-        primaryMetric: input.primaryMetric,
-        publicationWeekCount: withEmphasis.counts.publicationWeekCount,
-        publishedFrom: withEmphasis.publishedFrom,
-        publishedTo: withEmphasis.publishedTo,
-        regenerationOrdinal,
-        requestSignature,
-        requestedAt: now,
-        requestedPeriodDays: strategyDefaultPeriodDays,
-        retrievalVersion: strategyContractColumns.retrievalVersion,
-        statisticEvidenceCount: entries.filter(
-          (entry) => entry.evidenceType === "feature_statistic",
-        ).length,
-        statisticsVersion: manifest.identity.statisticsVersion,
-        strategyPromptSha256: strategyContractColumns.strategyPromptSha256,
-        strategyPromptVersion: strategyContractColumns.strategyPromptVersion,
-        strategySchemaSha256: strategyContractColumns.strategySchemaSha256,
-        strategySchemaVersion: strategyContractColumns.strategySchemaVersion,
-        workspace: { connect: { id: context.workspaceId } },
-        ...(input.requestedByUserId
-          ? {
-              requestedByUser: {
-                connect: {
-                  workspaceId_id: {
-                    id: input.requestedByUserId,
-                    workspaceId: context.workspaceId,
-                  },
-                },
-              },
-            }
-          : {}),
-        ...(input.regeneratedFromId
-          ? {
-              regeneratedFrom: {
-                connect: {
-                  workspaceId_id: {
-                    id: input.regeneratedFromId,
-                    workspaceId: context.workspaceId,
-                  },
-                },
-              },
-            }
-          : {}),
-      },
-    });
-
-    await writeStrategyEvidence(transaction, context, { entries, strategyGenerationId });
-
-    return Object.freeze({
-      backgroundJobId: enqueued.job.id,
-      created: enqueued.created,
-      manifestHash: manifest.manifestHash,
-      mode: decision.mode,
-      requested: true as const,
-      strategyGenerationId,
-    });
-  });
+        mode: decision.mode,
+        requested: true as const,
+        strategyGenerationId,
+      });
+    },
+    // Stated rather than defaulted. Prisma closes an interactive transaction
+    // after five seconds, and this one crosses the network for the job, the
+    // generation and the evidence: on the default it failed from the deployed
+    // region on latency alone, and the raw `P2028` reached the reader as an
+    // unexplained 500. Batching the evidence brought the work well inside the
+    // default, so this is the margin for a slow connection rather than the
+    // budget the request is designed to spend.
+    { maxWait: 10_000, timeout: 20_000 },
+  );
 }
 
 /**
