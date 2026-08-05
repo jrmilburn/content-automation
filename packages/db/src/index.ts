@@ -237,6 +237,31 @@ export {
   type StrategyRequestPreview,
 } from "./strategy-request-command.js";
 export {
+  chatContextSources,
+  loadChatContext,
+  type ChatContextResult,
+  type ChatContextScope,
+  type ChatContextSource,
+} from "./chat-context.js";
+export {
+  appendChatAnswer,
+  appendChatQuestion,
+  chatSessionMessageLimit,
+  chatWorkspaceHourlyTurnLimit,
+  countRecentChatQuestions,
+  createChatSession,
+  deleteChatSession,
+  listChatSessions,
+  loadChatConversation,
+  renameChatSession,
+  toChatHistory,
+  type AppendedChatMessage,
+  type ChatAnswerRecord,
+  type ChatConversation,
+  type ChatMessageRecord,
+  type ChatSessionSummary,
+} from "./chat-sessions.js";
+export {
   analyticsFeatures,
   analyticsPostLimit,
   buildFeatureRequests,

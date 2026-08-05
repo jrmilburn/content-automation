@@ -173,6 +173,8 @@ model Workspace {
   analysisJobs          AnalysisJob[]
   auditEvents           AuditEvent[]
   backgroundJobs        BackgroundJob[]
+  chatMessages          ChatMessage[]
+  chatSessions          ChatSession[]
   analyticsRuns         AccountAnalyticsRun[]
   featureStatistics     AccountFeatureStatistic[]
   featureStatisticPosts AccountFeatureStatisticPost[]
@@ -312,6 +314,7 @@ model InternalUser {
   updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
   workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   actorAuditEvents    AuditEvent[]         @relation("audit_actor_user")
+  chatSessions        ChatSession[]        @relation("ChatSessionCreatedBy")
   changedSettings     SystemSetting[]      @relation("setting_changed_by_user")
   uploadIntents       VideoUploadIntent[]  @relation("upload_intent_created_by_user")
   strategyGenerations StrategyGeneration[] @relation("StrategyGenerationRequestedBy")
@@ -364,6 +367,7 @@ model InstagramAccount {
   createdAt               DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt               DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
   workspace               Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  chatSessions            ChatSession[]
   credentials             IntegrationCredential[]
   posts                   InstagramPost[]
   // Analytics debounce. `analyticsDirtySince` is when the first unprocessed
@@ -1277,6 +1281,7 @@ model StrategyGeneration {
   regenerations              StrategyGeneration[]    @relation("StrategyRegeneration")
   evidence                   StrategyEvidence[]
   citedByEvidence            StrategyEvidence[]      @relation("StrategyEvidenceSource")
+  citedByChatMessages        ChatMessage[]           @relation("ChatMessageStrategy")
   currentForAccount          InstagramAccount?       @relation("CurrentStrategy")
 
   @@unique([workspaceId, id])
@@ -1351,4 +1356,100 @@ model StrategyEvidence {
   @@index([workspaceId, featureStatisticId], map: "strategy_evidence_statistic_idx")
   @@index([workspaceId, instagramPostId], map: "strategy_evidence_post_idx")
   @@map("strategy_evidence")
+}
+
+enum ChatMessageRole {
+  USER
+  ASSISTANT
+
+  @@map("chat_message_role")
+}
+
+// One conversation with the assistant.
+//
+// A session is scoped to the analytics scope it asks about, exactly as a
+// strategy is: an account id for one account's strategy, and null for the
+// pooled one across every linked account. The two are never merged, because a
+// question answered from one account's evidence and the same question answered
+// from all of them have different answers.
+//
+// The title is stored rather than derived, so renaming is a fact about the
+// session rather than a re-reading of its first message. `titleSetByUser`
+// records which of the two it is, so an automatic title may be replaced when a
+// conversation turns out to be about something else, and a chosen one never is.
+model ChatSession {
+  id                 String            @id @db.Uuid
+  workspaceId        String            @map("workspace_id") @db.Uuid
+  instagramAccountId String?           @map("instagram_account_id") @db.Uuid
+  title              String            @db.VarChar(120)
+  titleSetByUser     Boolean           @default(false) @map("title_set_by_user")
+  createdByUserId    String?           @map("created_by_user_id") @db.Uuid
+  messageCount       Int               @default(0) @map("message_count")
+  lastMessageAt      DateTime?         @map("last_message_at") @db.Timestamptz(3)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  account            InstagramAccount? @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
+  createdByUser      InternalUser?     @relation("ChatSessionCreatedBy", fields: [workspaceId, createdByUserId], references: [workspaceId, id], onDelete: Restrict)
+  messages           ChatMessage[]
+
+  @@unique([workspaceId, id])
+  // The list is ordered by most recent activity, and a session that has never
+  // been used sorts by when it was made rather than disappearing.
+  @@index([workspaceId, lastMessageAt(sort: Desc), createdAt(sort: Desc)], map: "chat_session_recent_idx")
+  @@map("chat_sessions")
+}
+
+// One message in a conversation, and what the model was shown to produce it.
+//
+// Assistant rows carry the provenance columns: which context sources were
+// assembled, the hash of the assembled context, which strategy it argued from
+// and the provider's own usage. A reader asking "why did it say that?" can
+// answer it from the row rather than from a log that has since rotated, which
+// is the same reason `StrategyGeneration` freezes its manifest.
+//
+// A turn whose model call failed still stores an assistant row, with empty
+// content and a failure code. The alternative — storing nothing — makes a
+// failed question look unasked, and leaves the reader with a conversation that
+// silently skips a turn.
+model ChatMessage {
+  id                   String              @id @db.Uuid
+  workspaceId          String              @map("workspace_id") @db.Uuid
+  chatSessionId        String              @map("chat_session_id") @db.Uuid
+  // Position in the conversation, unique per session, so order never depends on a timestamp.
+  sequence             Int
+  role                 ChatMessageRole
+  content              String              @db.Text
+  // Manifest keys the reply cited, already resolved against the frozen manifest.
+  citedEvidenceKeys    String[]            @map("cited_evidence_keys")
+  followUps            String[]            @map("follow_ups")
+  contextHash          String?             @map("context_hash") @db.Char(64)
+  contextSources       String[]            @map("context_sources")
+  contextTokenEstimate Int?                @map("context_token_estimate")
+  strategyGenerationId String?             @map("strategy_generation_id") @db.Uuid
+  promptVersion        String?             @map("prompt_version") @db.VarChar(64)
+  schemaVersion        String?             @map("schema_version") @db.VarChar(64)
+  modelRequested       String?             @map("model_requested") @db.VarChar(64)
+  modelVersion         String?             @map("model_version") @db.VarChar(64)
+  finishReason         String?             @map("finish_reason") @db.VarChar(64)
+  inputTokens          Int?                @map("input_tokens")
+  outputTokens         Int?                @map("output_tokens")
+  totalTokens          Int?                @map("total_tokens")
+  providerLatencyMs    Int?                @map("provider_latency_ms")
+  failureClass         String?             @map("failure_class") @db.VarChar(64)
+  failureCode          String?             @map("failure_code") @db.VarChar(64)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  workspace            Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  // Cascade, as strategy evidence cascades from its generation: a message has no
+  // meaning apart from the conversation it belongs to, so deleting the session
+  // must not be blocked by, or leave behind, its own messages.
+  session              ChatSession         @relation(fields: [workspaceId, chatSessionId], references: [workspaceId, id], onDelete: Cascade)
+  strategyGeneration   StrategyGeneration? @relation("ChatMessageStrategy", fields: [workspaceId, strategyGenerationId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@unique([workspaceId, id])
+  // Two writers appending at once would otherwise both take the same position
+  // and the conversation would read in an order neither of them chose.
+  @@unique([chatSessionId, sequence], map: "chat_message_session_sequence")
+  @@index([workspaceId, chatSessionId, sequence], map: "chat_message_conversation_idx")
+  @@map("chat_messages")
 }

@@ -1,6 +1,37 @@
 export const serviceNames = ["web", "worker"] as const;
 
 export {
+  chatContractArtifacts,
+  chatHistoryTurnLimit,
+  chatModelRequested,
+  chatPromptText,
+  chatPromptVersion,
+  chatQuestionMaxLength,
+  chatReplyJsonSchema,
+  chatReplyV1Schema,
+  chatSchemaVersion,
+  chatTurnRoles,
+  createChatInstruction,
+  renderChatConversation,
+  validateChatReplyV1,
+  type ChatReplyV1,
+  type ChatTurn,
+  type ChatTurnRole,
+  type ChatValidationContext,
+  type ChatValidationIssue,
+  type ChatValidationResult,
+} from "./chat-contract.js";
+
+export {
+  assembleChatContext,
+  chatContextTokenBudget,
+  createChatContextHash,
+  estimateChatTokens,
+  type ChatContextAssembly,
+  type ChatContextBlock,
+} from "./chat-context.js";
+
+export {
   analysisContractArtifacts,
   analysisArtifactLifecycles,
   analysisModelRequested,
@@ -353,6 +384,7 @@ export {
 } from "./job-retry.js";
 export {
   completeStrategyV1,
+  containsProhibitedClaim,
   createStrategyInstruction,
   createStrategyRecommendationFingerprint,
   strategyContractArtifacts,

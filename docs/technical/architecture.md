@@ -32,7 +32,7 @@ This is a logical boundary, not a requirement for independently versioned servic
 
 | Component | Owns | Does not own |
 | --- | --- | --- |
-| Next.js web | Internal UI, OIDC session, server authorisation, signed-upload initiation, commands/queries, status reads | Long-running imports, media probing or AI calls |
+| Next.js web | Internal UI, OIDC session, server authorisation, signed-upload initiation, commands/queries, status reads, **one assistant turn** | Long-running imports, media probing, or any AI call other than an assistant turn |
 | Worker | Sync, token maintenance, asset validation, Gemini analysis, analytics recalculation, strategy generation, cleanup/reconciliation | User session decisions or direct browser trust |
 | PostgreSQL | Product records, immutable snapshots/analyses/strategies, queue metadata, idempotency, audit/provenance | Original video bytes or plaintext secrets outside encrypted columns |
 | PostgreSQL-backed queue | Durable scheduling, leases, retries, priority and dead-letter state | Business truth; job outcome is committed in domain tables |
@@ -100,6 +100,14 @@ sequenceDiagram
 ```
 
 Account strategy generation is a separate job. It reads stored analyses and application-calculated statistics, freezes a bounded evidence manifest, calls Gemini with text/structured evidence only, validates the response and stores an immutable generation plus evidence links.
+
+### The assistant: the one AI call the web process makes
+
+One assistant turn is a single short text request with no video, no file upload and no queue, answered inside the request that asked for it. Queueing it would buy no isolation — there is nothing long-running to survive, and no provider file to clean up — while delivering a conversation one poll interval at a time. A reader is waiting, so the call runs in the web process under a timeout sized for a person rather than for a job, and the reply is validated before it is stored or shown.
+
+`runChatTurn` in `apps/web/src/lib/server/chat-turn.ts` is the only web path that calls a provider. Everything else the model is asked — post analysis, strategy generation — still belongs to the worker, and the boundary above holds for all of it. The consequence for deployment is that `GEMINI_API_KEY` is now required in the web environment as well as the worker's; it is loaded lazily inside the live branch, so a build and a `PROVIDER_MODE=fake` boot still need nothing.
+
+Context assembly is a registry rather than a query. Each source in `packages/db/src/chat-context.ts` turns work already done — the current strategy and its frozen manifest, the published comparisons, the account, its recent posts — into one block of prose, and `assembleChatContext` bounds the total and records which sources survived. A new source is a new entry in that array; the call path does not change. Only the strategy makes evidence citable, because its manifest is the one set of ids this product already resolves to a trend or a post.
 
 ## Technology choices and alternatives
 

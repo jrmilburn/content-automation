@@ -201,6 +201,24 @@ erDiagram
 - **Indexes:** scope/key/effective time.
 - **Retention/sensitivity:** change history retained. Secrets are references to secret-manager entries, never values.
 
+## Assistant conversations
+
+### `ChatSession`
+
+- **Purpose/ownership:** one conversation with the assistant, owned by a workspace and scoped to the analytics scope it asks about — an account id, or null for the pooled scope across every linked account. The scope is frozen when the session is created, so a conversation cannot change population between its own answers.
+- **Fields:** workspace, optional account, title, whether a person chose that title, creating user, message count, last message time.
+- **Constraints:** `(workspace_id, id)` unique. `message_count` is the sequence counter the next message takes its position from, read inside the transaction that writes it.
+- **Indexes:** `(workspace_id, last_message_at desc, created_at desc)`, so a conversation that has never been used still sorts by when it was made.
+- **Retention/sensitivity:** deleted outright on request, with its messages. Nothing restores them.
+
+### `ChatMessage`
+
+- **Purpose/ownership:** one question or one answer, and — for an answer — the record of what the model was shown to produce it.
+- **Fields:** session, sequence, role, content, cited evidence keys, follow-ups, context hash, context source keys, context token estimate, the strategy generation it argued from, contract versions and provider usage, and a failure class/code when no answer could be produced.
+- **Constraints:** `(chat_session_id, sequence)` unique, so two writers appending at once produce a refusal rather than a conversation that reordered itself. An answer that failed is stored with empty content and a reason code rather than not stored, so a conversation never silently skips a turn.
+- **Indexes:** `(workspace_id, chat_session_id, sequence)`.
+- **Retention/sensitivity:** the context itself is not stored, only its hash and the sources that produced it; the assembled prompt never reaches a log. The session relation is `Cascade` — the one deliberate exception to the `Restrict` rule in this schema, because a message has no meaning apart from the conversation it belongs to, and deleting a conversation must neither be blocked by its messages nor leave them behind.
+
 ## Additional supporting entities
 
 - `AuditEvent`: actor/service, action, resource, safe outcome/reason codes, before/after hashes, time and correlation ID for access-sensitive mutations.

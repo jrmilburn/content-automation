@@ -35,6 +35,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",
     "analysis:contract:live": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.vercel --env-file-if-exists=.env.worker scripts/analysis-contract/run-live-proof.ts",
+    "chat:contract:live": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.vercel --env-file-if-exists=.env.worker scripts/chat-contract/run-live-proof.ts",
     "strategy:contract:live": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.vercel --env-file-if-exists=.env.worker scripts/strategy-contract/run-live-proof.ts",
     "gemini:adapter:live": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.vercel --env-file-if-exists=.env.worker scripts/gemini-adapter/run-live-smoke.ts",
     "meta:contract:live": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.vercel --env-file-if-exists=.env.worker scripts/meta-contract/run-live-proof.ts",

@@ -2,7 +2,7 @@
 
 ## Navigation
 
-Primary navigation: **Dashboard**, **Posts**, **Trends**, **Strategy**, **Operations**.
+Primary navigation: **Dashboard**, **Posts**, **Trends**, **Strategy**, **Assistant**, **Operations**.
 Secondary/admin navigation: **Instagram accounts**, **Settings**, user/session menu.
 
 ```mermaid
@@ -11,6 +11,8 @@ flowchart TD
   Dashboard --> Posts
   Dashboard --> Trends
   Dashboard --> Strategy
+  Dashboard --> Assistant
+  Assistant --> Conversation[Conversation]
   Dashboard --> Operations
   Dashboard --> Accounts[Instagram accounts]
   Posts --> PostDetail[Post detail]
@@ -41,6 +43,8 @@ flowchart TD
 | `/strategy` | Strategy index | View current and historical strategies | Generate, queued/error/insufficient states, history |
 | `/strategy/:strategyId` | Strategy detail | Present evidence-linked plan | Working/not working/tests/next videos/evidence/limitations; regenerate |
 | `/recommendations/:recommendationId` | Recommendation detail | Turn a strategy item into an actionable brief | Status, hook options, structure, filming, editing, CTA, evidence, resulting-post link |
+| `/chat` | Assistant | Find or start a conversation about the current strategy | Start, reopen; no account, no strategy and no conversation are three different states |
+| `/chat/:sessionId` | Conversation | Ask and follow up, with the evidence under each answer | Ask, retry a failed turn, rename, delete; citations open the trend or post behind them |
 | `/operations` | Processing operations | Find work requiring attention | Filters for sync/job/incomplete post/token/storage states; safe retry |
 | `/operations/syncs/:syncRunId` | Sync run detail | Diagnose import work | Counts, cursor/state, rate limit, redacted errors, retry/resume |
 | `/operations/jobs/:jobId` | Job detail | Diagnose analysis/strategy work | Attempts, stages, version metadata, usage, redacted error, retry/cancel-if-pending |
