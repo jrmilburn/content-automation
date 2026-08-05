@@ -392,25 +392,20 @@ export function buildStrategyManifest(
 }
 
 /** The reference column one evidence type writes into. */
-function referenceColumns(
-  entry: StrategyEvidenceEntry,
-  workspaceId: string,
-): Record<string, unknown> {
+function referenceColumns(entry: StrategyEvidenceEntry): Record<string, string> {
   if (entry.referenceId === null) return {};
-
-  const connect = { connect: { workspaceId_id: { id: entry.referenceId, workspaceId } } };
 
   switch (entry.evidenceType) {
     case "feature_statistic":
-      return { featureStatistic: connect };
+      return { featureStatisticId: entry.referenceId };
     case "post_analysis":
-      return { postAnalysis: connect };
+      return { postAnalysisId: entry.referenceId };
     case "metric_snapshot":
-      return { metricSnapshot: connect };
+      return { metricSnapshotId: entry.referenceId };
     case "post":
-      return { post: connect };
+      return { instagramPostId: entry.referenceId };
     case "recent_recommendation":
-      return { sourceGeneration: connect };
+      return { sourceGenerationId: entry.referenceId };
     default:
       return {};
   }
@@ -426,52 +421,54 @@ export type StrategyEvidenceRow = Readonly<{
  *
  * Called inside the same transaction as the generation and its job, so a
  * generation can never exist without the record of what it was asked to reason
- * over. Five relations share `workspaceId`, so Prisma requires the checked
- * input and each composite key is connected rather than set as a scalar.
+ * over.
+ *
+ * One statement rather than one per entry. Written as a loop of `create` calls,
+ * this cost a network round trip per row inside an interactive transaction that
+ * Prisma closes after five seconds by default — and a manifest holds up to
+ * several dozen entries. Against the Supabase pooler a request measured 4.9
+ * seconds for 25 entries, so the transaction was passing on latency alone and
+ * failing whenever the connection was slower, which is what it was doing from
+ * the deployed region. The failure arrives as a raw `P2028`, not an
+ * `OperationalError`, so it reached the reader as an unexplained 500.
+ *
+ * `createMany` cannot use `connect`, so the five composite relations are set as
+ * scalar columns. The pairing is still enforced: every relation is keyed on
+ * `workspaceId` with the reference, and the row carries the same `workspaceId`
+ * it is written under, so a foreign key from another workspace cannot resolve.
  */
 export async function writeStrategyEvidence(
   transaction: Pick<PrismaClient, "strategyEvidence">,
   context: WorkspaceContext,
   input: Readonly<{ entries: readonly StrategyEvidenceEntry[]; strategyGenerationId: string }>,
 ): Promise<number> {
-  let written = 0;
+  if (input.entries.length === 0) return 0;
 
-  for (const entry of input.entries) {
-    await transaction.strategyEvidence.create({
-      data: {
-        allowedNumericClaims: [...entry.allowedNumericClaims],
-        allowedRoles: [...entry.allowedRoles],
-        category: toColumn(entry.category) as never,
-        classification:
-          entry.classification === null ? null : (toColumn(entry.classification) as never),
-        dimensions: [...entry.dimensions],
-        evidenceKey: entry.evidenceKey,
-        evidenceType: toColumn(entry.evidenceType) as never,
-        generation: {
-          connect: {
-            workspaceId_id: {
-              id: input.strategyGenerationId,
-              workspaceId: context.workspaceId,
-            },
-          },
-        },
-        id: createId(),
-        rank: entry.rank,
-        rankScore: entry.rankScore,
-        requiredInLimitations: entry.requiredInLimitations,
-        retrievalReason: entry.retrievalReason,
-        sampleSize: entry.sampleSize,
-        summaryHash: hashSummary(entry.summaryText),
-        summaryText: entry.summaryText,
-        workspace: { connect: { id: context.workspaceId } },
-        ...referenceColumns(entry, context.workspaceId),
-      },
-    });
+  const { count } = await transaction.strategyEvidence.createMany({
+    data: input.entries.map((entry) => ({
+      allowedNumericClaims: [...entry.allowedNumericClaims],
+      allowedRoles: [...entry.allowedRoles],
+      category: toColumn(entry.category) as never,
+      classification:
+        entry.classification === null ? null : (toColumn(entry.classification) as never),
+      dimensions: [...entry.dimensions],
+      evidenceKey: entry.evidenceKey,
+      evidenceType: toColumn(entry.evidenceType) as never,
+      id: createId(),
+      rank: entry.rank,
+      rankScore: entry.rankScore,
+      requiredInLimitations: entry.requiredInLimitations,
+      retrievalReason: entry.retrievalReason,
+      sampleSize: entry.sampleSize,
+      strategyGenerationId: input.strategyGenerationId,
+      summaryHash: hashSummary(entry.summaryText),
+      summaryText: entry.summaryText,
+      workspaceId: context.workspaceId,
+      ...referenceColumns(entry),
+    })),
+  });
 
-    written += 1;
-  }
-
-  return written;
+  return count;
 }
 
 function hashSummary(value: string): string {
