@@ -55,7 +55,11 @@ async function main(): Promise<void> {
 
     const result = await adapter.generateStructuredText({
       fileUri: active.uri,
-      instruction: createAnalysisInstruction(),
+      // A nominal duration: this script proves the transport around the request
+      // — upload, ACTIVE poll, call, release — and never validates the response,
+      // so the bound the instruction states does not have to match this video.
+      // `analysis:contract:live` is the one that probes the real duration.
+      instruction: createAnalysisInstruction({ probedDurationSeconds: 60 }),
       mimeType: "video/mp4",
     });
 

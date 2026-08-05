@@ -183,10 +183,11 @@ async function requestAnalysis(
   const response = await withHeartbeat(execution, () =>
     dependencies.gemini.generateStructuredText({
       fileUri: input.fileUri,
-      instruction: createAnalysisInstruction(
-        input.previousIssues ?? [],
-        input.previousWasNotJson ?? false,
-      ),
+      instruction: createAnalysisInstruction({
+        probedDurationSeconds: input.probedDurationSeconds,
+        previousIssues: input.previousIssues ?? [],
+        previousWasNotJson: input.previousWasNotJson ?? false,
+      }),
       mimeType: "video/mp4",
     }),
   );
