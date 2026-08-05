@@ -8,7 +8,7 @@ import {
 } from "./analysis-contract.js";
 
 export const strategySchemaVersion = "account-content-strategy-v1.0.0" as const;
-export const strategyPromptVersion = "account-content-strategy-prompt-v1.0.0" as const;
+export const strategyPromptVersion = "account-content-strategy-prompt-v1.1.0" as const;
 export const strategyModelRequested = analysisModelRequested;
 
 function deepFreeze<T>(value: T): T {
@@ -1015,7 +1015,21 @@ Scope empirical language to this account and selected period. Correlation is not
 
 Do not upgrade the evidence classification stored in the manifest. Use statistically_supported_association only when referenced evidence already has that class. Preserve relevant counterexamples and data-quality limitations. Unsupported statements may appear only as explicit limitations or proposed experiments, never as working or weak empirical patterns.
 
+Every classification field takes its value from the same list of seven, but each position accepts only part of that list, and a value outside its position's set rejects the whole response. workingPatterns[].classification accepts only statistically_supported_association, moderate_association or weak_directional_signal. weakPatterns[].classification accepts only weak_directional_signal, single_post_outlier or insufficient_evidence. pillarPlan[].classification accepts only those five empirical classes — statistically_supported_association, moderate_association, weak_directional_signal, single_post_outlier or insufficient_evidence — and is never unsupported and never creative_recommendation, including when mode=exploratory and the allocation is labelled experimental. recommendations[].classification is always exactly creative_recommendation, and nothing else, no matter how well evidenced the recommendation is: it records that the item is a proposal rather than a measurement, not how strong the case for it is. The value unsupported classifies no item in any of those four positions.
+
+A pillar allocation is an empirical item, exactly as a working or weak pattern is, and carries the same evidence burden: when mode=evidence_led every entry of pillarPlan must cite at least one feature_statistic evidence item, not only posts, data-quality notes or context. Entries of workingPatterns and weakPatterns must cite at least one feature_statistic item and, when mode=evidence_led, at least one post, post_analysis or metric_snapshot item as well. In every one of those three sections the classification you give may be no stronger than the strongest feature_statistic you cite there, ordered statistically_supported_association, then moderate_association, then weak_directional_signal, then single_post_outlier, then insufficient_evidence. Citing a statistic classified weak_directional_signal and calling the item moderate_association rejects the response.
+
 When mode=evidence_led, every empirical claim needs feature-statistic evidence and relevant post evidence. When mode=exploratory, begin periodSummary with evidence insufficiency, return no workingPatterns, avoid moderate/statistically-supported language, label every pillar allocation experimental, and prioritise tests/data collection.
+
+The pillarPlan experimental flag follows the mode and nothing else: every allocation is experimental=true when mode=exploratory and experimental=false when mode=evidence_led, with no exceptions in either direction. When mode=exploratory, periodSummary must begin with the literal word "insufficient" as its first word — "Insufficient evidence covers this period" passes, "Evidence insufficiency limits this period" does not, because the check is on the opening word rather than the sense.
+
+The prohibition on causal and algorithmic language is lexical and applies to every string you write, including hypothesis, decisionRule, whyItMatters, rationale, hook options, section purposes and CTA text. Do not write causes, guarantees, drives, leads to, results in, or will increase, boost or improve anywhere within roughly eighty characters before reach, views, plays, engagement, likes, comments, shares, saves, follows, performance, distribution, virality or viral. This constrains an experiment's own wording: write a decision rule as a comparison rather than a consequence — "keep the variant when its save rate is higher over the window" rather than "keep the variant if it results in more saves" — and write a hypothesis as an expected association rather than an effect.
+
+Some values the schema offers are refused here. A recommendation's contentPillar and a pillar allocation's pillar may not be other or unknown; a recommendation's format may not be unknown; a recommendation's cta.type may not be none or unknown. Choose a specific canonical value or do not make the recommendation.
+
+Every key is unique across workingPatterns, weakPatterns and recommendations taken together, not merely within its own section, and every recommendation title is distinct. An experiment's variableToChange must not also appear in its variablesToHoldStable — the one thing being changed cannot also be held stable.
+
+Counterexample citation is mechanical rather than editorial. For every claim in workingPatterns and weakPatterns, look at the claim's dimension, and for every manifest entry that shares that dimension and lists counterexample among its allowedRoles, cite that entry in that claim with role=counterexample exactly. Citing it as context does not satisfy this, and missing one on a single claim rejects the whole response. Likewise, a manifest entry marked mustAppearInLimitations must be cited in limitations with role=limitation exactly.
 
 Pillar allocation integers must total exactly 100. Recommendations are always creative_recommendation proposals. Provide 3 to 5 distinct hooks, a practical structure, filming and editing approaches, CTA, rationale, evidence, and a testable experiment with one canonical primary metric, comparable observation window, minimum posts, and decision rule.
 
@@ -1042,7 +1056,28 @@ export const strategyContractArtifacts = deepFreeze({
     version: strategyPromptVersion,
     compatibleSchemaVersion: strategySchemaVersion,
     lifecycle: "active" satisfies AnalysisArtifactLifecycle,
-    sha256: "ab8d697e0d2bd5a8953fb0544e9b2130655df42a152625d87852d2450c101893",
+    // v1.1.0 writes down rules the validator already enforced, the way the
+    // analysis prompt did across five bumps. This one had never been revised,
+    // and no strategy had ever passed validation.
+    //
+    // The evidence classes came first: four different subsets of the seven-value
+    // taxonomy are accepted — one per claim section, one for pillar
+    // allocations, one for recommendations — and the prompt named only the
+    // recommendation rule, inside a sentence about something else. The schema
+    // offers all seven everywhere, so the rest reached the model as a guess.
+    //
+    // Then, in the order live proofs surfaced them: that a pillar allocation
+    // carries a claim's evidence burden; that the `experimental` flag follows
+    // the mode in both directions rather than only the exploratory one; that
+    // `periodSummary` is matched on its literal first word; that the causal
+    // language ban is lexical over every string, including the hypothesis and
+    // decision rule the schema itself demands; that several enum values the
+    // schema offers are refused; that keys are unique across three sections;
+    // and that counterexample and limitation citation is mechanical on a shared
+    // dimension rather than a matter of relevance.
+    //
+    // Proven against the live model in both modes.
+    sha256: "9c328463eda94c82ccfaf7ae5d18ff436ca2d9f30c023b0956c36eaaed478a22",
     text: strategyPromptText,
   },
   lifecycleValues: analysisArtifactLifecycles,
