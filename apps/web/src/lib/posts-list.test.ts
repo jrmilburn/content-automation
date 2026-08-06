@@ -6,9 +6,11 @@ import {
   buildPostsHref,
   canAnalyseSourceVideo,
   canImportInstagramVideo,
+  canRequestFirstAnalysis,
   captionExcerpt,
   hasActiveFilters,
   parsePostsFilters,
+  presentAnalysis,
   presentMediaKind,
   type PostsFilterValues,
 } from "./posts-list";
@@ -215,4 +217,36 @@ describe("canAnalyseSourceVideo", () => {
       expect(canAnalyseSourceVideo({ sourceVideoState })).toBe(false);
     },
   );
+});
+
+describe("presentAnalysis", () => {
+  it("says plainly that a post has been analysed", () => {
+    expect(presentAnalysis({ analysisState: "ANALYSED" })).toEqual({
+      label: "Analysed",
+      tone: "success",
+    });
+  });
+
+  it("distinguishes a run in flight from one that never started", () => {
+    // Collapsing these would invite a second request for analysis already
+    // under way, which is the whole reason the state is carried separately.
+    expect(presentAnalysis({ analysisState: "IN_PROGRESS" }).label).toBe("Analysing");
+    expect(presentAnalysis({ analysisState: "NONE" }).label).toBe("Not analysed");
+  });
+
+  it("keeps an unanalysed post neutral rather than flagging it as a fault", () => {
+    // Most posts on a healthy account have not been analysed and are not meant
+    // to be; a warning tone would make the screen read as a list of problems.
+    expect(presentAnalysis({ analysisState: "NONE" }).tone).toBe("neutral");
+  });
+});
+
+describe("canRequestFirstAnalysis", () => {
+  it("offers a first analysis only when none exists and none is running", () => {
+    expect(canRequestFirstAnalysis({ analysisState: "NONE" })).toBe(true);
+  });
+
+  it.each(["ANALYSED", "IN_PROGRESS"] as const)("does not re-offer for %s", (analysisState) => {
+    expect(canRequestFirstAnalysis({ analysisState })).toBe(false);
+  });
 });

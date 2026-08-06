@@ -6,11 +6,13 @@ import {
   buildPostsHref,
   canAnalyseSourceVideo,
   canImportInstagramVideo,
+  canRequestFirstAnalysis,
   captionExcerpt,
   formatPublishedAt,
   hasActiveFilters,
   mediaKindFilterOptions,
   pendingTriageDimensions,
+  presentAnalysis,
   presentMediaKind,
   presentSourceVideo,
   sourceVideoHref,
@@ -27,15 +29,20 @@ import { StatusBadge } from "./status-badge";
 /**
  * The imported posts triage list.
  *
- * Source video is real stored state and is rendered as such. Analysis and
- * metric state are still named as pending rather than shown as empty values:
- * there is no stored data behind either, and a blank or a zero would read as
- * "checked, nothing wrong" instead of "not captured".
+ * Source video and analysis are real stored state and are rendered as such.
+ * Metric state is still named as pending rather than shown as an empty value:
+ * there is nothing stored behind it on this screen, and a blank or a zero would
+ * read as "checked, nothing wrong" instead of "not captured".
+ *
+ * Analysis used to be named the same way, on the grounds that it was not stored
+ * per post. It has been since a published analysis moved onto the post's own
+ * `currentAnalysisId`, so the page-level "analysis has not run against any post
+ * yet" outlived being true — it kept saying so on a screen where half the rows
+ * had one. A per-row badge is the honest form, because the answer differs per
+ * row.
  *
  * Each card offers the one action its post is waiting on, so a backlog can be
- * worked from this screen instead of opening every post in turn. Offering the
- * action is not the same as showing analysis state, which is still not stored
- * per post and is still named below as missing.
+ * worked from this screen instead of opening every post in turn.
  */
 
 const description = "Find imported posts and triage what still needs work.";
@@ -217,6 +224,7 @@ function PostCard({
 }: Readonly<{ accountLabel: string | null; post: InstagramPostListItem }>) {
   const kind = presentMediaKind(post);
   const sourceVideo = presentSourceVideo(post);
+  const analysis = presentAnalysis(post);
   const published = formatPublishedAt(post.publishedAt);
   const headingId = `post-${post.id}`;
   // Every card repeats the same action wording, so each control needs the post's
@@ -234,6 +242,7 @@ function PostCard({
           <div className="post-card__meta">
             <StatusBadge tone={kind.tone}>{kind.label}</StatusBadge>
             <StatusBadge tone={sourceVideo.tone}>{sourceVideo.label}</StatusBadge>
+            <StatusBadge tone={analysis.tone}>{analysis.label}</StatusBadge>
             <h3 id={headingId}>
               <time dateTime={post.publishedAt}>{published}</time>
               {/* Part of the heading rather than beside it: with two accounts
@@ -246,8 +255,8 @@ function PostCard({
           <p className="post-card__actions">
             {/* First, because it is the card's own subject rather than one of
                 the actions beside it: everything this product knows about the
-                post is behind it, including the metrics and analysis this list
-                still says nothing about. */}
+                post is behind it, including the findings this row only reports
+                the existence of. */}
             <Link href={postDetailHref(post.id)}>
               See everything
               <span className="visually-hidden"> {context}</span>
@@ -273,7 +282,11 @@ function PostCard({
               <InstagramVideoImportButton context={context} postId={post.id} />
             </div>
           ) : null}
-          {canAnalyseSourceVideo(post) ? (
+          {/* A post already analysed, or with a job still running, is not
+              offered the control. The request path collapses a repeat onto the
+              existing signature, so the button would look like it did nothing
+              — which is a worse answer than not offering it. */}
+          {canAnalyseSourceVideo(post) && canRequestFirstAnalysis(post) ? (
             <div className="post-card__controls">
               <AnalysisRequestControl context={context} postId={post.id} />
             </div>
@@ -292,16 +305,13 @@ function PostCard({
 function TriagePending() {
   return (
     <section aria-labelledby="posts-pending-heading" className="posts-pending">
-      <h3 id="posts-pending-heading">Not available yet</h3>
-      <p>
-        These triage signals are not captured for any post yet, so they are not shown and cannot be
-        filtered on.
-      </p>
+      <h3 id="posts-pending-heading">Not shown on this screen</h3>
+      <p>These triage signals are not shown here and cannot be filtered on.</p>
       <dl>
         {pendingTriageDimensions.map((dimension) => (
           <div key={dimension.label}>
             <dt>
-              <StatusBadge tone="neutral">Not captured</StatusBadge>
+              <StatusBadge tone="neutral">Not shown</StatusBadge>
               <span>{dimension.label}</span>
             </dt>
             <dd>{dimension.detail}</dd>

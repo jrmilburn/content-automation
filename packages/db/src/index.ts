@@ -275,11 +275,13 @@ export {
   type AnalyticsWindowSelection,
 } from "./analytics-features.js";
 export {
+  analysisStates,
   instagramPostPageSize,
   instagramPostSearchLimit,
   isInstagramMediaKind,
   loadInstagramPostList,
   sourceVideoStates,
+  type AnalysisState,
   type InstagramPostList,
   type InstagramPostListFilters,
   type InstagramPostListItem,

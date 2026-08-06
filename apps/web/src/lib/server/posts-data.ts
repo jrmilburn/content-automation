@@ -61,6 +61,9 @@ export async function loadPostsSnapshot(
 const testAccountId = "019a0000-0000-7000-8000-000000000301";
 // One post per source-video state, so local and browser runs exercise every
 // badge and every action label without needing a real upload to have happened.
+// Analysis state varies across them for the same reason: the ready video is
+// analysed, the untouched ones are not, and one sits mid-run so the "Analysing"
+// badge and the suppressed request control are both reachable.
 const testPosts = [
   {
     caption:
@@ -69,6 +72,7 @@ const testPosts = [
     mediaKind: "REEL" as const,
     mediaProductType: "REELS",
     mediaType: "VIDEO",
+    analysisState: "NONE" as const,
     publishedAt: "2026-07-29T22:15:00.000Z",
     sourceVideoState: "NONE" as const,
   },
@@ -78,6 +82,7 @@ const testPosts = [
     mediaKind: "REEL" as const,
     mediaProductType: "REELS",
     mediaType: "VIDEO",
+    analysisState: "ANALYSED" as const,
     publishedAt: "2026-07-27T03:40:00.000Z",
     sourceVideoState: "READY" as const,
   },
@@ -87,6 +92,7 @@ const testPosts = [
     mediaKind: "IMAGE" as const,
     mediaProductType: "FEED",
     mediaType: "IMAGE",
+    analysisState: "IN_PROGRESS" as const,
     publishedAt: "2026-07-24T08:05:00.000Z",
     sourceVideoState: "PENDING_VALIDATION" as const,
   },
@@ -96,6 +102,7 @@ const testPosts = [
     mediaKind: "UNSUPPORTED" as const,
     mediaProductType: null,
     mediaType: "STORY",
+    analysisState: "NONE" as const,
     publishedAt: "2026-07-21T11:30:00.000Z",
     sourceVideoState: "REJECTED" as const,
   },
@@ -130,6 +137,7 @@ function testSnapshot(
       posts: Object.freeze(
         (cursor ? [] : matching).map((post) =>
           Object.freeze({
+            analysisState: post.analysisState,
             caption: post.caption,
             id: post.id,
             instagramAccountId: testAccountId,
