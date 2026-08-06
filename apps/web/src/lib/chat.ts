@@ -1,4 +1,5 @@
 import type { ChatMessageRecord } from "@studio-parallel/db";
+import { geminiResponseClasses } from "@studio-parallel/domain";
 
 /**
  * Turning stored conversation records into what a reader sees.
@@ -34,6 +35,11 @@ const failureMessages: Readonly<Record<string, string>> = Object.freeze({
   INVALID_REQUEST: "This question could not be sent in a form the model accepts. Try rewording it.",
   NO_CANDIDATE: "The model returned nothing at all. Ask again.",
   RATE_LIMIT: "The assistant has reached its usage limit for now. Try again in a few minutes.",
+  // Not a provider class: what a turn records when something other than a
+  // GeminiError escapes the call. Rare, and the recovery is genuinely the same
+  // as a transient one — but it is a different fact about the product, and
+  // collapsing it into the fallback loses that a request was made at all.
+  TURN_FAILED: "Something went wrong before the answer could be read. Ask again.",
   // A rule this product holds itself to refused the answer, and which rule is
   // worth saying: a reader who knows the question invited a claim about
   // causation can ask it a way the assistant is allowed to answer, and a reader
@@ -59,6 +65,24 @@ const failureMessages: Readonly<Record<string, string>> = Object.freeze({
 
 export const chatFallbackFailureMessage =
   "This answer could not be produced. Nothing else in the conversation was affected — ask again.";
+
+/**
+ * Every failure code a turn can actually store.
+ *
+ * Derived from the provider's own response classes rather than listed beside
+ * them, so a class added to `geminiResponseClasses` has no message and fails the
+ * test rather than quietly rendering the fallback. That is not hypothetical:
+ * `truncated` was added and went unnoticed, and `rate_limit` and `authorisation`
+ * had never had a sentence at all while `QUOTA`, which nothing produces, did.
+ */
+export const chatProducedFailureCodes: readonly string[] = Object.freeze([
+  ...geminiResponseClasses.map((responseClass) => responseClass.toUpperCase()),
+  "RESPONSE_CAUSAL_CLAIM",
+  "RESPONSE_CONTROL_CHARACTER",
+  "RESPONSE_INVALID",
+  "RESPONSE_NOT_JSON",
+  "RESPONSE_SCHEMA_INVALID",
+]);
 
 export function describeChatFailure(failureCode: string): string {
   return failureMessages[failureCode] ?? chatFallbackFailureMessage;
