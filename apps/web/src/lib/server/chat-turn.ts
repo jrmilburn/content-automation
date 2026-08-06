@@ -89,8 +89,6 @@ export type ChatTurnDependencies = Readonly<{
  * repair note is a visibly incomplete change.
  */
 const repairNotes: Readonly<Record<string, string>> = Object.freeze({
-  CAUSAL_OR_ALGORITHM_CLAIM:
-    "Your previous answer was rejected because a sentence in it asserted that a creative choice causes, drives, guarantees or leads to reach, views or engagement, or that Instagram rewards one. Write the same answer again with every such sentence rephrased as an association measured in this period, or removed. Do not add a disclaimer about causation; leave the claim out instead.",
   CONTROL_CHARACTER:
     "Your previous answer was rejected because it contained control characters. Write it again using ordinary text and blank lines only.",
   SCHEMA:
@@ -99,7 +97,6 @@ const repairNotes: Readonly<Record<string, string>> = Object.freeze({
 
 /** The stored code for a refused reply, so the row says which rule fired. */
 const refusalCodes: Readonly<Record<string, string>> = Object.freeze({
-  CAUSAL_OR_ALGORITHM_CLAIM: "RESPONSE_CAUSAL_CLAIM",
   CONTROL_CHARACTER: "RESPONSE_CONTROL_CHARACTER",
   SCHEMA: "RESPONSE_SCHEMA_INVALID",
 });

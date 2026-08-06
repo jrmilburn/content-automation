@@ -2250,9 +2250,9 @@ h2 {
 }
 
 .post-card__actions {
-  /* Two links share this row now. Without an explicit gap they render as one
+  /* Several links share this row. Without an explicit gap they render as one
      run-on string, because the markup has no whitespace text node between the
-     elements and neither is a block. */
+     elements and none is a block. */
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem 1rem;
@@ -2363,7 +2363,7 @@ h2 {
 
 .video-upload__limits {
   margin: 0;
-  color: var(--color-text-muted);
+  color: var(--color-muted);
 }
 
 .video-upload__file {
@@ -2393,7 +2393,7 @@ h2 {
 }
 
 .video-upload__stage[data-state="waiting"] {
-  color: var(--color-text-muted);
+  color: var(--color-muted);
 }
 
 .video-upload__stage[data-state="done"] {
@@ -2476,7 +2476,7 @@ h2 {
   flex-wrap: wrap;
   gap: 0.5rem 2rem;
   margin: 0;
-  color: var(--color-text-muted);
+  color: var(--color-muted);
 }
 
 .source-video-status__details dt {
@@ -2877,7 +2877,7 @@ h2 {
 .strategy-request,
 .strategy-summary {
   padding: clamp(1.5rem, 4vw, 2.5rem);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-rule);
   background: var(--color-surface);
 }
 
@@ -2940,7 +2940,7 @@ h2 {
 .strategy-pillar,
 .strategy-history__item {
   padding: 1.25rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-rule);
 }
 
 /* Classification and sample sit on one line with the claim, never in a footer:
@@ -3246,4 +3246,189 @@ h2 {
     align-items: stretch;
     flex-direction: column;
   }
+}
+
+/* Post detail
+   ------------------------------------------------------------------------ */
+
+.post-detail__back {
+  margin: clamp(1rem, 2.5vw, 1.5rem) 0 0;
+}
+
+.post-detail__section {
+  margin-top: clamp(1.75rem, 4vw, 2.5rem);
+}
+
+.post-detail__section > h2 {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-rule);
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+}
+
+.post-detail__section h3 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.post-detail__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+
+.post-detail__facts dt {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  font-weight: 720;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.post-detail__facts dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.88rem;
+}
+
+/* An observation the analysis could not make. Muted and italic rather than
+   absent, so the field still reads as one this product asks about. */
+.post-detail__facts dd[data-recorded="no"] {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+.post-detail__measured {
+  max-width: 68ch;
+  margin: 0 0 1rem;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.post-detail__empty {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.post-detail__note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  align-items: baseline;
+  max-width: 68ch;
+  margin: 1rem 0 0.75rem;
+  color: var(--color-muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+/* Both hold text written by someone other than this product, and both are
+   stored with the author's own line breaks. `pre-wrap` keeps a caption's
+   paragraphs and stops a transcript running into one block; `anywhere` keeps a
+   single unbroken run of characters from widening the whole document. */
+.post-detail__caption,
+.post-detail__transcript {
+  max-width: 68ch;
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.post-detail__transcript {
+  padding: 0.9rem 1rem;
+  border-left: 3px solid var(--color-rule);
+  background: var(--color-surface);
+}
+
+.post-detail__metrics {
+  width: 100%;
+  max-width: 32rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.post-detail__metrics th,
+.post-detail__metrics td {
+  padding: 0.6rem 0.8rem 0.6rem 0;
+  border-bottom: 1px solid var(--color-rule);
+  vertical-align: top;
+}
+
+.post-detail__metrics thead th {
+  border-bottom: 1px solid var(--color-ink);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.post-detail__metrics tbody th {
+  font-weight: 620;
+}
+
+/* Never reads as a number. A metric the provider did not report has to look
+   like a different kind of answer from a count, not like a smaller one. */
+.post-detail__metrics td[data-measured="no"] {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+.post-detail__comments,
+.post-detail__replies {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.post-detail__replies {
+  padding-left: 1rem;
+  border-left: 2px solid var(--color-rule);
+  margin-top: 1rem;
+}
+
+.post-detail__comment {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-compact);
+  background: var(--color-surface);
+}
+
+.post-detail__comment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0 0 0.5rem;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+
+.post-detail__comment-author {
+  color: var(--color-ink);
+  font-weight: 650;
+}
+
+.post-detail__comment-orphan {
+  margin: 0 0 0.5rem;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
+/* A stranger's words, at full length. `anywhere` because a comment can be one
+   unbroken run of characters, which would otherwise widen the document. */
+.post-detail__comment-text {
+  max-width: 68ch;
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }

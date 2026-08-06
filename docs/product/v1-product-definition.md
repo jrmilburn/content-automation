@@ -161,7 +161,7 @@ Every recommendation uses language such as “In this account’s observed posts
 
 ## Version-one exclusions
 
-Public sign-up, client onboarding, billing, complex roles, public APIs, native mobile apps, other social networks, publishing/scheduling, inbox/comment management, scraping, competitor/global trend data, advertising tools, automatic editing/generation, custom model training, persistent per-post agents, multi-agent orchestration, real-time collaboration, white-labelling, client portals and public share links are out of scope.
+Public sign-up, client onboarding, billing, complex roles, public APIs, native mobile apps, other social networks, publishing/scheduling, inbox and comment moderation (comments are read as strategy input, never written or replied to), scraping, competitor/global trend data, advertising tools, automatic editing/generation, custom model training, persistent per-post agents, multi-agent orchestration, real-time collaboration, white-labelling, client portals and public share links are out of scope.
 
 ## Risks
 

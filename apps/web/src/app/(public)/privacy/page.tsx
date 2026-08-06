@@ -83,10 +83,23 @@ export default function PrivacyPage() {
             <strong>instagram_business_manage_insights</strong> — the metrics Instagram reports for
             that account&rsquo;s own media, such as views, reach and interactions.
           </li>
+          <li>
+            <strong>instagram_business_manage_comments</strong> — the comments and replies left on
+            that account&rsquo;s own posts, so the content strategy can reflect what the audience
+            actually asks about. This permission is named for comment moderation, and we use only
+            its read half: we never create, hide, delete or reply to a comment.
+          </li>
         </ul>
         <p>
-          We do not request, and cannot read, direct messages, comments authored by other people,
-          advertising accounts, or any account other than the one connected.
+          When a comment is imported we store its text, the commenter&rsquo;s Instagram username,
+          when it was posted and how many likes it has. That text is shown to staff of the connected
+          business and is included in the material sent to our AI provider when a strategy is
+          generated or a question is asked of the assistant.
+        </p>
+        <p>
+          We do not request, and cannot read, direct messages, advertising accounts, comments on any
+          post that is not the connected account&rsquo;s own, or any account other than the one
+          connected.
         </p>
         <h3>Content staff upload</h3>
         <p>

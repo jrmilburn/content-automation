@@ -365,7 +365,7 @@ describe("manifest hash and signature", () => {
    */
   it("pins the canonical inputs, so one silently leaving the hash is a failure", () => {
     expect(createStrategyManifestHash(identity, entries)).toBe(
-      "b070e66952ff97e8f03436b78a246c5f6217fa16e57c85e000fe449cf5cc17e6",
+      "74562ce8137cb2479ad53c3d6f2c4536fa79f5b3b01f862c82dfb3ac23d68180",
     );
   });
 
@@ -421,18 +421,41 @@ describe("manifest rendering", () => {
   it("states each entry as the validator will check it", () => {
     const selection = selectStrategyEvidence([
       candidate({
-        allowedNumericClaims: ["1.3x"],
         referenceId: "s1",
         sampleSize: 14,
+        summaryText: "content.hook.category=question: 1.3x\nover fourteen posts",
       }),
     ]);
     const rendered = renderStrategyManifest(identity, selection.entries);
 
-    expect(rendered).toContain("evidenceId=stat_pos_0");
-    expect(rendered).toContain("type=feature_statistic");
-    expect(rendered).toContain("classification=moderate_association");
-    expect(rendered).toContain("sampleSize=14");
-    expect(rendered).toContain("allowedNumbersInExplanations=1.3x");
+    // The header line carries exactly what the response is held to: an id it may
+    // cite, the roles it may cite it in, the class it may not exceed.
+    expect(rendered).toContain(
+      "- evidenceId=stat_pos_0; type=feature_statistic; allowedRoles=supporting; " +
+        "classification=moderate_association; dimensions=hook; sampleSize=14",
+    );
+
+    // The body follows under its own id with every line indented. A dossier's
+    // caption, transcript and comments are the evidence now rather than a note
+    // about it, so the text travels whole; indenting it is what stops an
+    // untrusted line starting at column zero, where only structure starts.
+    expect(rendered).toContain("The evidence itself:");
+    expect(rendered).toContain(
+      "- stat_pos_0:\n    content.hook.category=question: 1.3x\n    over fourteen posts",
+    );
+  });
+
+  it("tells the model its own arithmetic counts as a number that appeared", () => {
+    // This replaces the per-item allowlist the manifest used to print. The model
+    // now holds the rows, so averaging two of them is work rather than
+    // invention; what it must not do is state the average without saying it is
+    // one and over how many posts.
+    const selection = selectStrategyEvidence([candidate({ referenceId: "s1" })]);
+
+    expect(renderStrategyManifest(identity, selection.entries)).toContain(
+      "Every number you state must appear above or be arithmetic you performed on numbers " +
+        "that appear above. When it is your own calculation, say so and say how many posts it covers.",
+    );
   });
 
   it("marks evidence the response must acknowledge", () => {
@@ -453,15 +476,19 @@ describe("manifest rendering", () => {
   });
 
   it("carries no post text beyond the summary it was given", () => {
-    // A manifest is machine input. The fields a human screen shows are not the
-    // fields a prompt needs, and a caption is the easiest of them to leak.
+    // The renderer adds nothing of its own to an entry's body. Which fields a
+    // post dossier is allowed to say — its caption, its transcript, its
+    // comments — is decided where the summary is built, and this function
+    // neither widens that nor trims it. Object keys and credentials are absent
+    // because they were never put in a summary, not because this strips them.
     const selection = selectStrategyEvidence([
       post("p1", { summaryText: "pillar=process; format=talking_head; value=0.081" }),
     ]);
     const rendered = renderStrategyManifest(identity, selection.entries);
 
-    expect(rendered).toContain("pillar=process");
-    expect(rendered).not.toMatch(/caption/iu);
+    expect(rendered).toContain(
+      "- post_top_0:\n    pillar=process; format=talking_head; value=0.081",
+    );
   });
 
   it("projects an entry onto the shape the validator consumes", () => {

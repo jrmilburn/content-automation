@@ -2,6 +2,7 @@ import type { ChatMessageRecord } from "@studio-parallel/db";
 import { describe, expect, it } from "vitest";
 
 import {
+  chatFailureMessages,
   chatFallbackFailureMessage,
   chatParagraphs,
   chatProducedFailureCodes,
@@ -51,7 +52,14 @@ describe("describeChatFailure", () => {
     // reads as coverage the map does not have. `QUOTA` was one: the adapter
     // classifies a 429 as `rate_limit`, so the sentence written for it was
     // unreachable while the class that did occur fell through to the fallback.
+    //
+    // Checked over every key rather than against that one name. Naming `QUOTA`
+    // proved exactly one dead code dead and let the next one through:
+    // `RESPONSE_CAUSAL_CLAIM` outlived the rule that produced it and this test
+    // passed anyway. The invariant is that the map and the produced-code list
+    // describe the same set, so state that instead of an example of it.
     expect(describeChatFailure("QUOTA")).toBe(chatFallbackFailureMessage);
+    expect(Object.keys(chatFailureMessages).sort()).toEqual([...chatProducedFailureCodes].sort());
   });
 
   it("falls back to a sentence rather than showing an unknown code", () => {

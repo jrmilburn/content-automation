@@ -16,7 +16,11 @@ import {
   presentRequiredScopes,
 } from "./instagram-integration";
 
-const allScopes = ["instagram_business_basic", "instagram_business_manage_insights"];
+const allScopes = [
+  "instagram_business_basic",
+  "instagram_business_manage_insights",
+  "instagram_business_manage_comments",
+];
 
 function dashboardAccount(
   overrides: Partial<{
@@ -125,21 +129,21 @@ describe("presentConnection", () => {
 
 describe("presentRequiredScopes", () => {
   it("lists every required scope as granted when all are present", () => {
-    expect(
-      presentRequiredScopes(["instagram_business_basic", "instagram_business_manage_insights"]),
-    ).toEqual([
+    expect(presentRequiredScopes(allScopes)).toEqual([
       { granted: true, scope: "instagram_business_basic" },
       { granted: true, scope: "instagram_business_manage_insights" },
+      { granted: true, scope: "instagram_business_manage_comments" },
     ]);
   });
 
   it("still lists a downgraded scope so the gap is visible", () => {
     const scopes = presentRequiredScopes(["instagram_business_basic"]);
 
-    expect(scopes).toHaveLength(2);
-    expect(scopes.find((scope) => !scope.granted)?.scope).toBe(
+    expect(scopes).toHaveLength(3);
+    expect(scopes.filter((scope) => !scope.granted).map((scope) => scope.scope)).toEqual([
       "instagram_business_manage_insights",
-    );
+      "instagram_business_manage_comments",
+    ]);
   });
 
   it("ignores scopes the product never requested", () => {

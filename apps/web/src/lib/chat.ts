@@ -24,7 +24,7 @@ export const chatTitleMaxLength = 120;
  * collapsing them into "something went wrong" is what leaves somebody retrying
  * a question that will never work.
  */
-const failureMessages: Readonly<Record<string, string>> = Object.freeze({
+export const chatFailureMessages: Readonly<Record<string, string>> = Object.freeze({
   // Every provider response class has an entry, because a class with none fell
   // through to the fallback and told a reader "this could not be produced" for
   // a failure the product knew the name of. The set is `geminiResponseClasses`
@@ -40,12 +40,6 @@ const failureMessages: Readonly<Record<string, string>> = Object.freeze({
   // as a transient one — but it is a different fact about the product, and
   // collapsing it into the fallback loses that a request was made at all.
   TURN_FAILED: "Something went wrong before the answer could be read. Ask again.",
-  // A rule this product holds itself to refused the answer, and which rule is
-  // worth saying: a reader who knows the question invited a claim about
-  // causation can ask it a way the assistant is allowed to answer, and a reader
-  // told only "the rules" cannot.
-  RESPONSE_CAUSAL_CLAIM:
-    "The answer claimed a creative choice causes reach or engagement, which this product does not publish, so it was discarded. Asking about what the measured comparisons show will get an answer.",
   RESPONSE_CONTROL_CHARACTER:
     "The answer contained characters this screen cannot render, so it was discarded. Ask again.",
   RESPONSE_INVALID:
@@ -77,15 +71,21 @@ export const chatFallbackFailureMessage =
  */
 export const chatProducedFailureCodes: readonly string[] = Object.freeze([
   ...geminiResponseClasses.map((responseClass) => responseClass.toUpperCase()),
-  "RESPONSE_CAUSAL_CLAIM",
   "RESPONSE_CONTROL_CHARACTER",
   "RESPONSE_INVALID",
   "RESPONSE_NOT_JSON",
   "RESPONSE_SCHEMA_INVALID",
+  // `failureOf` writes this whenever something other than a GeminiError escapes
+  // the call, so it is as produced as any class above it. It was missing here
+  // while having a message, which is the mirror of the `QUOTA` defect this list
+  // exists to prevent: the "every produced code has a message" test never
+  // reached it, so the one code that means "we do not know what happened" was
+  // also the one nobody had checked said anything useful.
+  "TURN_FAILED",
 ]);
 
 export function describeChatFailure(failureCode: string): string {
-  return failureMessages[failureCode] ?? chatFallbackFailureMessage;
+  return chatFailureMessages[failureCode] ?? chatFallbackFailureMessage;
 }
 
 export const chatRefusalMessages: Readonly<Record<string, string>> = Object.freeze({

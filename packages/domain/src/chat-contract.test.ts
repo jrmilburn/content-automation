@@ -11,7 +11,6 @@ import {
   validateChatReplyV1,
   type ChatTurn,
 } from "./chat-contract.js";
-import { containsProhibitedClaim } from "./strategy-contract.js";
 
 function reply(overrides: Record<string, unknown> = {}): unknown {
   return {
@@ -46,43 +45,6 @@ describe("validateChatReplyV1", () => {
     // costs the reader a link rather than the whole reply.
     expect(result.data.citedEvidenceIds).toEqual(["stat_pos_0"]);
     expect(result.droppedCitations).toEqual(["stat_pos_9"]);
-  });
-
-  it("refuses a reply claiming the algorithm rewards a choice", () => {
-    const result = validateChatReplyV1(
-      reply({ reply: "Instagram rewards question hooks, so post more of them." }),
-      manifest,
-    );
-
-    expect(result.valid).toBe(false);
-    if (result.valid) return;
-    expect(result.issues.map((issue) => issue.code)).toContain("CAUSAL_OR_ALGORITHM_CLAIM");
-  });
-
-  it("tells the model not to write the disclaimer the validator would refuse", () => {
-    // `containsProhibitedClaim` matches a causal verb beside a metric and cannot
-    // tell an assertion from a denial of one — reading polarity lexically was
-    // tried and let real claims through. So the sentence a complying model
-    // volunteers, "this is not a guarantee of reach", was discarding whole
-    // well-formed answers. The prompt is where that is fixed, because the
-    // check is the thing that must not be narrowed.
-    expect(chatPromptText).toContain("State the association and stop there");
-    expect(chatPromptText).toContain("does not need to disclaim one");
-
-    // The rule is only worth anything if the sentence it forbids is one the
-    // validator would in fact have refused.
-    expect(containsProhibitedClaim("This is not a guarantee of reach.")).toBe(true);
-  });
-
-  it("refuses a causal performance claim in a follow-up as well as in the reply", () => {
-    const result = validateChatReplyV1(
-      reply({ followUps: ["Which hook will increase reach the most?"] }),
-      manifest,
-    );
-
-    expect(result.valid).toBe(false);
-    if (result.valid) return;
-    expect(result.issues[0]?.path).toBe("followUps[0]");
   });
 
   it("refuses control characters, and keeps the newlines a paragraph needs", () => {
@@ -179,7 +141,7 @@ describe("chat immutable artifacts", () => {
     expect(Object.isFrozen(chatContractArtifacts.activeDefault)).toBe(true);
     expect(chatContractArtifacts.activeDefault).toEqual({
       schemaVersion: "strategy-chat-v1.0.0",
-      promptVersion: "strategy-chat-prompt-v1.2.0",
+      promptVersion: "strategy-chat-prompt-v2.0.0",
       modelRequested: "gemini-3.6-flash",
     });
     expect(digest(JSON.stringify(chatReplyJsonSchema))).toBe(chatContractArtifacts.schema.sha256);

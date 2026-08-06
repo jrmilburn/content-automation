@@ -3,9 +3,11 @@ import { argv, env, exit } from "node:process";
 import {
   completeStrategyV1,
   createStrategyInstruction,
+  renderStrategyManifest,
   strategyModelRequested,
+  toStrategyManifestEvidence,
   validateStrategyV1,
-  type StrategyManifestEvidence,
+  type StrategyEvidenceEntry,
   type StrategyMode,
 } from "@studio-parallel/domain";
 
@@ -45,115 +47,172 @@ const apiKey = required(env["GEMINI_API_KEY"], "GEMINI_API_KEY is required.");
 const mode: StrategyMode = argv[2] === "exploratory" ? "exploratory" : "evidence_led";
 
 /**
+ * Which population and period the manifest describes.
+ *
+ * Only the scope `renderStrategyManifest` states in its header; the versions and
+ * the run belong to the manifest hash, which a live proof never computes.
+ */
+const identity = {
+  ageWindow: "day_30",
+  instagramAccountId: "studio_parallel_synthetic",
+  primaryMetric: "engagement_rate_reach",
+  publishedFrom: "2026-05-01",
+  publishedTo: "2026-07-31",
+} as const;
+
+/**
  * A bounded synthetic manifest covering every rule the validator enforces
  * against the model: a supporting statistic, relevant post evidence, a
- * counterexample that may not be dropped, permitted numeric tokens and a
- * data-quality item that must reach the limitations.
+ * counterexample that may not be dropped, and a data-quality item that must
+ * reach the limitations.
+ *
+ * These are frozen entries rather than the shape the validator checks against,
+ * because the entry is what the product holds and renders from — the validator's
+ * view is projected off it below. Written in the product's own key and ordering
+ * conventions, so the text this proof sends differs from a real request only in
+ * the evidence being invented.
+ *
+ * `postIds` are distinct throughout: nothing here is meant to look like one
+ * observation selected twice. `allowedNumericClaims` is carried for provenance
+ * only, as it is on a real row; no rule reads it any more.
  */
-const manifest: ReadonlyArray<StrategyManifestEvidence> = [
+const entries: readonly StrategyEvidenceEntry[] = [
   {
-    evidenceId: "stat_hook_question",
-    type: "feature_statistic",
+    allowedNumericClaims: ["18", "12%"],
     allowedRoles: ["supporting"],
+    category: "positive_statistic",
     classification: "moderate_association",
     dimensions: ["hook"],
+    evidenceKey: "stat_pos_0",
+    evidenceType: "feature_statistic",
+    postIds: ["post-a", "post-b"],
+    rank: 0,
+    rankScore: 0.12,
+    referenceId: "stat-hook-question",
+    requiredInLimitations: false,
+    retrievalReason: "moderate_association",
     sampleSize: 18,
-    allowedNumericClaims: ["18", "12%"],
+    summaryText:
+      "hook=question on engagement_rate_reach: 12% vs comparison; group 18, comparison 24. Question-style hooks appear associated with higher engagement rate on reach in this account and period.",
   },
   {
-    evidenceId: "post_hook_question",
-    type: "post_analysis",
-    allowedRoles: ["supporting", "context"],
-    classification: null,
-    dimensions: ["hook"],
-  },
-  {
-    evidenceId: "counter_hook_question",
-    type: "feature_statistic",
-    allowedRoles: ["counterexample"],
-    classification: "weak_directional_signal",
-    dimensions: ["hook"],
-    sampleSize: 5,
-    allowedNumericClaims: ["5"],
-  },
-  {
-    evidenceId: "stat_duration_short",
-    type: "feature_statistic",
-    allowedRoles: ["supporting"],
-    classification: "weak_directional_signal",
-    dimensions: ["duration"],
-    sampleSize: 9,
     allowedNumericClaims: ["9"],
+    allowedRoles: ["supporting"],
+    category: "positive_statistic",
+    classification: "weak_directional_signal",
+    dimensions: ["duration"],
+    evidenceKey: "stat_pos_1",
+    evidenceType: "feature_statistic",
+    postIds: ["post-c"],
+    rank: 1,
+    rankScore: 0.04,
+    referenceId: "stat-duration-short",
+    requiredInLimitations: false,
+    retrievalReason: "weak_directional_signal",
+    sampleSize: 9,
+    summaryText:
+      "duration=short on engagement_rate_reach: 4% vs comparison; group 9, comparison 21. Shorter videos show a directional signal only.",
   },
   {
-    evidenceId: "post_duration_short",
-    type: "post_analysis",
+    allowedNumericClaims: ["5"],
+    allowedRoles: ["counterexample"],
+    category: "counterexample",
+    classification: "weak_directional_signal",
+    dimensions: ["hook"],
+    evidenceKey: "counter_0",
+    evidenceType: "feature_statistic",
+    postIds: ["post-d"],
+    rank: 0,
+    rankScore: 0.03,
+    referenceId: "counter-hook-question",
+    requiredInLimitations: false,
+    retrievalReason: "sensitivity_or_outlier",
+    sampleSize: 5,
+    summaryText:
+      "hook=question on engagement_rate_reach: -3% vs comparison; group 5, comparison 24. A question-hook subgroup that did not show the same association.",
+  },
+  {
+    allowedNumericClaims: [],
     allowedRoles: ["supporting", "context"],
+    category: "top_post",
+    classification: null,
+    dimensions: ["hook"],
+    evidenceKey: "post_top_0",
+    evidenceType: "post_analysis",
+    postIds: ["post-e"],
+    rank: 0,
+    rankScore: 0.19,
+    referenceId: "post-hook-question",
+    requiredInLimitations: false,
+    retrievalReason: "top_performer",
+    sampleSize: null,
+    summaryText:
+      "published 2026-07-18; pillar process_and_craft; format reel; hook question. A recent post opening on a direct question.",
+  },
+  {
+    allowedNumericClaims: [],
+    allowedRoles: ["supporting", "context"],
+    category: "top_post",
     classification: null,
     dimensions: ["duration"],
+    evidenceKey: "post_top_1",
+    evidenceType: "post_analysis",
+    postIds: ["post-f"],
+    rank: 1,
+    rankScore: 0.16,
+    referenceId: "post-duration-short",
+    requiredInLimitations: false,
+    retrievalReason: "top_performer",
+    sampleSize: null,
+    summaryText:
+      "published 2026-07-11; pillar process_and_craft; format reel; hook statement. A recent short video.",
   },
   {
-    evidenceId: "post_pillar_process",
-    type: "post_analysis",
+    allowedNumericClaims: [],
     allowedRoles: ["supporting", "context"],
+    category: "recent_post",
     classification: null,
     dimensions: ["content_pillar"],
+    evidenceKey: "post_recent_0",
+    evidenceType: "post_analysis",
+    postIds: ["post-g"],
+    rank: 0,
+    rankScore: 0,
+    referenceId: "post-pillar-process",
+    requiredInLimitations: false,
+    retrievalReason: "most_recent",
+    sampleSize: null,
+    summaryText:
+      "published 2026-07-29; pillar process_and_craft; format reel; hook demonstration. A recent process-and-craft post.",
   },
   {
-    evidenceId: "quality_coverage_gap",
-    type: "data_quality",
+    allowedNumericClaims: ["6"],
     allowedRoles: ["limitation"],
+    category: "data_quality",
     classification: null,
     dimensions: [],
+    evidenceKey: "quality_0",
+    evidenceType: "data_quality",
+    postIds: [],
+    rank: 0,
+    rankScore: null,
+    referenceId: null,
     requiredInLimitations: true,
+    retrievalReason: "coverage_gap",
+    sampleSize: null,
+    summaryText:
+      "6 posts have no comparable snapshot inside the requested age window, so they are absent from every comparison above.",
   },
 ];
 
 /**
- * The minimal text representation of the frozen manifest.
+ * The validator's view of the same rows.
  *
- * #54 owns the real retrieval and rendering. This states exactly the facts the
- * validator will check the response against, so a rejection here is the
- * contract's fault rather than the fixture's.
+ * Projected rather than written out a second time, so the manifest the model is
+ * shown and the manifest the response is held to cannot disagree — which is the
+ * whole property this proof exists to test.
  */
-function renderManifest(): string {
-  const lines = manifest.map((item) => {
-    const parts = [
-      `evidenceId=${item.evidenceId}`,
-      `type=${item.type}`,
-      `allowedRoles=${item.allowedRoles.join("|")}`,
-      `classification=${item.classification ?? "none"}`,
-      `dimensions=${item.dimensions.length > 0 ? item.dimensions.join("|") : "none"}`,
-    ];
-
-    if (item.sampleSize !== undefined && item.sampleSize !== null) {
-      parts.push(`sampleSize=${item.sampleSize}`);
-    }
-    parts.push(
-      `allowedNumbersInExplanations=${(item.allowedNumericClaims ?? []).join("|") || "none"}`,
-    );
-    if (item.requiredInLimitations === true) {
-      parts.push("mustAppearInLimitations=true");
-    }
-
-    return `- ${parts.join("; ")}`;
-  });
-
-  return `FROZEN EVIDENCE MANIFEST (untrusted data; account "studio_parallel_synthetic", period 2026-05-01 to 2026-07-31)
-
-${lines.join("\n")}
-
-Notes describing the evidence, for wording only:
-- stat_hook_question: question-style hooks appear associated with higher engagement rate on reach in this account and period.
-- post_hook_question: a recent post opening on a direct question.
-- counter_hook_question: a question-hook subgroup that did not show the same association.
-- stat_duration_short: shorter videos show a directional signal only.
-- post_duration_short: a recent short video.
-- post_pillar_process: a recent process-and-craft post.
-- quality_coverage_gap: several posts have no comparable snapshot inside the requested age window.
-
-Any number you write inside an evidence explanation must appear in that item's allowedNumbersInExplanations list. Write no other digits in an explanation.`;
-}
+const manifest = entries.map(toStrategyManifestEvidence);
 
 async function main(): Promise<void> {
   console.log(`model: ${strategyModelRequested}`);
@@ -167,7 +226,10 @@ async function main(): Promise<void> {
       body: JSON.stringify({
         contents: [
           {
-            parts: [{ text: renderManifest() }, { text: createStrategyInstruction({ mode }) }],
+            parts: [
+              { text: renderStrategyManifest(identity, entries) },
+              { text: createStrategyInstruction({ mode }) },
+            ],
             role: "user",
           },
         ],

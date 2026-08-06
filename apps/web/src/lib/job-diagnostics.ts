@@ -33,6 +33,7 @@ export const queueLabels: Readonly<Record<QueueName, string>> = Object.freeze({
   "analytics.recalculate": "Analytics recalculation",
   "asset.cleanup": "Asset cleanup",
   "asset.validate": "Asset validation",
+  "instagram.comments.post": "Post comment import",
   "instagram.media.import": "Instagram video copy",
   "instagram.snapshot.post": "Post insight snapshot",
   "instagram.sync.account": "Instagram account sync",

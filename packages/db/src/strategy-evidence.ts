@@ -7,6 +7,7 @@ import {
   cohortSelectionVersion,
   createStrategyManifestHash,
   estimateStrategyPromptTokens,
+  renderPostDossierBody,
   renderStrategyManifest,
   selectStrategyEvidence,
   strategyContractArtifacts,
@@ -27,6 +28,7 @@ import {
 
 import type { PrismaClient } from "./generated/prisma/client.js";
 import { createId } from "./id.js";
+import { loadPostDossiers } from "./post-dossier.js";
 import type { WorkspaceContext } from "./workspace-context.js";
 
 /**
@@ -249,7 +251,26 @@ export async function loadStrategyEvidenceCandidates(
     );
   }
 
-  posts.slice(0, strategyEvidenceRecentPosts).forEach((post, index) => {
+  // Loaded by id, for exactly the posts selected above and in the same order.
+  //
+  // Asking instead for "the newest N analysed posts" would return a different
+  // set: the query above additionally requires the analysis to be
+  // analytics-eligible, so an ineligible one can displace an eligible post out
+  // of the dossier read while the manifest still carries it. The sets overlap
+  // heavily, which is what would make it quiet — most posts would have a
+  // dossier and a few would silently fall back to a one-line summary.
+  const selectedPosts = posts.slice(0, strategyEvidenceRecentPosts);
+  const dossiers = new Map(
+    (
+      await loadPostDossiers(database, context, {
+        instagramAccountId: request.instagramAccountId,
+        limit: strategyEvidenceRecentPosts,
+        postIds: selectedPosts.map((post) => post.id),
+      })
+    ).map((entry) => [entry.postId, entry.dossier]),
+  );
+
+  selectedPosts.forEach((post, index) => {
     const analysis = post.currentAnalysis;
     if (!analysis) return;
 
@@ -258,8 +279,14 @@ export async function loadStrategyEvidenceCandidates(
         request.pillarEmphasis.includes(analysis.contentPillar)) ||
       (analysis.contentFormat !== null && request.formatEmphasis.includes(analysis.contentFormat));
 
+    const dossier = dossiers.get(post.id);
+
     candidates.push(
       Object.freeze({
+        // Retained on the row for provenance and no longer enforced against.
+        // The manifest now carries the post's own numbers, so an allowlist
+        // would have to contain every figure in it and would still forbid the
+        // arithmetic the model is being asked to do across posts.
         allowedNumericClaims: Object.freeze([]),
         allowedRoles: contextRoles,
         category: emphasised ? "comparator_post" : "recent_post",
@@ -273,9 +300,16 @@ export async function loadStrategyEvidenceCandidates(
         requiredInLimitations: false,
         retrievalReason: emphasised ? "requested_emphasis" : "most_recent",
         sampleSize: null,
-        summaryText: `published ${post.publishedAt.toISOString().slice(0, 10)}; pillar ${
-          analysis.contentPillar ?? "unknown"
-        }; format ${analysis.contentFormat ?? "unknown"}; hook ${analysis.hookCategory ?? "unknown"}`,
+        // The whole dossier, which is what the model reads. A post with no
+        // dossier is one whose analysis was published between the two reads;
+        // it keeps the old one-line form rather than being dropped, because
+        // dropping it would silently shrink the sample the manifest reports.
+        summaryText:
+          dossier === undefined
+            ? `published ${post.publishedAt.toISOString().slice(0, 10)}; pillar ${
+                analysis.contentPillar ?? "unknown"
+              }; format ${analysis.contentFormat ?? "unknown"}; hook ${analysis.hookCategory ?? "unknown"}`
+            : renderPostDossierBody(dossier),
       }),
     );
   });

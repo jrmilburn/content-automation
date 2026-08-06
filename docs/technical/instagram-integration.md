@@ -9,7 +9,7 @@ Prefer **Instagram API with Instagram Login** (`graph.instagram.com`) because it
 - `instagram_business_basic` for the authorised account/profile and owned media.
 - `instagram_business_manage_insights` for account/media insights.
 
-Do not request publish, message or comment-management scopes. Meta’s [official Instagram API collection](https://www.postman.com/meta/instagram/collection/6yqw8pt/instagram-api) and [Insights guide](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api?entity=request-23987686-26e7999c-fc7e-44c8-8f71-ab2de8d35c32) are the implementation baseline.
+Do not request publish or message scopes. `instagram_business_manage_comments` is requested and is the single exception to the "no manage scope" rule: it is the only scope that grants reading comment bodies, which the strategy and the assistant argue from. Only its read half is used, and no comment-write client exists. Meta’s [official Instagram API collection](https://www.postman.com/meta/instagram/collection/6yqw8pt/instagram-api) and [Insights guide](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api?entity=request-23987686-26e7999c-fc7e-44c8-8f71-ab2de8d35c32) are the implementation baseline.
 
 The repository pins this path to Graph API `v25.0`. The sanitised, account-specific proof procedure and current evidence status are recorded in [Meta contract proof](meta-contract-proof.md). A version change is material: update the capability map and rerun that proof before dependent implementation proceeds.
 
@@ -255,7 +255,7 @@ than claiming a complete import it did not finish.
 
 ## Polling and webhooks
 
-Use polling for post discovery and metric snapshots. Meta webhooks are useful for supported interaction events, but do not replace scheduled retrieval of changing performance insights. V1 does not request messaging/comment scopes merely to obtain webhooks. A later `media`-event trigger may enqueue an earlier poll if the selected API version documents it, with polling/reconciliation remaining authoritative.
+Use polling for post discovery and metric snapshots. Meta webhooks are useful for supported interaction events, but do not replace scheduled retrieval of changing performance insights. V1 does not request messaging scopes merely to obtain webhooks, and does not use the comment scope it holds for that purpose either: comments are polled per post on the same sweep as snapshots. A later `media`-event trigger may enqueue an earlier poll if the selected API version documents it, with polling/reconciliation remaining authoritative.
 
 Meta configuration uses two distinct endpoints:
 

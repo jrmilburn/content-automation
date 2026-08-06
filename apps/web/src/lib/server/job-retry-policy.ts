@@ -50,6 +50,11 @@ const policies = {
   // content-addressed, so re-running either collapses onto the existing row or
   // records a genuinely changed observation. Refusing on a prior result would
   // suppress the second, legitimate case.
+  // Comments are upserted by provider id, so a re-run converges on the same
+  // rows rather than duplicating them — and a re-run is also how a newly
+  // arrived comment is picked up, so refusing on a prior result would make the
+  // retry useless rather than safe.
+  "instagram.comments.post": foundationPolicy,
   "instagram.snapshot.post": foundationPolicy,
   "instagram.sync.account": syncPolicy,
   "instagram.token.maintain": foundationPolicy,

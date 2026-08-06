@@ -1,6 +1,7 @@
 import type { InstagramPostListItem } from "@studio-parallel/db";
 import Link from "next/link";
 
+import { postDetailHref } from "../lib/post-detail";
 import {
   buildPostsHref,
   canAnalyseSourceVideo,
@@ -243,6 +244,14 @@ function PostCard({
           </div>
           <p className="post-card__caption">{captionExcerpt(post.caption)}</p>
           <p className="post-card__actions">
+            {/* First, because it is the card's own subject rather than one of
+                the actions beside it: everything this product knows about the
+                post is behind it, including the metrics and analysis this list
+                still says nothing about. */}
+            <Link href={postDetailHref(post.id)}>
+              See everything
+              <span className="visually-hidden"> {context}</span>
+            </Link>
             <Link href={sourceVideoHref(post.id)}>
               {sourceVideo.action}
               <span className="visually-hidden"> {context}</span>
