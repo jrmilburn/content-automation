@@ -42,6 +42,23 @@ beforeEach(async () => {
   await database.backgroundJob.deleteMany();
 });
 
+describe("queue verification", () => {
+  it("reports an unprovisioned queue as missing rather than as incompatible", async () => {
+    // The two are different faults with different fixes and shared one code,
+    // so adding a name to `queueDefinitions` stopped the worker with
+    // "incompatible" — which reads as a policy conflict to investigate when
+    // the answer is that `queue:migrate` has not been run. Only the code
+    // reaches a log, so the distinction has to exist here to be visible.
+    await expect(
+      queue.verifyQueues([{ name: "analysis.run", version: 99 }]),
+    ).rejects.toMatchObject({ code: "QUEUE_DEFINITION_MISSING", retryable: false });
+  });
+
+  it("accepts the queues migration has provisioned", async () => {
+    await expect(queue.verifyQueues()).resolves.toBeUndefined();
+  });
+});
+
 afterAll(async () => {
   await queue.stop();
   await database.jobAttempt.deleteMany();

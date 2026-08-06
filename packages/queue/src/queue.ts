@@ -59,6 +59,21 @@ const queuePolicy = Object.freeze({
   retryLimit: 0,
 });
 
+/**
+ * The same policy without `policy`, for updating a queue that already exists.
+ *
+ * Written out rather than destructured off the frozen object above so the one
+ * field that must not be sent is named here, where the reason is, instead of
+ * being a discarded binding at the call site.
+ */
+const mutableQueuePolicy = Object.freeze({
+  deleteAfterSeconds: queuePolicy.deleteAfterSeconds,
+  expireInSeconds: queuePolicy.expireInSeconds,
+  heartbeatSeconds: queuePolicy.heartbeatSeconds,
+  retentionSeconds: queuePolicy.retentionSeconds,
+  retryLimit: queuePolicy.retryLimit,
+});
+
 export function createPgBossQueueClient(options: PgBossQueueOptions): QueueClient {
   return new PgBossQueue(options);
 }
@@ -200,8 +215,21 @@ class PgBossQueue implements WorkerQueueClient {
       for (const definition of definitions) {
         const queue = await this.#boss.getQueue(queueVersionKey(definition));
 
+        // A queue that does not exist and one configured differently are
+        // different faults with different fixes, and they were reported with
+        // one code. Adding a queue name to `queueDefinitions` therefore stopped
+        // the worker starting with "incompatible" — which reads as a policy
+        // conflict to be investigated, when the actual answer is that
+        // `npm run queue:migrate` has not been run since the queue was added.
+        //
+        // The distinction has to be made here rather than by the reader,
+        // because only the code reaches a log: provider and queue detail are
+        // deliberately reduced to a reason code before they leave this module.
+        if (!queue) {
+          throw queueError("QUEUE_DEFINITION_MISSING", false);
+        }
+
         if (
-          !queue ||
           queue.policy !== queuePolicy.policy ||
           queue.expireInSeconds !== queuePolicy.expireInSeconds ||
           queue.heartbeatSeconds !== queuePolicy.heartbeatSeconds ||
@@ -246,7 +274,19 @@ class PgBossQueue implements WorkerQueueClient {
           if (existing.policy !== queuePolicy.policy) {
             throw queueError("QUEUE_DEFINITION_INCOMPATIBLE", false);
           }
-          await this.#boss.updateQueue(name, queuePolicy);
+
+          // `policy` is deliberately not sent on an update. pg-boss refuses it
+          // outright — "queue policy cannot be changed after creation" — and it
+          // refuses on the field being present rather than on the value
+          // differing, so passing the value just checked to be identical still
+          // threw. That made this whole function fail against any database
+          // where a queue already existed, which is every database after its
+          // first migration: the provisioning step only ever succeeded once,
+          // and adding a queue afterwards could not be provisioned at all.
+          //
+          // The equality check above is what makes dropping it safe. A genuine
+          // policy change is still refused, loudly, rather than attempted.
+          await this.#boss.updateQueue(name, mutableQueuePolicy);
         } else {
           await this.#boss.createQueue(name, queuePolicy);
         }
