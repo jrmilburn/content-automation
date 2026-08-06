@@ -34,6 +34,7 @@ const accountId = "019a0000-0000-7000-8000-000000000301";
 
 function post(overrides: Partial<InstagramPostListItem> = {}): InstagramPostListItem {
   return {
+    analysisState: "NONE",
     caption: "Three lighting mistakes that flatten a product shot.",
     id: "019a0000-0000-7000-8000-000000000401",
     instagramAccountId: accountId,
@@ -207,22 +208,33 @@ describe("PostsList results", () => {
 });
 
 describe("PostsList unavailable triage signals", () => {
-  it("names each uncaptured dimension rather than showing a zero or a blank", () => {
+  it("names each unshown dimension rather than showing a zero or a blank", () => {
     render(<PostsList snapshot={snapshot()} values={values()} />);
 
-    const pending = screen.getByRole("region", { name: "Not available yet" });
-    for (const label of ["Analysis", "Metrics"]) {
-      expect(within(pending).getByText(label)).toBeVisible();
-    }
-    expect(within(pending).getAllByText("Not captured")).toHaveLength(2);
+    const pending = screen.getByRole("region", { name: "Not shown on this screen" });
+    expect(within(pending).getByText("Metrics")).toBeVisible();
+    expect(within(pending).getAllByText("Not shown")).toHaveLength(1);
   });
 
-  it("no longer claims source video is uncaptured now that it is stored", () => {
+  it("says metrics are unshown rather than uncaptured, because they are captured", () => {
     render(<PostsList snapshot={snapshot()} values={values()} />);
 
-    const pending = screen.getByRole("region", { name: "Not available yet" });
+    const pending = screen.getByRole("region", { name: "Not shown on this screen" });
+
+    // Snapshots exist for most posts. Saying they are not captured was simply
+    // false, and it sent a reader looking for an import that had already run.
+    expect(pending.textContent).not.toMatch(/not captured/iu);
+  });
+
+  it("no longer claims source video or analysis is uncaptured now that both are stored", () => {
+    render(<PostsList snapshot={snapshot()} values={values()} />);
+
+    const pending = screen.getByRole("region", { name: "Not shown on this screen" });
 
     expect(within(pending).queryByText("Source video")).toBeNull();
+    // Analysis is stored per post and is a badge on every row. Claiming here
+    // that it had not run against any post contradicted the rows above it.
+    expect(within(pending).queryByText("Analysis")).toBeNull();
   });
 
   it("never renders a zero for an uncaptured signal", () => {
@@ -288,6 +300,63 @@ describe("PostsList account labelling", () => {
 
     // With one account the label would repeat on every row and add nothing.
     expect(container.querySelector(".post-card__account")).toBeNull();
+  });
+});
+
+describe("PostsList analysis state", () => {
+  function badges() {
+    return within(screen.getByRole("region", { name: "Imported posts" }));
+  }
+
+  it("says on the row that a post has already been analysed", () => {
+    render(
+      <PostsList
+        snapshot={withPosts(post({ analysisState: "ANALYSED", sourceVideoState: "READY" }))}
+        values={values()}
+      />,
+    );
+
+    expect(badges().getByText("Analysed")).toBeVisible();
+  });
+
+  it("distinguishes a run in flight from one that never started", () => {
+    render(
+      <PostsList
+        snapshot={withPosts(
+          post({ analysisState: "IN_PROGRESS", id: "019a0000-0000-7000-8000-000000000401" }),
+          post({ analysisState: "NONE", id: "019a0000-0000-7000-8000-000000000402" }),
+        )}
+        values={values()}
+      />,
+    );
+
+    expect(badges().getByText("Analysing")).toBeVisible();
+    expect(badges().getByText("Not analysed")).toBeVisible();
+  });
+
+  it("stops offering analysis for a post that already has one", () => {
+    // The request path collapses a repeat onto the existing signature, so the
+    // control would look like it did nothing. A ready video is used because
+    // that is the only state in which the button would otherwise appear.
+    render(
+      <PostsList
+        snapshot={withPosts(post({ analysisState: "ANALYSED", sourceVideoState: "READY" }))}
+        values={values()}
+      />,
+    );
+
+    expect(badges().queryByRole("button", { name: /Analyse this video/u })).toBeNull();
+  });
+
+  it("stops offering analysis while a run is still in flight", () => {
+    render(
+      <PostsList
+        snapshot={withPosts(post({ analysisState: "IN_PROGRESS", sourceVideoState: "READY" }))}
+        values={values()}
+      />,
+    );
+
+    expect(badges().queryByRole("button", { name: /Analyse this video/u })).toBeNull();
   });
 });
 

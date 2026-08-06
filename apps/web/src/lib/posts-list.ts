@@ -1,4 +1,5 @@
 import type {
+  AnalysisState,
   InstagramPostListFilters,
   InstagramPostListItem,
   SourceVideoState,
@@ -42,17 +43,21 @@ export const mediaKindFilterOptions: ReadonlyArray<
 > = instagramMediaKinds.map((value) => ({ label: mediaKindLabels[value], value }));
 
 /**
- * The triage dimensions this product will eventually filter on, none of which
- * have any stored data yet. They are named rather than hidden so the screen
- * says what it cannot tell you instead of implying every post is fine.
+ * Triage dimensions this screen still cannot show.
+ *
+ * Analysis used to be listed here and no longer is: it is stored per post and
+ * is now a badge on each row, so a page-level "analysis has not run against any
+ * post yet" was telling a reader the opposite of what the rows beside it said.
+ *
+ * Metrics stay, but the claim had to change. They are captured — snapshots
+ * exist for most posts — so saying they are not was false. What is true is
+ * narrower: this screen neither shows nor filters on them, and a reader looking
+ * for them should look at a post or at trends.
  */
 export const pendingTriageDimensions = [
   Object.freeze({
-    detail: "Analysis has not run against any post yet.",
-    label: "Analysis",
-  }),
-  Object.freeze({
-    detail: "Performance metrics are not captured yet, so none can be compared.",
+    detail:
+      "Performance metrics are captured, but this screen does not show or filter on them. A post's own page shows what it did, and trends compares them.",
     label: "Metrics",
   }),
 ] as const;
@@ -192,6 +197,41 @@ export function presentSourceVideo(
   post: Readonly<{ sourceVideoState: SourceVideoState }>,
 ): Readonly<{ action: string; label: string; tone: StatusTone }> {
   return sourceVideoPresentation[post.sourceVideoState];
+}
+
+/**
+ * How a post's analysis state reads on a triage row.
+ *
+ * `NONE` is deliberately neutral rather than a warning. Most posts on a healthy
+ * account have not been analysed and are not meant to be — analysis is
+ * requested per post and costs a provider call — so colouring the ordinary case
+ * as a problem would make the screen read as a list of faults.
+ */
+const analysisPresentation: Readonly<
+  Record<AnalysisState, Readonly<{ label: string; tone: StatusTone }>>
+> = Object.freeze({
+  ANALYSED: Object.freeze({ label: "Analysed", tone: "success" }),
+  IN_PROGRESS: Object.freeze({ label: "Analysing", tone: "information" }),
+  NONE: Object.freeze({ label: "Not analysed", tone: "neutral" }),
+});
+
+export function presentAnalysis(
+  post: Readonly<{ analysisState: AnalysisState }>,
+): Readonly<{ label: string; tone: StatusTone }> {
+  return analysisPresentation[post.analysisState];
+}
+
+/**
+ * Whether a post can be given a first analysis.
+ *
+ * A post already analysed, or with a job still running, is not offered the
+ * control. Re-analysis is a real thing the product supports, but it is not what
+ * this button means and the request path would collapse a repeat onto the
+ * existing signature anyway — so offering it here would be a button that looks
+ * like it did nothing.
+ */
+export function canRequestFirstAnalysis(post: Readonly<{ analysisState: AnalysisState }>): boolean {
+  return post.analysisState === "NONE";
 }
 
 /** The in-application route to one post's source video. */

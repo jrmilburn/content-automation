@@ -14,6 +14,7 @@ import {
   createJsonLogger,
   createLoggerMetricSink,
   createMetricRecorder,
+  OperationalError,
   reportError,
 } from "@studio-parallel/observability";
 import {
@@ -306,6 +307,20 @@ async function start(): Promise<void> {
       });
     });
   } catch (error) {
+    // A missing queue is the one startup failure with a known, one-command
+    // fix, and the reason code alone does not say what it is. Everything else
+    // here stays a code on purpose — this is our own static remediation, not
+    // provider text, so naming it costs nothing and saves the reader working
+    // back from "the worker will not start" to "a queue was added to
+    // `queueDefinitions` and never provisioned".
+    if (error instanceof OperationalError && error.code === "QUEUE_DEFINITION_MISSING") {
+      logger.error("worker.queue_provisioning_required", {
+        correlationId: lifecycleCorrelationId,
+        reasonCode: "RUN_QUEUE_MIGRATE",
+        stage: "startup",
+      });
+    }
+
     reportError(
       error,
       {

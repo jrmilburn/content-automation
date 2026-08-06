@@ -45,7 +45,21 @@ export const sourceVideoStates = ["NONE", "PENDING_VALIDATION", "READY", "REJECT
 
 export type SourceVideoState = (typeof sourceVideoStates)[number];
 
+/**
+ * Whether a post has been analysed, is being analysed, or neither.
+ *
+ * `IN_PROGRESS` is carried rather than collapsed into `NONE` because the two
+ * ask different things of a reader. A post nothing has looked at is work to
+ * request; a post with a job already running is work to wait for, and a triage
+ * list that shows them the same way invites a second request for analysis
+ * already under way.
+ */
+export const analysisStates = ["NONE", "IN_PROGRESS", "ANALYSED"] as const;
+
+export type AnalysisState = (typeof analysisStates)[number];
+
 export type InstagramPostListItem = Readonly<{
+  analysisState: AnalysisState;
   caption: string | null;
   id: string;
   instagramAccountId: string;
@@ -68,7 +82,12 @@ export type InstagramPostList = Readonly<{
 }>;
 
 const listSelect = {
+  // Only the stages, and only to tell a running job from a finished one. The
+  // analysis itself is not read here: a triage row says whether the work has
+  // happened, and the findings belong on the post's own screen.
+  analysisJobs: { select: { stage: true } },
   caption: true,
+  currentAnalysisId: true,
   id: true,
   instagramAccountId: true,
   lastImportedAt: true,
@@ -92,6 +111,31 @@ const listSelect = {
  * for a post that already has a ready replacement would send someone to fix
  * something that is no longer broken.
  */
+/**
+ * Collapses a post's analysis history into the one state worth triaging.
+ *
+ * A published analysis wins outright: a post can be re-analysed while it
+ * already has one, and "analysed" is still the truer answer than "working" for
+ * a reader deciding what needs attention.
+ *
+ * A job is running unless it reached `PUBLISHED` or was abandoned. Listing the
+ * two terminal stages rather than the six live ones is deliberate — a stage
+ * added later is far more likely to be another step on the way than another
+ * way to stop, so an unknown stage counts as running rather than silently
+ * making a post look untouched.
+ */
+export function resolveAnalysisState(
+  currentAnalysisId: string | null,
+  jobs: readonly Readonly<{ stage: string }>[],
+): AnalysisState {
+  if (currentAnalysisId !== null) return "ANALYSED";
+  if (jobs.some((job) => job.stage !== "PUBLISHED" && job.stage !== "ABANDONED")) {
+    return "IN_PROGRESS";
+  }
+
+  return "NONE";
+}
+
 function resolveSourceVideoState(assets: readonly Readonly<{ state: string }>[]): SourceVideoState {
   if (assets.some((asset) => asset.state === "READY")) return "READY";
   if (assets.some((asset) => asset.state === "PENDING_VALIDATION")) return "PENDING_VALIDATION";
@@ -160,7 +204,9 @@ export async function loadInstagramPostList(
 }
 
 function toListItem(record: {
+  analysisJobs: readonly Readonly<{ stage: string }>[];
   caption: string | null;
+  currentAnalysisId: string | null;
   id: string;
   instagramAccountId: string;
   lastImportedAt: Date;
@@ -173,6 +219,7 @@ function toListItem(record: {
   videoAssets: readonly Readonly<{ state: string }>[];
 }): InstagramPostListItem {
   return Object.freeze({
+    analysisState: resolveAnalysisState(record.currentAnalysisId, record.analysisJobs),
     caption: record.caption,
     id: record.id,
     instagramAccountId: record.instagramAccountId,
