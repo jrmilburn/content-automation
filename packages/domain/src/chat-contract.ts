@@ -25,10 +25,13 @@ import { renderBusinessProfile } from "./business-profile.js";
  * which is also the honest framing: an earlier reply is a record of what was
  * said, not an instruction about what to say next.
  *
- * The reply is validated before it is stored or shown. The same causal and
- * algorithmic language the strategy validator refuses is refused here, because
- * a claim this product will not put in a document is not one it should say in a
- * conversation either.
+ * The reply is validated before it is stored or shown, and it is held to the
+ * same standard as a strategy document, because a claim this product will not
+ * put in a document is not one it should say in a conversation either. That
+ * standard is now the evidence rather than the wording: both callers are given
+ * the rows behind their claims and neither has its prose matched against a
+ * lexicon. What survives here is the shape of the reply, its citations, and the
+ * rule that it may not contain characters the screen cannot render.
  */
 
 export const chatSchemaVersion = "strategy-chat-v1.0.0" as const;

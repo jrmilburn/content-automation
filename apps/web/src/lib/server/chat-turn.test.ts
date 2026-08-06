@@ -39,6 +39,20 @@ function validReply(overrides: Record<string, unknown> = {}): string {
 }
 
 /**
+ * A whole reply this product declines to publish, and offers a repair for.
+ *
+ * The tab is the entire defect; nothing else about the sentence is wrong. The
+ * tests below are about the repair loop, what a repaired turn is recorded as
+ * having cost and the cap of one attempt, and each needs a reply that is
+ * refused by a rule rather than mangled by the provider. `CONTROL_CHARACTER` is
+ * the only remaining code that qualifies, so it is the vehicle — none of those
+ * tests is about control characters as such.
+ */
+function refusedReply(): string {
+  return validReply({ reply: "Try a question hook next\tand hold the pillar steady." });
+}
+
+/**
  * The answer as it was written, not as it reads back.
  *
  * `ChatMessageRecord` carries none of the telemetry columns, so the stored
@@ -224,39 +238,14 @@ describe("runChatTurn", () => {
     expect(written[1]?.failureCode).toBe("RESPONSE_NOT_JSON");
   });
 
-  it("records a reply making a causal claim as a failure rather than publishing it", async () => {
-    const { store, written } = createStore();
-    const fake = createFakeGemini({
-      defaultResponseText: validReply({
-        reply: "A question hook will increase reach on every post.",
-      }),
-    });
-
-    await runChatTurn(
-      context,
-      { correlationId, question: "What should I make next?", sessionId },
-      { gemini: fake.adapter, geminiConfig, store },
-    );
-
-    // The rule that refused it, not merely that one did. Every rejection used
-    // to store `RESPONSE_INVALID`, which is why establishing why a live answer
-    // was discarded meant re-running the turn against the real provider.
-    expect(written[1]?.failureCode).toBe("RESPONSE_CAUSAL_CLAIM");
-    expect(written[1]?.content).toBe("");
-  });
-
   it("asks once more when a rule refused the answer, and names the rule", async () => {
     const { store, written } = createStore();
-    const fake = createFakeGemini({
-      defaultResponseText: validReply({
-        reply: "A question hook will increase reach on every post.",
-      }),
-    });
+    const fake = createFakeGemini({ defaultResponseText: refusedReply() });
 
     // Refused first, acceptable second — the case the repair exists for. A
-    // model that wrote a whole answer and phrased one sentence as a promise is
-    // not making a random mistake, so being told which rule it broke is the
-    // only thing that changes the outcome.
+    // model that wrote a whole answer and put one character in it this product
+    // will not render is not making a random mistake, so being told which rule
+    // it broke is the only thing that changes the outcome.
     const gemini = {
       ...fake.adapter,
       generateStructuredText: async (
@@ -282,16 +271,16 @@ describe("runChatTurn", () => {
     const instructions = fake.instructions();
     expect(instructions).toHaveLength(2);
     const repair = instructions[1] ?? "";
-    expect(repair).toContain("causes, drives, guarantees or leads to");
+    expect(repair).toContain("contained control characters");
     // The refused sentence is the model's own output. Quoting it back would put
     // untrusted prose after the rules that govern it.
-    expect(repair).not.toContain("will increase reach on every post");
+    expect(repair).not.toContain("Try a question hook next");
 
     // The note goes before the closing task, not after it. Appended on the end
     // it displaced "Return only a single JSON object", and the repaired turn
     // answered in prose — which came back as RESPONSE_NOT_JSON and lost the
     // specific refusal that prompted the repair in the first place.
-    expect(repair.indexOf("causes, drives, guarantees or leads to")).toBeLessThan(
+    expect(repair.indexOf("contained control characters")).toBeLessThan(
       repair.indexOf("Return only a single JSON object"),
     );
     expect(repair.trimEnd().endsWith("}")).toBe(true);
@@ -319,11 +308,7 @@ describe("runChatTurn", () => {
 
   it("records the provider failure that stopped a repair, alongside the reason the answer was refused", async () => {
     const { store, written } = createStore();
-    const fake = createFakeGemini({
-      defaultResponseText: validReply({
-        reply: "A question hook will increase reach on every post.",
-      }),
-    });
+    const fake = createFakeGemini({ defaultResponseText: refusedReply() });
 
     const warnings: string[] = [];
     const logger = {
@@ -363,18 +348,14 @@ describe("runChatTurn", () => {
     // happened to their question. The quota that decided there would be no
     // second answer is a different fact about the product, and losing it would
     // make a rate-limited workspace look like a badly behaved model.
-    expect(written[1]?.failureCode).toBe("RESPONSE_CAUSAL_CLAIM");
+    expect(written[1]?.failureCode).toBe("RESPONSE_CONTROL_CHARACTER");
     expect(warnings).toContain("REPAIR_RATE_LIMIT");
-    expect(warnings).toContain("RESPONSE_CAUSAL_CLAIM");
+    expect(warnings).toContain("RESPONSE_CONTROL_CHARACTER");
   });
 
   it("counts what a repaired turn spent, not what its last call spent", async () => {
     const { store, written } = createStore();
-    const fake = createFakeGemini({
-      defaultResponseText: validReply({
-        reply: "A question hook will increase reach on every post.",
-      }),
-    });
+    const fake = createFakeGemini({ defaultResponseText: refusedReply() });
     const usage = {
       cachedTokens: null,
       inputTokens: 100,
@@ -382,10 +363,7 @@ describe("runChatTurn", () => {
       thinkingTokens: null,
       totalTokens: 120,
     };
-    fake.setResponse({
-      text: validReply({ reply: "A question hook will increase reach on every post." }),
-      usage,
-    });
+    fake.setResponse({ text: refusedReply(), usage });
 
     const gemini = {
       ...fake.adapter,
@@ -414,11 +392,7 @@ describe("runChatTurn", () => {
 
   it("stops after one repair rather than asking until it gives up", async () => {
     const { store, written } = createStore();
-    const fake = createFakeGemini({
-      defaultResponseText: validReply({
-        reply: "A question hook will increase reach on every post.",
-      }),
-    });
+    const fake = createFakeGemini({ defaultResponseText: refusedReply() });
 
     await runChatTurn(
       context,
@@ -427,7 +401,14 @@ describe("runChatTurn", () => {
     );
 
     expect(fake.instructions()).toHaveLength(2);
-    expect(written[1]?.failureCode).toBe("RESPONSE_CAUSAL_CLAIM");
+    // The rule that refused it, not merely that one did. Every rejection used
+    // to store `RESPONSE_INVALID`, which is why establishing why a live answer
+    // was discarded meant re-running the turn against the real provider.
+    expect(written[1]?.failureCode).toBe("RESPONSE_CONTROL_CHARACTER");
+    // And the refused text itself is not kept. It is untrusted output that
+    // routinely quotes the question and the context back, so a row recording
+    // that it was refused must not also carry it.
+    expect(written[1]?.content).toBe("");
   });
 
   it("drops a citation the context never offered, and keeps the answer", async () => {
