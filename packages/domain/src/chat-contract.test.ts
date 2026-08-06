@@ -11,6 +11,7 @@ import {
   validateChatReplyV1,
   type ChatTurn,
 } from "./chat-contract.js";
+import { containsProhibitedClaim } from "./strategy-contract.js";
 
 function reply(overrides: Record<string, unknown> = {}): unknown {
   return {
@@ -58,21 +59,19 @@ describe("validateChatReplyV1", () => {
     expect(result.issues.map((issue) => issue.code)).toContain("CAUSAL_OR_ALGORITHM_CLAIM");
   });
 
-  it("keeps the disclaimer the prompt requires, which names the same words", () => {
-    // The prompt tells the assistant never to promise reach and to write an
-    // expectation as an association to be tested. A model that complies writes
-    // a sentence naming the metric it is refusing to promise, and matching on
-    // the verb alone discarded the whole answer for it — roughly a third of
-    // well-formed replies, and most often on the question a reader asks first.
-    const result = validateChatReplyV1(
-      reply({
-        reply:
-          "Open on the question and hold the pillar steady. This is an association measured in this period rather than a guarantee of reach or views.",
-      }),
-      manifest,
-    );
+  it("tells the model not to write the disclaimer the validator would refuse", () => {
+    // `containsProhibitedClaim` matches a causal verb beside a metric and cannot
+    // tell an assertion from a denial of one — reading polarity lexically was
+    // tried and let real claims through. So the sentence a complying model
+    // volunteers, "this is not a guarantee of reach", was discarding whole
+    // well-formed answers. The prompt is where that is fixed, because the
+    // check is the thing that must not be narrowed.
+    expect(chatPromptText).toContain("State the association and stop there");
+    expect(chatPromptText).toContain("does not need to disclaim one");
 
-    expect(result.valid).toBe(true);
+    // The rule is only worth anything if the sentence it forbids is one the
+    // validator would in fact have refused.
+    expect(containsProhibitedClaim("This is not a guarantee of reach.")).toBe(true);
   });
 
   it("refuses a causal performance claim in a follow-up as well as in the reply", () => {
@@ -180,7 +179,7 @@ describe("chat immutable artifacts", () => {
     expect(Object.isFrozen(chatContractArtifacts.activeDefault)).toBe(true);
     expect(chatContractArtifacts.activeDefault).toEqual({
       schemaVersion: "strategy-chat-v1.0.0",
-      promptVersion: "strategy-chat-prompt-v1.1.0",
+      promptVersion: "strategy-chat-prompt-v1.2.0",
       modelRequested: "gemini-3.6-flash",
     });
     expect(digest(JSON.stringify(chatReplyJsonSchema))).toBe(chatContractArtifacts.schema.sha256);

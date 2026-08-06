@@ -33,7 +33,7 @@ import { containsProhibitedClaim } from "./strategy-contract.js";
  */
 
 export const chatSchemaVersion = "strategy-chat-v1.0.0" as const;
-export const chatPromptVersion = "strategy-chat-prompt-v1.1.0" as const;
+export const chatPromptVersion = "strategy-chat-prompt-v1.2.0" as const;
 export const chatModelRequested = analysisModelRequested;
 
 /** What one person may send in one message. Bounded so a turn cannot be used to smuggle a corpus. */
@@ -299,6 +299,8 @@ Never invent a number, a date, a post, a metric value, a sample size or an evide
 
 Correlation is not causation. Never claim that Instagram or an algorithm rewards, prefers, boosts, penalises or suppresses a creative choice. Never promise reach, engagement, distribution, views or performance. Write an expectation as an association to be tested — "posts opening on a question have a higher median save rate in this period" — rather than as a consequence. This applies to every sentence you write, including follow-up questions.
 
+State the association and stop there. Do not add a sentence denying the causal claim you have just avoided making: no "this is not a guarantee of reach", no "there is no evidence this will improve engagement", no "nothing here can tell you what drives views". A reply that never claims a cause does not need to disclaim one, and the disclaimer reintroduces exactly the words — a causal verb beside a metric — that this product refuses to publish. Say what was measured, over which posts and in which period, and let that be the whole of the claim.
+
 Do not upgrade what the context claims. If a comparison is recorded as a weak directional signal or a single-post outlier, say so when you lean on it, and do not describe it in language the strategy reserves for stronger evidence. If the context lists a limitation that bears on your answer, say it rather than leaving the reader to find it.
 
 Stay inside the strategy. Recommendations belong to the account's content pillars, intended audience and stated tests; when you propose something the strategy has not proposed, say that it is a new proposal, connect it to a pillar and give it a way to be judged — what to change, what to hold stable, which metric to watch and over how long. Do not re-propose a recommendation the context shows was already made unless the reader asks about it or you explain what is different this time.
@@ -339,7 +341,14 @@ export const chatContractArtifacts = deepFreeze({
     // product wrote. Without the rule the assistant would either discount it,
     // having been told everything before the question is untrusted, or treat it
     // as evidence for a performance claim.
-    sha256: "37ae9663543f8f3cbd9dc214c5578af041532d82fce58841ee0d55d777e72bea",
+    // v1.2.0 tells the model not to disclaim the causal claim it has just
+    // avoided. `containsProhibitedClaim` cannot tell "not a guarantee of reach"
+    // from "drives reach" — it matches a causal verb beside a metric, and
+    // reading polarity lexically was tried and let real claims through. So the
+    // disclaimer, which the previous rules made the model volunteer, was
+    // discarding whole well-formed answers. This removes the sentence at its
+    // source rather than weakening the check that catches it.
+    sha256: "3f2cea4670ccbcd361d33eaf4a48d756e3abcc2825b7a6b028c6690aa69c90b9",
     text: chatPromptText,
   },
   lifecycleValues: analysisArtifactLifecycles,

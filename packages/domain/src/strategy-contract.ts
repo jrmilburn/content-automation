@@ -890,50 +890,9 @@ function validateUniqueKeys(strategy: StrategyV1, issues: StrategyValidationIssu
 }
 
 const prohibitedClaimPatterns = [
-  /\b(?:instagram|the algorithm|algorithm)\b.{0,60}\b(?:rewards?|prefers?|boosts?|penali[sz]es?|suppresses?)\b/giu,
-  /\b(?:causes?|guarantees?|will (?:increase|boost|improve)|drives?|leads? to|results? in)\b.{0,80}\b(?:reach|views?|plays?|engagement|likes?|comments?|shares?|saves?|follows?|performance|distribution|virality|viral)\b/giu,
+  /\b(?:instagram|the algorithm|algorithm)\b.{0,60}\b(?:rewards?|prefers?|boosts?|penali[sz]es?|suppresses?)\b/iu,
+  /\b(?:causes?|guarantees?|will (?:increase|boost|improve)|drives?|leads? to|results? in)\b.{0,80}\b(?:reach|views?|plays?|engagement|likes?|comments?|shares?|saves?|follows?|performance|distribution|virality|viral)\b/iu,
 ] as const;
-
-/**
- * Words that deny the claim standing after them.
- *
- * The patterns above match a verb and a metric, and a match alone says nothing
- * about whether the sentence asserted the claim or refused it. Every sentence
- * this product asks a model to write about causation is a refusal — "this is
- * not a guarantee of reach", "no evidence this will improve engagement",
- * "nothing here can tell you what leads to more views" — and each of those
- * matches. The prompt requires the disclaimer and the validator then rejected
- * the answer for containing it, so roughly a third of well-formed replies were
- * discarded, most often on exactly the questions a reader asks first.
- *
- * The lexicon is deliberately small. Every entry is a word that reverses the
- * polarity of what follows it, and nothing is included because it merely
- * softens a claim: "may increase reach" is still a promise about reach, and
- * hedging is not the same as denying.
- */
-const claimDenialPattern =
-  /(?:\b(?:no|not|never|none|nothing|neither|nor|cannot|without|rather than|instead of)\b|\w+n['’]t\b)/iu;
-
-/**
- * Where a denial stops carrying.
- *
- * A negation governs its own clause and not the one coordinated after it. In
- * "this is not a guarantee of reach, and question hooks drive engagement" the
- * second half is an assertion however the first half was framed, so the split
- * happens at the coordinator. Bare commas are not boundaries: "we cannot say,
- * from this evidence, what drives engagement" is one clause with a parenthetical
- * in it, and splitting there would refuse the sentence for the phrase it exists
- * to deny.
- *
- * The dash branch matches exactly one space on each side rather than a run of
- * them. `\s+[–—-]{1,2}\s+` is ambiguous about where the leading run starts, so a
- * string of spaces with no dash after it costs the engine one attempt per space
- * — quadratic in the length of the run, on text a model wrote. One space is what
- * a dash is written with, and a reply padded with a thousand of them is not a
- * clause boundary worth finding.
- */
-const clauseBoundaryPattern =
-  /[.!?;:\n]+|\s[–—-]{1,2}\s|,\s*(?:and|but|so|yet|while|whereas|however|although|though|which)\b/giu;
 
 /**
  * Whether one string makes a causal or algorithmic claim this product refuses.
@@ -944,25 +903,25 @@ const clauseBoundaryPattern =
  * about an account, not of the strategy document that happens to enforce it
  * first.
  *
- * Read clause by clause, and a clause is only a claim when nothing before the
- * match denied it. That is the whole of the polarity rule: it does not parse,
- * and it is not trying to. It distinguishes "X drives engagement" from "nothing
- * here says what drives engagement", which is the distinction the product's own
- * house style makes on every page — and it still refuses the assertion when a
- * denial elsewhere in the sentence was about something else.
+ * Deliberately blind to polarity, and it stays that way. A denial-aware version
+ * was written and reverted: it exempted a match whenever a negation appeared
+ * earlier in the clause, which is the shape of the disclaimers this product
+ * wants — and also the shape of "make no mistake, the algorithm rewards daily
+ * posting", "no one doubts that question hooks drive engagement" and "although
+ * we cannot prove causation, Reels drive reach". Denial words are the most
+ * common opener in marketing prose, so reading polarity lexically let through
+ * the one claim class this check exists for. Thirty-nine such sentences were
+ * demonstrated before it was reverted.
+ *
+ * The cost of the strictness is that a reply denying causation in these words is
+ * refused along with one asserting it. That is paid where it belongs: the chat
+ * prompt tells the model to state the association rather than deny the cause, so
+ * the sentence is not written; and a refused reply is asked once more and told
+ * which rule refused it, so a false positive costs a retry rather than the
+ * answer. Neither of those can let a claim through, and narrowing this could.
  */
 export function containsProhibitedClaim(value: string): boolean {
-  return value.split(clauseBoundaryPattern).some(assertsProhibitedClaim);
-}
-
-function assertsProhibitedClaim(clause: string): boolean {
-  for (const pattern of prohibitedClaimPatterns) {
-    for (const match of clause.matchAll(pattern)) {
-      if (!claimDenialPattern.test(clause.slice(0, match.index))) return true;
-    }
-  }
-
-  return false;
+  return prohibitedClaimPatterns.some((pattern) => pattern.test(value));
 }
 
 function walkStrings(
