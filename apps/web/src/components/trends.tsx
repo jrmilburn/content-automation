@@ -14,6 +14,7 @@ import {
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { postDetailHref } from "../lib/post-detail";
 import type { TrendsSnapshot } from "../lib/server/trends-data";
 import {
   comparisonRows,
@@ -662,7 +663,11 @@ function ContributorTable({
                   <td>{contributor.value.toFixed(4)}</td>
                   <td>{contributor.caption ?? "No caption"}</td>
                   <td>
-                    <Link href={`/posts/${contributor.instagramPostId}/source-video`}>
+                    {/* The post itself, not its upload control. This column
+                        says "open post", and the source-video page answers a
+                        different question from the one a reader following a
+                        contributing post is asking. */}
+                    <Link href={postDetailHref(contributor.instagramPostId)}>
                       Open post
                       <span className="visually-hidden">
                         {" "}

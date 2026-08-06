@@ -189,7 +189,7 @@ describe("InstagramIntegrations", () => {
     expect(screen.getByText(/the account you started from is still connected/u)).toBeVisible();
   });
 
-  it("names a downgraded permission instead of silently omitting it", () => {
+  it("names every downgraded permission instead of silently omitting them", () => {
     render(
       <InstagramIntegrations
         outcome={null}
@@ -198,7 +198,17 @@ describe("InstagramIntegrations", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Required permissions are missing" })).toBeVisible();
-    expect(screen.getByText("Missing")).toBeVisible();
+    // Every absent scope is named, not just the first. This asserted a single
+    // "Missing" badge while only one scope could ever be absent, so adding
+    // `instagram_business_manage_comments` broke it — which is the useful
+    // reading: a grant can now fall short in more than one way, and a reader
+    // told about one of two would reconnect and still be missing a permission.
+    expect(screen.getAllByText("Missing")).toHaveLength(2);
+    expect(
+      screen.getByText(
+        /Missing: Instagram business manage insights, Instagram business manage comments/u,
+      ),
+    ).toBeVisible();
   });
 
   it("shows the disconnect control only to an admin and never on a disconnected account", () => {

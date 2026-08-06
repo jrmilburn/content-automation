@@ -270,12 +270,17 @@ describe("PostsList account labelling", () => {
     expect(labelled).toEqual(["@studioparallel", "@parallelstudio"]);
   });
 
-  it("names the account in the link, so the rows stay distinguishable out of context", () => {
+  it("names the account in every link, so the rows stay distinguishable out of context", () => {
     render(<PostsList snapshot={twoAccounts()} values={values()} />);
 
-    expect(
-      screen.getByRole("link", { name: /for the Reel published .* on @parallelstudio$/u }),
-    ).toBeVisible();
+    // A card offers more than one link with the same visible words, so each of
+    // them has to carry the row's own identity rather than only the first.
+    const links = screen.getAllByRole("link", {
+      name: /for the Reel published .* on @parallelstudio$/u,
+    });
+
+    expect(links.length).toBeGreaterThan(1);
+    for (const link of links) expect(link).toBeVisible();
   });
 
   it("says nothing about the account when only one is connected", () => {
