@@ -18,6 +18,10 @@ import type { ChatStore } from "./chat-store";
 const context = createWorkspaceContext("01900000-0000-7000-8000-000000000001");
 const sessionId = "019a0000-0000-7000-8000-000000000001";
 
+// Required of every caller, so that a second entry point cannot be added that
+// silently writes no log line when a turn fails.
+const correlationId = "019a0000-0000-7000-8000-0000000000c1";
+
 // Only the two bounds a turn reads. The rest of the schema belongs to the
 // adapter, which these tests replace.
 const geminiConfig = {
@@ -32,6 +36,18 @@ function validReply(overrides: Record<string, unknown> = {}): string {
     reply: "Open the next video on a direct question and hold the pillar steady.",
     ...overrides,
   });
+}
+
+/**
+ * The answer as it was written, not as it reads back.
+ *
+ * `ChatMessageRecord` carries none of the telemetry columns, so the stored
+ * token counts are only visible in what the command handed the store.
+ */
+function appendedTelemetry(store: ChatStore): Record<string, unknown> {
+  const calls = (store.appendAnswer as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+  const last = calls[calls.length - 1] as [unknown, { answer: Record<string, unknown> }];
+  return last[1].answer;
 }
 
 function createStore(overrides: Partial<ChatStore> = {}) {
@@ -147,7 +163,7 @@ describe("runChatTurn", () => {
 
     const result = await runChatTurn(
       context,
-      { question: "What should I make next?", sessionId },
+      { correlationId, question: "What should I make next?", sessionId },
       { gemini: fake.adapter, geminiConfig, store },
     );
 
@@ -164,7 +180,7 @@ describe("runChatTurn", () => {
 
     await runChatTurn(
       context,
-      { question: "What should I make next?", sessionId },
+      { correlationId, question: "What should I make next?", sessionId },
       { gemini: fake.adapter, geminiConfig, store },
     );
 
@@ -185,7 +201,7 @@ describe("runChatTurn", () => {
 
     const result = await runChatTurn(
       context,
-      { question: "What should I make next?", sessionId },
+      { correlationId, question: "What should I make next?", sessionId },
       { gemini: fake.adapter, geminiConfig, store },
     );
 
@@ -201,7 +217,7 @@ describe("runChatTurn", () => {
 
     await runChatTurn(
       context,
-      { question: "What should I make next?", sessionId },
+      { correlationId, question: "What should I make next?", sessionId },
       { gemini: fake.adapter, geminiConfig, store },
     );
 
@@ -218,12 +234,200 @@ describe("runChatTurn", () => {
 
     await runChatTurn(
       context,
-      { question: "What should I make next?", sessionId },
+      { correlationId, question: "What should I make next?", sessionId },
       { gemini: fake.adapter, geminiConfig, store },
     );
 
-    expect(written[1]?.failureCode).toBe("RESPONSE_INVALID");
+    // The rule that refused it, not merely that one did. Every rejection used
+    // to store `RESPONSE_INVALID`, which is why establishing why a live answer
+    // was discarded meant re-running the turn against the real provider.
+    expect(written[1]?.failureCode).toBe("RESPONSE_CAUSAL_CLAIM");
     expect(written[1]?.content).toBe("");
+  });
+
+  it("asks once more when a rule refused the answer, and names the rule", async () => {
+    const { store, written } = createStore();
+    const fake = createFakeGemini({
+      defaultResponseText: validReply({
+        reply: "A question hook will increase reach on every post.",
+      }),
+    });
+
+    // Refused first, acceptable second — the case the repair exists for. A
+    // model that wrote a whole answer and phrased one sentence as a promise is
+    // not making a random mistake, so being told which rule it broke is the
+    // only thing that changes the outcome.
+    const gemini = {
+      ...fake.adapter,
+      generateStructuredText: async (
+        request: Parameters<typeof fake.adapter.generateStructuredText>[0],
+      ) => {
+        const result = await fake.adapter.generateStructuredText(request);
+        fake.setResponse({ text: validReply() });
+        return result;
+      },
+    };
+
+    const outcome = await runChatTurn(
+      context,
+      { correlationId, question: "What should I make next?", sessionId },
+      { gemini, geminiConfig, store },
+    );
+
+    expect(outcome.answered).toBe(true);
+    expect(written).toHaveLength(2);
+    expect(written[1]?.failureCode).toBeNull();
+    expect(written[1]?.content).toContain("Open the next video on a direct question");
+
+    const instructions = fake.instructions();
+    expect(instructions).toHaveLength(2);
+    const repair = instructions[1] ?? "";
+    expect(repair).toContain("causes, drives, guarantees or leads to");
+    // The refused sentence is the model's own output. Quoting it back would put
+    // untrusted prose after the rules that govern it.
+    expect(repair).not.toContain("will increase reach on every post");
+
+    // The note goes before the closing task, not after it. Appended on the end
+    // it displaced "Return only a single JSON object", and the repaired turn
+    // answered in prose — which came back as RESPONSE_NOT_JSON and lost the
+    // specific refusal that prompted the repair in the first place.
+    expect(repair.indexOf("causes, drives, guarantees or leads to")).toBeLessThan(
+      repair.indexOf("Return only a single JSON object"),
+    );
+    expect(repair.trimEnd().endsWith("}")).toBe(true);
+  });
+
+  it("does not ask again when the provider itself failed", async () => {
+    const { store, written } = createStore();
+    const fake = createFakeGemini({ defaultResponseText: validReply() });
+    fake.failNext({
+      error: new GeminiError({ operation: "generateStructuredText", responseClass: "timeout" }),
+      operation: "generateStructuredText",
+    });
+
+    await runChatTurn(
+      context,
+      { correlationId, question: "What should I make next?", sessionId },
+      { gemini: fake.adapter, geminiConfig, store },
+    );
+
+    // A request that never reached a model has nothing to repair, and a second
+    // identical call would spend another one to meet the same wall.
+    expect(fake.instructions()).toHaveLength(0);
+    expect(written[1]?.failureCode).toBe("TIMEOUT");
+  });
+
+  it("records the provider failure that stopped a repair, alongside the reason the answer was refused", async () => {
+    const { store, written } = createStore();
+    const fake = createFakeGemini({
+      defaultResponseText: validReply({
+        reply: "A question hook will increase reach on every post.",
+      }),
+    });
+
+    const warnings: string[] = [];
+    const logger = {
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn((_event: string, attributes: { reasonCode?: string }) => {
+        if (attributes.reasonCode) warnings.push(attributes.reasonCode);
+      }),
+    };
+
+    // First call refused by a rule, second call refused by the provider.
+    const gemini = {
+      ...fake.adapter,
+      generateStructuredText: async (
+        request: Parameters<typeof fake.adapter.generateStructuredText>[0],
+      ) => {
+        const result = await fake.adapter.generateStructuredText(request);
+        fake.failNext({
+          error: new GeminiError({
+            operation: "generateStructuredText",
+            responseClass: "rate_limit",
+          }),
+          operation: "generateStructuredText",
+        });
+        return result;
+      },
+    };
+
+    await runChatTurn(
+      context,
+      { correlationId, question: "What should I make next?", sessionId },
+      { gemini, geminiConfig, logger: logger as never, store },
+    );
+
+    // The reader is told why the answer was refused, because that is what
+    // happened to their question. The quota that decided there would be no
+    // second answer is a different fact about the product, and losing it would
+    // make a rate-limited workspace look like a badly behaved model.
+    expect(written[1]?.failureCode).toBe("RESPONSE_CAUSAL_CLAIM");
+    expect(warnings).toContain("REPAIR_RATE_LIMIT");
+    expect(warnings).toContain("RESPONSE_CAUSAL_CLAIM");
+  });
+
+  it("counts what a repaired turn spent, not what its last call spent", async () => {
+    const { store, written } = createStore();
+    const fake = createFakeGemini({
+      defaultResponseText: validReply({
+        reply: "A question hook will increase reach on every post.",
+      }),
+    });
+    const usage = {
+      cachedTokens: null,
+      inputTokens: 100,
+      outputTokens: 20,
+      thinkingTokens: null,
+      totalTokens: 120,
+    };
+    fake.setResponse({
+      text: validReply({ reply: "A question hook will increase reach on every post." }),
+      usage,
+    });
+
+    const gemini = {
+      ...fake.adapter,
+      generateStructuredText: async (
+        request: Parameters<typeof fake.adapter.generateStructuredText>[0],
+      ) => {
+        const result = await fake.adapter.generateStructuredText(request);
+        fake.setResponse({ text: validReply(), usage });
+        return result;
+      },
+    };
+
+    await runChatTurn(
+      context,
+      { correlationId, question: "What should I make next?", sessionId },
+      { gemini, geminiConfig, store },
+    );
+
+    // Two calls were made and these columns are the only record of what a
+    // conversation costs. Reporting the second alone under-counts every
+    // repaired turn by half, silently.
+    expect(written[1]?.failureCode).toBeNull();
+    expect(appendedTelemetry(store).totalTokens).toBe(240);
+    expect(appendedTelemetry(store).inputTokens).toBe(200);
+  });
+
+  it("stops after one repair rather than asking until it gives up", async () => {
+    const { store, written } = createStore();
+    const fake = createFakeGemini({
+      defaultResponseText: validReply({
+        reply: "A question hook will increase reach on every post.",
+      }),
+    });
+
+    await runChatTurn(
+      context,
+      { correlationId, question: "What should I make next?", sessionId },
+      { gemini: fake.adapter, geminiConfig, store },
+    );
+
+    expect(fake.instructions()).toHaveLength(2);
+    expect(written[1]?.failureCode).toBe("RESPONSE_CAUSAL_CLAIM");
   });
 
   it("drops a citation the context never offered, and keeps the answer", async () => {
@@ -234,7 +438,7 @@ describe("runChatTurn", () => {
 
     await runChatTurn(
       context,
-      { question: "What should I make next?", sessionId },
+      { correlationId, question: "What should I make next?", sessionId },
       { gemini: fake.adapter, geminiConfig, store },
     );
 
@@ -248,7 +452,7 @@ describe("runChatTurn", () => {
 
     const result = await runChatTurn(
       context,
-      { question: "   ", sessionId },
+      { correlationId, question: "   ", sessionId },
       { gemini: fake.adapter, geminiConfig, store },
     );
 
@@ -263,7 +467,7 @@ describe("runChatTurn", () => {
 
     const result = await runChatTurn(
       context,
-      { question: "a".repeat(2_001), sessionId },
+      { correlationId, question: "a".repeat(2_001), sessionId },
       { gemini: fake.adapter, geminiConfig, store },
     );
 
@@ -278,7 +482,7 @@ describe("runChatTurn", () => {
 
     const result = await runChatTurn(
       context,
-      { question: "What should I make next?", sessionId },
+      { correlationId, question: "What should I make next?", sessionId },
       { gemini: fake.adapter, geminiConfig, store },
     );
 
@@ -297,7 +501,7 @@ describe("runChatTurn", () => {
 
     const result = await runChatTurn(
       context,
-      { question: "What should I make next?", sessionId },
+      { correlationId, question: "What should I make next?", sessionId },
       { gemini: fake.adapter, geminiConfig, store },
     );
 
@@ -315,7 +519,7 @@ describe("runChatTurn", () => {
 
     await runChatTurn(
       context,
-      { question: "What should I make next?", sessionId },
+      { correlationId, question: "What should I make next?", sessionId },
       {
         gemini: fake.adapter,
         geminiConfig,
@@ -348,7 +552,7 @@ describe("runChatTurn", () => {
 
     await runChatTurn(
       context,
-      { question: "What should I make next?", sessionId },
+      { correlationId, question: "What should I make next?", sessionId },
       {
         gemini: { generateStructuredText } as never,
         geminiConfig,

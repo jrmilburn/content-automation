@@ -33,7 +33,7 @@ import { containsProhibitedClaim } from "./strategy-contract.js";
  */
 
 export const chatSchemaVersion = "strategy-chat-v1.0.0" as const;
-export const chatPromptVersion = "strategy-chat-prompt-v1.1.0" as const;
+export const chatPromptVersion = "strategy-chat-prompt-v1.2.0" as const;
 export const chatModelRequested = analysisModelRequested;
 
 /** What one person may send in one message. Bounded so a turn cannot be used to smuggle a corpus. */
@@ -267,8 +267,17 @@ export function renderChatConversation(turns: readonly ChatTurn[]): string {
  * is JSON either way, and `validateChatReplyV1` is what makes the answer safe.
  */
 export function createChatInstruction(
-  input: Readonly<{ context: string; turns: readonly ChatTurn[] }>,
+  input: Readonly<{ context: string; repairNote?: string; turns: readonly ChatTurn[] }>,
 ): string {
+  // A repair note goes here — after the untrusted regions, before the closing
+  // task — and not on the end. The last thing this instruction says is how to
+  // shape the response, and appending prose after the schema displaced it: a
+  // repaired turn answered in prose, which came back as "the answer arrived in
+  // a shape this screen cannot read" and lost the specific refusal that
+  // prompted the repair. It also belongs above nothing untrusted, because it is
+  // a rule rather than data.
+  const repair = input.repairNote === undefined ? "" : `${input.repairNote}\n\n`;
+
   return `${chatPromptText}
 
 ${renderBusinessProfile()}
@@ -281,7 +290,7 @@ ${input.context}
 ${renderChatConversation(input.turns)}
 <<<END CONVERSATION>>>
 
-Answer the final READER message. Return only a single JSON object conforming to this JSON Schema. Emit every required property, using an empty array where you have nothing to add. Do not wrap the response in markdown or prose.
+${repair}Answer the final READER message. Return only a single JSON object conforming to this JSON Schema. Emit every required property, using an empty array where you have nothing to add. Do not wrap the response in markdown or prose.
 
 ${JSON.stringify(chatReplyJsonSchema)}`;
 }
@@ -298,6 +307,8 @@ You cannot retrieve anything. You have no tools, no database and no access to In
 Never invent a number, a date, a post, a metric value, a sample size or an evidence id. Every figure you state must appear in the context, and you must state it with the same scope it carries there: this account, this period, this metric. If you are asked for something the context measures differently, answer with what it does measure and name the difference.
 
 Correlation is not causation. Never claim that Instagram or an algorithm rewards, prefers, boosts, penalises or suppresses a creative choice. Never promise reach, engagement, distribution, views or performance. Write an expectation as an association to be tested — "posts opening on a question have a higher median save rate in this period" — rather than as a consequence. This applies to every sentence you write, including follow-up questions.
+
+State the association and stop there. Do not add a sentence denying the causal claim you have just avoided making: no "this is not a guarantee of reach", no "there is no evidence this will improve engagement", no "nothing here can tell you what drives views". A reply that never claims a cause does not need to disclaim one, and the disclaimer reintroduces exactly the words — a causal verb beside a metric — that this product refuses to publish. Say what was measured, over which posts and in which period, and let that be the whole of the claim.
 
 Do not upgrade what the context claims. If a comparison is recorded as a weak directional signal or a single-post outlier, say so when you lean on it, and do not describe it in language the strategy reserves for stronger evidence. If the context lists a limitation that bears on your answer, say it rather than leaving the reader to find it.
 
@@ -339,7 +350,14 @@ export const chatContractArtifacts = deepFreeze({
     // product wrote. Without the rule the assistant would either discount it,
     // having been told everything before the question is untrusted, or treat it
     // as evidence for a performance claim.
-    sha256: "37ae9663543f8f3cbd9dc214c5578af041532d82fce58841ee0d55d777e72bea",
+    // v1.2.0 tells the model not to disclaim the causal claim it has just
+    // avoided. `containsProhibitedClaim` cannot tell "not a guarantee of reach"
+    // from "drives reach" — it matches a causal verb beside a metric, and
+    // reading polarity lexically was tried and let real claims through. So the
+    // disclaimer, which the previous rules made the model volunteer, was
+    // discarding whole well-formed answers. This removes the sentence at its
+    // source rather than weakening the check that catches it.
+    sha256: "3f2cea4670ccbcd361d33eaf4a48d756e3abcc2825b7a6b028c6690aa69c90b9",
     text: chatPromptText,
   },
   lifecycleValues: analysisArtifactLifecycles,

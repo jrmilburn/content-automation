@@ -1,0 +1,22 @@
+-- Re-applies the one statement `20260805040000_workspace_analytics_scope` was
+-- supposed to leave behind.
+--
+-- That migration dropped NOT NULL from `instagram_account_id` on three tables.
+-- Two of them took; `strategy_generations` did not, and the deployed database
+-- still refuses a null there while `schema.prisma` has declared it nullable
+-- since #214. Prisma records a migration by name, so the gap is invisible to
+-- `migrate status` and only `migrate diff` ever saw it — which is why a
+-- capability shipped as "strategy across every linked account" could never
+-- write a pooled row.
+--
+-- Written as its own migration rather than by editing the one that missed it:
+-- an applied migration's checksum is how Prisma proves history has not been
+-- rewritten underneath a deployment, and a database that did take the original
+-- statement must be able to run this one too. `DROP NOT NULL` on a column that
+-- is already nullable is a no-op rather than an error, so both databases end in
+-- the same state.
+--
+-- Nothing else from that migration is repeated. The two indexes it rebuilt with
+-- NULLS NOT DISTINCT are present and correct in the deployed database, and
+-- re-creating them would take a lock for no change.
+ALTER TABLE "strategy_generations" ALTER COLUMN "instagram_account_id" DROP NOT NULL;

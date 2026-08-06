@@ -185,6 +185,7 @@ export async function sendChatMessageAction(
   try {
     const actor = await requireShellActor();
     const outcome = await runChatTurn(createWorkspaceContext(actor.workspaceId), {
+      correlationId: requestContext.correlationId,
       question,
       sessionId,
     });
@@ -201,8 +202,16 @@ export async function sendChatMessageAction(
 
     // A recorded failure is not an action failure. The turn is in the
     // conversation, where the screen explains it beside the question that
-    // produced it, so the form says only that the exchange completed.
-    return Object.freeze({ message: "", status: "success" as const });
+    // produced it, so the form says only that the exchange completed — except
+    // for the reference, which is carried back because this is the one moment a
+    // reader could quote it. It joins the screen's sentence to the line the
+    // turn left in the log, and it is not stored: a reference nobody reads
+    // within the minute is a column, and this one is read now or not at all.
+    return Object.freeze({
+      message: "",
+      ...(outcome.answer.failureCode === null ? {} : { reference: requestContext.correlationId }),
+      status: "success" as const,
+    });
   } catch (error) {
     reportError(
       error,

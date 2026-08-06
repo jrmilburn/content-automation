@@ -232,6 +232,7 @@ export {
   previewStrategyRequest,
   requestStrategyGeneration,
   strategyDefaultPeriodDays,
+  strategyPooledResourceType,
   type StrategyRequestInput,
   type StrategyRequestOutcome,
   type StrategyRequestPreview,

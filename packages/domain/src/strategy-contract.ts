@@ -902,6 +902,23 @@ const prohibitedClaimPatterns = [
  * first time either was edited. The rule is a property of what may be claimed
  * about an account, not of the strategy document that happens to enforce it
  * first.
+ *
+ * Deliberately blind to polarity, and it stays that way. A denial-aware version
+ * was written and reverted: it exempted a match whenever a negation appeared
+ * earlier in the clause, which is the shape of the disclaimers this product
+ * wants — and also the shape of "make no mistake, the algorithm rewards daily
+ * posting", "no one doubts that question hooks drive engagement" and "although
+ * we cannot prove causation, Reels drive reach". Denial words are the most
+ * common opener in marketing prose, so reading polarity lexically let through
+ * the one claim class this check exists for. Thirty-nine such sentences were
+ * demonstrated before it was reverted.
+ *
+ * The cost of the strictness is that a reply denying causation in these words is
+ * refused along with one asserting it. That is paid where it belongs: the chat
+ * prompt tells the model to state the association rather than deny the cause, so
+ * the sentence is not written; and a refused reply is asked once more and told
+ * which rule refused it, so a false positive costs a retry rather than the
+ * answer. Neither of those can let a claim through, and narrowing this could.
  */
 export function containsProhibitedClaim(value: string): boolean {
   return prohibitedClaimPatterns.some((pattern) => pattern.test(value));

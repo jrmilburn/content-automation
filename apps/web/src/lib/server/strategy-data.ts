@@ -4,6 +4,7 @@ import { loadAuthConfig } from "@studio-parallel/config";
 import {
   createWorkspaceContext,
   listInstagramAccountSummaries,
+  listPublishedTrendScopes,
   listStrategyGenerations,
   loadCurrentStrategy,
   loadStrategyGeneration,
@@ -15,6 +16,7 @@ import {
 } from "@studio-parallel/db";
 import { strategyV1Schema } from "@studio-parallel/domain";
 
+import type { StrategyScopeSelection } from "../strategy";
 import { getDatabase } from "./database";
 import { requireShellActor } from "./shell-session";
 
@@ -22,44 +24,73 @@ import { requireShellActor } from "./shell-session";
  * What the strategy screen needs to show, and to decide what it may offer.
  *
  * The preview is loaded whether or not a strategy exists, because the question
- * "can this account generate one, and would it be evidence-led" has to be
+ * "can this scope generate one, and would it be evidence-led" has to be
  * answerable before the button is pressed rather than after.
  *
- * Three empty results are kept apart, as on trends: no account connected, an
- * account that cannot generate yet, and an account that could but never has.
- * They lead to three different next actions, and collapsing them would leave a
+ * A strategy argues from one analytics calculation, and a calculation measures
+ * either one account or every linked account pooled. So the scope is resolved
+ * here exactly as trends resolves it, and for the same reason: the pooled
+ * calculation is the only one that answers "what works for us" rather than
+ * "what works for one of our accounts", so it is preferred when it exists and
+ * the first connected account is the fallback. The screen is told a default was
+ * chosen so it can say so.
+ *
+ * Three empty results are kept apart, as on trends: no account connected, a
+ * scope that cannot generate yet, and a scope that could but never has. They
+ * lead to three different next actions, and collapsing them would leave a
  * reader pressing a button that cannot work.
  */
 
 export type StrategyAccountOption = Readonly<{ id: string; label: string }>;
 
 export type StrategySnapshot = Readonly<{
+  /** True when the scope was defaulted rather than named by the reader. */
+  accountDefaulted: boolean;
   accounts: readonly StrategyAccountOption[];
-  /** The strategy the account currently stands behind, if any. */
+  /** The strategy this scope currently stands behind, if any. */
   current: StrategyDetail | null;
   hasAccount: boolean;
   history: readonly StrategySummary[];
-  /** Null when there is no account to preview against. */
+  /** True when the scope is every linked account measured together. */
+  pooled: boolean;
+  /** Whether a pooled calculation has published, so the scope can be offered. */
+  pooledAvailable: boolean;
+  /** Null when there is no scope to preview against. */
   preview: StrategyRequestPreview | null;
+  /** The account actually read, or null when the scope is pooled. */
   selectedAccountId: string | null;
 }>;
 
 const emptySnapshot: StrategySnapshot = Object.freeze({
+  accountDefaulted: false,
   accounts: Object.freeze([]),
   current: null,
   hasAccount: false,
   history: Object.freeze([]),
+  pooled: false,
+  pooledAvailable: false,
   preview: null,
   selectedAccountId: null,
 });
 
-export async function loadStrategySnapshot(now = new Date()): Promise<StrategySnapshot> {
+export async function loadStrategySnapshot(
+  selection: StrategyScopeSelection = { account: "" },
+  now = new Date(),
+): Promise<StrategySnapshot> {
   const principal = await requireShellActor();
   if (loadAuthConfig().APP_ENV === "test") return testSnapshot();
 
   const database = getDatabase();
   const context = createWorkspaceContext(principal.workspaceId);
-  const summaries = await listInstagramAccountSummaries(database, context, { now });
+
+  // The published scopes come from the analytics runs rather than from the
+  // strategies, because a scope that has never generated a strategy is exactly
+  // the one a reader needs offered. Asking the strategy history would only ever
+  // show scopes that had already been used.
+  const [summaries, publishedScopes] = await Promise.all([
+    listInstagramAccountSummaries(database, context, { now }),
+    listPublishedTrendScopes(database, context),
+  ]);
 
   const accounts = Object.freeze(
     summaries.map((summary) =>
@@ -70,30 +101,64 @@ export async function loadStrategySnapshot(now = new Date()): Promise<StrategySn
     ),
   );
 
-  const selectedAccountId = accounts[0]?.id ?? null;
-  if (selectedAccountId === null) return Object.freeze({ ...emptySnapshot, accounts });
+  const pooledAvailable = publishedScopes.includes(null);
+  const defaulted = !("requested" in selection);
+  const scope = defaulted
+    ? defaultScope(
+        pooledAvailable,
+        accounts.map((account) => account.id),
+      )
+    : selection.requested;
+
+  if (scope === undefined) {
+    return Object.freeze({
+      ...emptySnapshot,
+      accounts,
+      hasAccount: accounts.length > 0,
+      pooledAvailable,
+    });
+  }
 
   // The preview is what tells the screen whether to offer generation at all,
   // and in which mode, so it is never skipped on the strength of an existing
   // strategy: evidence moves under a strategy that has already been written.
   const [current, history, preview] = await Promise.all([
-    loadCurrentStrategy(database, context, selectedAccountId),
-    listStrategyGenerations(database, context, { instagramAccountId: selectedAccountId }),
+    loadCurrentStrategy(database, context, scope),
+    listStrategyGenerations(database, context, { instagramAccountId: scope }),
     previewStrategyRequest(database, context, {
       acceptExploratory: true,
-      instagramAccountId: selectedAccountId,
+      instagramAccountId: scope,
       primaryMetric: "engagement_rate_reach",
     }),
   ]);
 
   return Object.freeze({
+    accountDefaulted: defaulted,
     accounts,
     current,
-    hasAccount: true,
+    hasAccount: accounts.length > 0,
     history,
+    pooled: scope === null,
+    pooledAvailable,
     preview,
-    selectedAccountId,
+    selectedAccountId: scope,
   });
+}
+
+/**
+ * The scope to read when the reader named none.
+ *
+ * Undefined rather than a guess when there is nothing to read: a workspace with
+ * no connected account and no pooled run has no scope, and inventing one would
+ * turn "connect an account" into "this account has no strategy".
+ */
+function defaultScope(
+  pooledAvailable: boolean,
+  accountIds: readonly string[],
+): string | null | undefined {
+  if (pooledAvailable) return null;
+
+  return accountIds[0];
 }
 
 /**
@@ -276,6 +341,7 @@ async function testSnapshot(): Promise<StrategySnapshot> {
   });
 
   return Object.freeze({
+    accountDefaulted: true,
     accounts: Object.freeze([Object.freeze({ id: testAccountId, label: "@studioparallel" })]),
     current: Object.freeze({
       analyticsVersion: "account-analytics-v1.0.0",
@@ -288,6 +354,12 @@ async function testSnapshot(): Promise<StrategySnapshot> {
     }),
     hasAccount: true,
     history: Object.freeze([summary]),
+    pooled: false,
+    // The fixture workspace has one account and no pooled calculation, for the
+    // reason the trends fixture records: a pooled fixture would stop covering
+    // the per-account captions, which are what these runs exist to check. A
+    // pooled browser run needs its own fixture workspace.
+    pooledAvailable: false,
     preview: Object.freeze({
       ageWindow: "day_30",
       analysedPostCount: 24,

@@ -4,6 +4,7 @@ import { loadAuthConfig } from "@studio-parallel/config";
 import {
   createWorkspaceContext,
   listInstagramAccountSummaries,
+  listPublishedTrendScopes,
   type ChatMessageRecord,
   type ChatSessionSummary,
   type StrategyEvidenceEntry,
@@ -77,6 +78,33 @@ const testAccounts: readonly ChatAccountOption[] = Object.freeze([
   Object.freeze({ id: "019a0000-0000-7000-8000-000000000301", label: "@studioparallel" }),
 ]);
 
+/**
+ * Which calculation a new conversation asks about.
+ *
+ * Pooled where one has published, and the first connected account otherwise —
+ * the trends and strategy screens' rule, because all three read the same runs
+ * and a conversation that disagreed with the document it is about would be
+ * answering from a different population than the one on screen.
+ *
+ * Null is the pooled scope here, not the absence of an account; `hasAccount` is
+ * what says whether there is anything connected at all.
+ *
+ * The fixture workspace never reaches the database, so it answers from its own
+ * single account — the same arrangement, and the same reason, as the strategy
+ * and trends fixtures: a pooled fixture would stop covering the per-account
+ * captions those runs exist to check.
+ */
+async function defaultChatScope(
+  context: ReturnType<typeof createWorkspaceContext>,
+  accounts: readonly ChatAccountOption[],
+): Promise<string | null> {
+  const first = accounts[0]?.id ?? null;
+  if (first === null || loadAuthConfig().APP_ENV === "test") return first;
+
+  const published = await listPublishedTrendScopes(getDatabase(), context);
+  return published.includes(null) ? null : first;
+}
+
 export async function loadChatSnapshot(now = new Date()): Promise<ChatSnapshot> {
   const principal = await requireShellActor();
   const context = createWorkspaceContext(principal.workspaceId);
@@ -87,7 +115,12 @@ export async function loadChatSnapshot(now = new Date()): Promise<ChatSnapshot> 
       : await accountOptions(principal.workspaceId, now);
 
   const store = getChatStore();
-  const selectedAccountId = accounts[0]?.id ?? null;
+
+  // The same scope the strategy screen resolves, and it has to be the same one:
+  // a conversation is about a strategy, so a new one opened against the first
+  // account while the strategy screen shows the pooled document would answer
+  // "there is no strategy" about a strategy the reader is looking at.
+  const selectedAccountId = await defaultChatScope(context, accounts);
 
   const [sessions, evidence] = await Promise.all([
     store.listSessions(context),

@@ -20,14 +20,18 @@ import {
  * `acceptExploratory` travels as a hidden field mirroring the previewed mode
  * rather than as a free choice. It is confirmation of what was shown, not an
  * instruction, and the command re-derives the mode from the evidence anyway.
+ *
+ * The scope travels the same way and for the same reason: it is the scope the
+ * counts above describe, so the request is made against what the reader was
+ * shown rather than against whatever the page would default to a moment later.
  */
 
 const initialState: StrategyActionState = Object.freeze({ message: "", status: "idle" });
 
 export function StrategyRequestControl({
-  accountId,
   exploratory,
-}: Readonly<{ accountId: string; exploratory: boolean }>) {
+  scope,
+}: Readonly<{ exploratory: boolean; scope: string }>) {
   const router = useRouter();
   const [state, action, isPending] = useActionState(requestStrategyAction, initialState);
 
@@ -38,7 +42,7 @@ export function StrategyRequestControl({
   return (
     <div className="strategy-request__control">
       <form action={action}>
-        <input name="accountId" type="hidden" value={accountId} />
+        <input name="accountId" type="hidden" value={scope} />
         <input name="acceptExploratory" type="hidden" value={String(exploratory)} />
         <button className="button button--primary" disabled={isPending} type="submit">
           {isPending

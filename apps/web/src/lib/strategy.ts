@@ -12,6 +12,11 @@ import {
   type StrategyMode,
 } from "@studio-parallel/domain";
 
+// The same query value trends uses, imported rather than restated. Two screens
+// spelling the pooled scope differently in a URL is a link that silently lands
+// on the wrong calculation, and nothing about the resulting page would say so.
+import { pooledAccountValue } from "./trends";
+
 /**
  * How a strategy reads, without deciding anything about it.
  *
@@ -340,4 +345,86 @@ export const strategyRefusalMessages: Readonly<Record<string, string>> = Object.
 export function describeStrategyRefusal(reason: string | null): string | null {
   if (reason === null) return null;
   return strategyRefusalMessages[reason] ?? "This account cannot generate a strategy yet.";
+}
+
+/**
+ * Why a request could not be made at all, as opposed to being refused.
+ *
+ * A refusal is an answer: the evidence is not there yet, and the sentence says
+ * what would change that. These are failures, and they were all one sentence
+ * until now — "the request could not be made" over a correlation id, whether
+ * the database was behind the deployed code, the pooler had timed out, or
+ * somebody else had just asked the same question.
+ *
+ * Each one says what happened and whether pressing the button again is worth
+ * anything, because that is the only decision the reader actually has.
+ */
+export const strategyFailureMessages: Readonly<Record<string, string>> = Object.freeze({
+  STRATEGY_REQUEST_DEPENDENCY_MISSING:
+    "Something this request depends on is no longer there. Reload the page and try again.",
+  STRATEGY_REQUEST_FAILED: "The request could not be made. Nothing was generated. Try again.",
+  STRATEGY_REQUEST_TIMED_OUT:
+    "The database did not answer in time, so nothing was generated. Try again.",
+  // The one failure pressing the button again cannot fix. It names the cause
+  // rather than the remedy, because the remedy is a deployment step and the
+  // reader is not the person who runs it.
+  STRATEGY_SCHEMA_BEHIND:
+    "This feature is deployed but its database migration is not, so nothing could be written. Trying again will not help until the migration is applied.",
+});
+
+export const strategyFallbackFailureMessage =
+  "The request could not be made. Nothing was generated.";
+
+export function describeStrategyFailure(failureCode: string): string {
+  return strategyFailureMessages[failureCode] ?? strategyFallbackFailureMessage;
+}
+
+export type StrategySearchParams = Record<string, string | string[] | undefined>;
+
+export type StrategyScopeSelection = Readonly<{
+  /** The value the form and links carry, so a reload keeps the scope. */
+  account: string;
+  /**
+   * Null asks for the pooled calculation and an id asks for that account's. An
+   * absent key is not a third scope: it says the reader named none, which the
+   * loader answers with a default it then has to admit to.
+   */
+  requested?: string | null;
+}>;
+
+/**
+ * Which calculation the reader asked a strategy to be read from or built on.
+ *
+ * The three states are the trends screen's, and deliberately so — a strategy
+ * argues from one analytics run, and those are the runs. An unrecognised value
+ * resolves to "the reader named none" rather than to an account: a mistyped id
+ * that silently became the first account would attribute one account's history
+ * to another, and the page would look entirely normal.
+ */
+export function parseStrategyScope(searchParams: StrategySearchParams): StrategyScopeSelection {
+  const raw = searchParams["account"];
+  const value = Array.isArray(raw) ? (raw[0] ?? "") : (raw ?? "");
+
+  if (value === pooledAccountValue) {
+    return Object.freeze({ account: pooledAccountValue, requested: null });
+  }
+
+  if (isUuidV7(value)) return Object.freeze({ account: value, requested: value });
+
+  return Object.freeze({ account: "" });
+}
+
+/** The value a scope travels as, so the request names what the screen showed. */
+export function strategyScopeValue(instagramAccountId: string | null): string {
+  return instagramAccountId ?? pooledAccountValue;
+}
+
+/** Reads back what `strategyScopeValue` wrote, refusing anything else. */
+export function parseStrategyScopeValue(value: string): string | null | undefined {
+  if (value === pooledAccountValue) return null;
+  return isUuidV7(value) ? value : undefined;
+}
+
+function isUuidV7(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value);
 }

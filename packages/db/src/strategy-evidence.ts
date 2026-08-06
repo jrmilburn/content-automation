@@ -33,10 +33,11 @@ import type { WorkspaceContext } from "./workspace-context.js";
  * Reading the evidence one strategy request is allowed to argue from, and
  * freezing it.
  *
- * Every read is scoped to the account and the workspace, and every row selected
- * belongs to the one ACTIVE calculation run. That is what makes "which numbers
- * did this strategy see" answerable later: the run pins the statistics, the
- * statistics pin their posts, and none of it moves once frozen.
+ * Every read is scoped to the workspace and to one calculation scope — a single
+ * account, or every linked account measured together — and every row selected
+ * belongs to that scope's one ACTIVE calculation run. That is what makes "which
+ * numbers did this strategy see" answerable later: the run pins the statistics,
+ * the statistics pin their posts, and none of it moves once frozen.
  *
  * The ranking itself is not here. This module reads rows and hands them to the
  * pure selector, so the caps, the deduplication and the ordering can be proven
@@ -84,7 +85,8 @@ function round(value: number, places: number): string {
 
 export type StrategyEvidenceRequest = Readonly<{
   formatEmphasis: readonly string[];
-  instagramAccountId: string;
+  /** One account, or null for every linked account measured together. */
+  instagramAccountId: string | null;
   pillarEmphasis: readonly string[];
   primaryMetric: DerivedMetric;
 }>;
@@ -161,6 +163,16 @@ export async function loadStrategyEvidenceCandidates(
     },
   });
 
+  // The run and the prior generations are found by matching the scope column,
+  // where a null legitimately means "the pooled row". Posts are different: every
+  // post belongs to an account, so the pooled scope drops the bound rather than
+  // matching null against it. Passing the null through here would compile to
+  // `instagram_account_id IS NULL` on a NOT NULL column and return nothing,
+  // which reads as an account with no history rather than as a query that could
+  // never have matched.
+  const accountBound =
+    request.instagramAccountId === null ? {} : { instagramAccountId: request.instagramAccountId };
+
   const posts = await database.instagramPost.findMany({
     orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
     select: {
@@ -172,8 +184,8 @@ export async function loadStrategyEvidenceCandidates(
     },
     take: strategyManifestCaps.posts * 4,
     where: {
+      ...accountBound,
       currentAnalysis: { analyticsEligible: true },
-      instagramAccountId: request.instagramAccountId,
       publishedAt: { gte: run.publishedFrom, lte: run.publishedTo },
       workspaceId: context.workspaceId,
     },
@@ -356,7 +368,8 @@ export function buildStrategyManifest(
   request: Readonly<{
     editorialConstraint: string | null;
     formatEmphasis: readonly string[];
-    instagramAccountId: string;
+    /** One account, or null for every linked account measured together. */
+    instagramAccountId: string | null;
     mode: StrategyMode;
     pillarEmphasis: readonly string[];
     primaryMetric: DerivedMetric;

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   chatFallbackFailureMessage,
   chatParagraphs,
+  chatProducedFailureCodes,
   describeChatFailure,
   describeChatRefusal,
   isFailedAnswer,
@@ -27,20 +28,30 @@ function message(overrides: Partial<ChatMessageRecord> = {}): ChatMessageRecord 
 
 describe("describeChatFailure", () => {
   it("explains each recorded failure in the reader's terms, never as a code", () => {
+    // Derived from the producers rather than listed, which is the whole point:
+    // a hand-written list passes while a newly added response class renders the
+    // generic fallback, and that is exactly the regression this test claims to
+    // prevent. `truncated` was added once and went unnoticed; `rate_limit` and
+    // `authorisation` had never had a sentence at all.
     for (const code of [
-      "NO_CANDIDATE",
-      "QUOTA",
-      "RESPONSE_INVALID",
-      "RESPONSE_NOT_JSON",
-      "SAFETY_BLOCKED",
-      "TIMEOUT",
-      "TRANSIENT",
-      "TRUNCATED",
+      ...chatProducedFailureCodes,
+      // Not a provider class: what `runChatTurn` records when something other
+      // than a GeminiError escapes the call.
+      "TURN_FAILED",
     ]) {
       const described = describeChatFailure(code);
       expect(described).not.toContain(code);
       expect(described.length).toBeGreaterThan(20);
+      expect(described).not.toBe(chatFallbackFailureMessage);
     }
+  });
+
+  it("has no message for a code nothing can produce", () => {
+    // A message for a dead code is a message nobody will ever read, and it
+    // reads as coverage the map does not have. `QUOTA` was one: the adapter
+    // classifies a 429 as `rate_limit`, so the sentence written for it was
+    // unreachable while the class that did occur fell through to the fallback.
+    expect(describeChatFailure("QUOTA")).toBe(chatFallbackFailureMessage);
   });
 
   it("falls back to a sentence rather than showing an unknown code", () => {
