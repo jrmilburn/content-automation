@@ -184,6 +184,7 @@ model Workspace {
   postAnalyses          PostAnalysis[]
   credentials           IntegrationCredential[]
   igAccounts            InstagramAccount[]
+  igComments            InstagramComment[]
   igPosts               InstagramPost[]
   igSnapshots           InstagramMetricSnapshot[]
   jobAttempts           JobAttempt[]
@@ -459,6 +460,7 @@ model InstagramPost {
   updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
   workspace            Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   account              InstagramAccount          @relation(fields: [workspaceId, instagramAccountId], references: [workspaceId, id], onDelete: Restrict)
+  comments             InstagramComment[]
   snapshots            InstagramMetricSnapshot[]
   videoAssets          VideoAsset[]
   uploadIntents        VideoUploadIntent[]
@@ -537,6 +539,58 @@ model InstagramMetricSnapshot {
   @@index([workspaceId, instagramPostId, postAgeSeconds])
   @@index([workspaceId, syncRunId])
   @@map("instagram_metric_snapshots")
+}
+
+// One comment on one owned post, including flattened replies.
+//
+// This is the only table in the product holding text a stranger wrote. Every
+// consumer treats it as untrusted: the body is sanitised of control characters
+// and newlines before it is stored, so the hostile form never reaches the
+// database, and the prompt assemblers indent it as untrusted data on top of
+// that.
+//
+// A reply is a row like any other, carrying its parent's provider id rather
+// than nesting. The strategy and the assistant ask what an audience said about
+// a post, and a two-level tree makes that question need a traversal; the parent
+// id keeps the thread reconstructable for anything that wants it. It is
+// deliberately not a foreign key to this table: Meta can return a reply whose
+// parent falls outside the page, and a constraint would reject real data.
+//
+// Rows are updated in place on re-import, keyed by provider comment id, so an
+// edited comment reflects its current text and `firstImportedAt` still records
+// when it was first seen. A comment deleted on Instagram simply stops being
+// refreshed; `lastImportedAt` is how a reader tells a live comment from one
+// that has since gone.
+model InstagramComment {
+  id                      String        @id @db.Uuid
+  workspaceId             String        @map("workspace_id") @db.Uuid
+  instagramPostId         String        @map("instagram_post_id") @db.Uuid
+  providerCommentId       String        @map("provider_comment_id") @db.VarChar(64)
+  parentProviderCommentId String?       @map("parent_provider_comment_id") @db.VarChar(64)
+  text                    String
+  username                String?       @db.VarChar(120)
+  likeCount               Int?          @map("like_count")
+  publishedAt             DateTime      @map("published_at") @db.Timestamptz(3)
+  firstImportedAt         DateTime      @map("first_imported_at") @db.Timestamptz(3)
+  lastImportedAt          DateTime      @map("last_imported_at") @db.Timestamptz(3)
+  rawPayload              Json          @map("raw_payload")
+  rawPayloadHash          String        @map("raw_payload_hash") @db.Char(64)
+  rawApiVersion           String        @map("raw_api_version") @db.VarChar(16)
+  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace               Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  post                    InstagramPost @relation(fields: [workspaceId, instagramPostId], references: [workspaceId, id], onDelete: Restrict)
+
+  @@unique([workspaceId, id])
+  @@unique([instagramPostId, providerCommentId])
+  // Explicit names: the generated ones exceed the identifier limit and truncate.
+  //
+  // Drives the dossier read: a post's comments, most recent first.
+  @@index([workspaceId, instagramPostId, publishedAt(sort: Desc)], map: "instagram_comments_post_published_idx")
+  // Drives the "what did the audience react to" read, where a dossier is
+  // capped and the most-liked comments are the ones worth keeping.
+  @@index([workspaceId, instagramPostId, likeCount(sort: Desc)], map: "instagram_comments_post_like_count_idx")
+  @@map("instagram_comments")
 }
 
 // One auditable import run. The cursor is opaque provider state and is advanced
@@ -1331,9 +1385,20 @@ model StrategyEvidence {
   sampleSize            Int?                        @map("sample_size")
   allowedNumericClaims  String[]                    @map("allowed_numeric_claims")
   requiredInLimitations Boolean                     @default(false) @map("required_in_limitations")
-  // The minimal redacted prompt representation. Never a caption, transcript,
-  // object key or credential.
-  summaryText           String                      @map("summary_text") @db.VarChar(500)
+  // The prompt representation of this evidence, verbatim.
+  //
+  // It was a redacted 500-character summary, on the reasoning that a manifest
+  // is machine input and the fields a human screen shows are not the fields a
+  // prompt needs. That reasoning inverted when the model started arguing from
+  // raw data: a dossier carries a post's metrics, its transcript and what its
+  // audience wrote, and if the frozen row holds a summary of that instead of
+  // the thing itself, then "the evidence this strategy argued from" is no
+  // longer what this column contains. Freezing has to freeze the real input or
+  // it is decoration.
+  //
+  // Still never an object key or a credential — those are not evidence for
+  // anything and there is no path that puts them here.
+  summaryText           String                      @map("summary_text")
   summaryHash           String                      @map("summary_hash") @db.Char(64)
   featureStatisticId    String?                     @map("feature_statistic_id") @db.Uuid
   postAnalysisId        String?                     @map("post_analysis_id") @db.Uuid

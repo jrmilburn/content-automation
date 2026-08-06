@@ -142,6 +142,18 @@ export function instagramSnapshotKey(postId: string, ageBucket: InstagramSnapsho
   return `instagram-snapshot-${postId}-${ageBucket}`;
 }
 
+/**
+ * Key for one post's comment import.
+ *
+ * Bucketed by UTC day rather than carrying no timestamp the way a snapshot key
+ * does. A snapshot observes a window that closes; comments keep arriving, so
+ * the same post is worth re-reading tomorrow and re-reading it today would only
+ * duplicate work.
+ */
+export function instagramCommentsKey(postId: string, at: Date): string {
+  return `instagram-comments-${postId}-${dayBucket(at)}`;
+}
+
 /** The trigger a scheduling key encodes, or null when it encodes none. */
 export function instagramSyncTriggerFromKey(key: string): InstagramSyncTrigger | null {
   if (key.startsWith("instagram-sync-manual-")) return "MANUAL";

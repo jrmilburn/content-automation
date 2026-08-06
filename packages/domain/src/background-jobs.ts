@@ -3,6 +3,7 @@ export const queueDefinitions = [
   { name: "instagram.snapshot.post", version: 1 },
   { name: "instagram.token.maintain", version: 1 },
   { name: "instagram.media.import", version: 1 },
+  { name: "instagram.comments.post", version: 1 },
   { name: "asset.validate", version: 1 },
   { name: "asset.cleanup", version: 1 },
   { name: "analysis.run", version: 1 },

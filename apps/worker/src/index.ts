@@ -25,6 +25,10 @@ import {
 
 import { createHealthServer } from "./health.js";
 import {
+  createInstagramCommentsPostHandler,
+  instagramCommentsQueue,
+} from "./instagram/comments-post-handler.js";
+import {
   createInstagramSyncAccountHandler,
   instagramSyncQueue,
 } from "./instagram/sync-account-handler.js";
@@ -153,6 +157,15 @@ const registry = createQueueHandlerRegistry([
     loadMasterKeys: () => loadEncryption().masterKeys,
     logger,
   }),
+  createInstagramCommentsPostHandler({
+    // Same provider gate as every other Instagram queue. Comments page far more
+    // than snapshots do, so letting them run outside it would be the fastest
+    // way to spend the account's rate limit on the least urgent work.
+    acquireConcurrency: (signal) => providerConcurrency.acquire("instagram", signal),
+    database,
+    loadMasterKeys: () => loadEncryption().masterKeys,
+    logger,
+  }),
   createInstagramTokenMaintainHandler({
     acquireConcurrency: (signal) => providerConcurrency.acquire("instagram", signal),
     database,
@@ -214,6 +227,7 @@ const workerRuntime = createQueueWorkerRuntime({
     analyticsRecalculateQueue,
     assetCleanupQueue,
     assetValidateQueue,
+    instagramCommentsQueue,
     instagramMediaImportQueue,
     instagramSnapshotQueue,
     instagramSyncQueue,

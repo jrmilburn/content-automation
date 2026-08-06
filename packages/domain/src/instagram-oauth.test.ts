@@ -63,7 +63,7 @@ describe("instagram redirect uri", () => {
 });
 
 describe("authorization request", () => {
-  it("requests only the two least-privilege scopes and pins the exact redirect", () => {
+  it("requests only the least-privilege read scopes and pins the exact redirect", () => {
     const request = createInstagramAuthorizationRequest({
       appId: "1978896389449694",
       now,
@@ -76,8 +76,15 @@ describe("authorization request", () => {
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("client_id")).toBe("1978896389449694");
     expect(url.searchParams.get("redirect_uri")).toBe(request.redirectUri);
-    // No publishing, messaging or comment scope may ever be requested.
-    expect(url.searchParams.get("scope")).not.toMatch(/publish|message|comment/u);
+    // No publishing or messaging scope may ever be requested.
+    //
+    // `instagram_business_manage_comments` is the one exception to the "no
+    // manage scope" rule and it is deliberate: it is the only scope that grants
+    // reading comment bodies, which the strategy and the assistant argue from.
+    // Its write half is never called, and the absence of any comment-write
+    // client is what enforces that — so this asserts the boundary that is left.
+    expect(url.searchParams.get("scope")).not.toMatch(/publish|message/u);
+    expect(instagramRequiredScopes).not.toContain("instagram_business_content_publish");
   });
 
   it("carries a high-entropy state and a bounded lifetime", () => {
@@ -236,7 +243,25 @@ describe("account eligibility and granted scopes", () => {
     const result = evaluateInstagramGrantedScopes(["instagram_business_basic"]);
 
     expect(result.satisfied).toBe(false);
-    expect(result.missing).toEqual(["instagram_business_manage_insights"]);
+    expect(result.missing).toEqual([
+      "instagram_business_manage_insights",
+      "instagram_business_manage_comments",
+    ]);
+  });
+
+  it("reports a token minted before comments were requested as downgraded", () => {
+    // The exact shape of every existing connection at the moment this scope was
+    // added. It has to read as unsatisfied, because that is what puts the
+    // reconnect prompt on the connection screen; treating it as good enough
+    // would leave comment imports failing with an authorisation error nobody
+    // was told to fix.
+    const result = evaluateInstagramGrantedScopes([
+      "instagram_business_basic",
+      "instagram_business_manage_insights",
+    ]);
+
+    expect(result.satisfied).toBe(false);
+    expect(result.missing).toEqual(["instagram_business_manage_comments"]);
   });
 
   it("surfaces an over-broad grant without failing it", () => {
@@ -254,6 +279,7 @@ describe("account eligibility and granted scopes", () => {
       evaluateInstagramGrantedScopes([
         " instagram_business_basic ",
         "instagram_business_manage_insights",
+        " instagram_business_manage_comments",
         "",
       ]).satisfied,
     ).toBe(true);

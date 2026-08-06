@@ -270,6 +270,20 @@ export {
   type NormalisedInstagramMedia,
 } from "./instagram-media.js";
 export {
+  hashInstagramCommentPayload,
+  instagramCommentFields,
+  instagramCommentPageSize,
+  instagramCommentRejectionReasons,
+  instagramMaximumCommentPages,
+  normaliseInstagramCommentItem,
+  readInstagramCommentPage,
+  sanitiseInstagramCommentText,
+  type InstagramCommentNormalisation,
+  type InstagramCommentPage,
+  type InstagramCommentRejectionReason,
+  type NormalisedInstagramComment,
+} from "./instagram-comments.js";
+export {
   instagramMediaHostSuffixes,
   instagramMediaImportFailureReasons,
   instagramMediaImportFields,
@@ -282,6 +296,7 @@ export {
 } from "./instagram-media-import.js";
 export {
   instagramAccountSyncIntervalHours,
+  instagramCommentsKey,
   instagramIncrementalOverlapDays,
   instagramManualSyncKey,
   instagramScheduledSyncKey,

@@ -136,7 +136,11 @@ beforeEach(() => {
   enqueueBackgroundJobInTransaction.mockResolvedValue(undefined);
   exchangeInstagramAuthorizationCode.mockResolvedValue({
     accessToken: "short-lived",
-    permissions: ["instagram_business_basic", "instagram_business_manage_insights"],
+    permissions: [
+      "instagram_business_basic",
+      "instagram_business_manage_insights",
+      "instagram_business_manage_comments",
+    ],
   });
   exchangeForLongLivedInstagramToken.mockResolvedValue({
     accessToken: "long-lived",

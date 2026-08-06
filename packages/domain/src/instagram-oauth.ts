@@ -17,10 +17,25 @@ export const instagramGraphHost = "graph.instagram.com";
 export const instagramAuthorizeUrl = "https://www.instagram.com/oauth/authorize";
 export const instagramTokenUrl = "https://api.instagram.com/oauth/access_token";
 
-/** Least-privilege read-only scopes. Publishing/messaging are never requested. */
+/**
+ * Least-privilege read-only scopes. Publishing and messaging are never
+ * requested.
+ *
+ * `instagram_business_manage_comments` is named for moderation, and its write
+ * half — creating, hiding and deleting comments — is never used. It is here
+ * because it is the only scope that grants the read: comment bodies are what
+ * the audience says about a post, and a strategy that cannot read them is
+ * guessing at its own audience. Nothing in this product calls a comment write
+ * endpoint, and the absence is enforced by there being no such client.
+ *
+ * Adding a scope does not upgrade an existing grant. A token minted before this
+ * change carries the old set, so `evaluateInstagramGrantedScopes` reports it
+ * unsatisfied and the connection screen asks for a reconnect.
+ */
 export const instagramRequiredScopes = [
   "instagram_business_basic",
   "instagram_business_manage_insights",
+  "instagram_business_manage_comments",
 ] as const;
 
 export const instagramEligibleAccountTypes = ["BUSINESS", "CREATOR"] as const;
