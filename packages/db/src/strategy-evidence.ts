@@ -251,22 +251,26 @@ export async function loadStrategyEvidenceCandidates(
     );
   }
 
-  // The dossiers are loaded for exactly the posts already selected above, so
-  // the manifest and the evidence rows describe the same set. Loading them
-  // separately rather than widening the query above keeps the dossier read in
-  // one place, shared with the assistant, instead of two shapes drifting apart.
+  // Loaded by id, for exactly the posts selected above and in the same order.
+  //
+  // Asking instead for "the newest N analysed posts" would return a different
+  // set: the query above additionally requires the analysis to be
+  // analytics-eligible, so an ineligible one can displace an eligible post out
+  // of the dossier read while the manifest still carries it. The sets overlap
+  // heavily, which is what would make it quiet — most posts would have a
+  // dossier and a few would silently fall back to a one-line summary.
+  const selectedPosts = posts.slice(0, strategyEvidenceRecentPosts);
   const dossiers = new Map(
     (
       await loadPostDossiers(database, context, {
         instagramAccountId: request.instagramAccountId,
         limit: strategyEvidenceRecentPosts,
-        publishedFrom: run.publishedFrom,
-        publishedTo: run.publishedTo,
+        postIds: selectedPosts.map((post) => post.id),
       })
     ).map((entry) => [entry.postId, entry.dossier]),
   );
 
-  posts.slice(0, strategyEvidenceRecentPosts).forEach((post, index) => {
+  selectedPosts.forEach((post, index) => {
     const analysis = post.currentAnalysis;
     if (!analysis) return;
 

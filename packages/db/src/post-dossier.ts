@@ -39,8 +39,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * non-available observation carries a null value. Reading the value alone is
  * therefore already correct: an unobserved field arrives as null and is
  * omitted, rather than rendering as the word "unknown" beside real findings.
+ *
+ * Exported because the post detail screen reads the same leaves out of the same
+ * column. A second copy of this traversal would be a second place for the
+ * observation shape to be misread, and the two readers would disagree about
+ * what "not observed" looks like exactly when it matters.
  */
-function readObservationString(result: unknown, path: readonly string[]): string | null {
+export function readObservationString(result: unknown, path: readonly string[]): string | null {
   let cursor: unknown = result;
   for (const segment of path) {
     if (!isRecord(cursor)) return null;
@@ -65,10 +70,24 @@ export async function loadPostDossiers(
   input: Readonly<{
     instagramAccountId: string | null;
     limit: number;
+    /**
+     * The exact posts to load, when the caller has already chosen them.
+     *
+     * The strategy selects its posts under a filter this function does not
+     * share — an analysis has to be analytics-eligible to be argued from — so
+     * asking for "the newest N analysed posts" would return a different set
+     * from the one the manifest is being built for. The two populations overlap
+     * heavily, which is what makes the bug quiet: the manifest would carry a
+     * dossier for most posts and a bare one-line summary for whichever ones an
+     * ineligible analysis had displaced, with nothing to say why.
+     */
+    postIds?: readonly string[] | undefined;
     publishedFrom?: Date | undefined;
     publishedTo?: Date | undefined;
   }>,
 ): Promise<readonly PostDossierEntry[]> {
+  if (input.postIds !== undefined && input.postIds.length === 0) return Object.freeze([]);
+
   const posts = await database.instagramPost.findMany({
     orderBy: { publishedAt: "desc" },
     select: {
@@ -105,6 +124,7 @@ export async function loadPostDossiers(
     take: input.limit,
     where: {
       currentAnalysisId: { not: null },
+      ...(input.postIds === undefined ? {} : { id: { in: [...input.postIds] } }),
       ...(input.instagramAccountId === null
         ? {}
         : { instagramAccountId: input.instagramAccountId }),
