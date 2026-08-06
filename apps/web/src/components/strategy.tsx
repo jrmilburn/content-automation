@@ -587,7 +587,15 @@ function ScopePicker({ snapshot }: Readonly<{ snapshot: StrategySnapshot }>) {
           <label>
             <span>Accounts</span>
             <select defaultValue={selectedValue} name="account">
-              {snapshot.pooledAvailable ? (
+              {/*
+                Offered when a pooled calculation exists, and also whenever the
+                scope currently shown is the pooled one. Without the second
+                case, asking for `?account=all` in a workspace whose pooled run
+                has not published left the line above saying "every linked
+                account, pooled" over a select showing the first account —
+                two different answers to the same question, on one screen.
+              */}
+              {snapshot.pooledAvailable || snapshot.pooled ? (
                 <option value={pooledAccountValue}>All linked accounts</option>
               ) : null}
               {snapshot.accounts.map((account) => (

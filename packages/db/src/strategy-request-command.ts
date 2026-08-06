@@ -118,8 +118,19 @@ async function resolveScope(
     // is. The markers live on the accounts because only an account's own run
     // clears one, so the pooled scope has to read all of them rather than a
     // marker of its own.
+    //
+    // ACTIVE accounts only, and that bound is load-bearing rather than tidy. An
+    // account whose token has expired is marked dirty by any later analysis and
+    // is never scheduled again, so its marker is set forever. Counting it would
+    // refuse every pooled strategy in the workspace from then on, with
+    // "a recalculation is in progress" describing one that will never run. The
+    // pooled analytics job draws the same line when it counts what it can pool.
     const dirtyAccounts = await database.instagramAccount.count({
-      where: { analyticsDirtySince: { not: null }, workspaceId: context.workspaceId },
+      where: {
+        analyticsDirtySince: { not: null },
+        connectionStatus: "ACTIVE",
+        workspaceId: context.workspaceId,
+      },
     });
 
     return Object.freeze({

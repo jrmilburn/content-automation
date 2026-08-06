@@ -267,8 +267,17 @@ export function renderChatConversation(turns: readonly ChatTurn[]): string {
  * is JSON either way, and `validateChatReplyV1` is what makes the answer safe.
  */
 export function createChatInstruction(
-  input: Readonly<{ context: string; turns: readonly ChatTurn[] }>,
+  input: Readonly<{ context: string; repairNote?: string; turns: readonly ChatTurn[] }>,
 ): string {
+  // A repair note goes here — after the untrusted regions, before the closing
+  // task — and not on the end. The last thing this instruction says is how to
+  // shape the response, and appending prose after the schema displaced it: a
+  // repaired turn answered in prose, which came back as "the answer arrived in
+  // a shape this screen cannot read" and lost the specific refusal that
+  // prompted the repair. It also belongs above nothing untrusted, because it is
+  // a rule rather than data.
+  const repair = input.repairNote === undefined ? "" : `${input.repairNote}\n\n`;
+
   return `${chatPromptText}
 
 ${renderBusinessProfile()}
@@ -281,7 +290,7 @@ ${input.context}
 ${renderChatConversation(input.turns)}
 <<<END CONVERSATION>>>
 
-Answer the final READER message. Return only a single JSON object conforming to this JSON Schema. Emit every required property, using an empty array where you have nothing to add. Do not wrap the response in markdown or prose.
+${repair}Answer the final READER message. Return only a single JSON object conforming to this JSON Schema. Emit every required property, using an empty array where you have nothing to add. Do not wrap the response in markdown or prose.
 
 ${JSON.stringify(chatReplyJsonSchema)}`;
 }

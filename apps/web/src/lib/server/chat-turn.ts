@@ -168,16 +168,31 @@ function check(text: string, evidenceIds: readonly string[]): CheckedReply {
  * previously was not — no failed turn reached a log at all, so a recorded
  * failure could only be studied by asking the question again and hoping.
  */
-function recordFailure(
-  logger: JsonLogger,
-  correlationId: string | undefined,
-  failureCode: string,
-): void {
-  const parsed = correlationId === undefined ? undefined : parseCorrelationId(correlationId);
+/**
+ * What the calls a turn made cost, added up.
+ *
+ * Null only when every call reported null, so an absent figure stays absent
+ * rather than becoming a zero that reads as "this turn was free".
+ */
+function sumUsage(
+  calls: readonly Awaited<ReturnType<GeminiAdapter["generateStructuredText"]>>[],
+  field: "inputTokens" | "outputTokens" | "totalTokens",
+): number | null {
+  const reported = calls
+    .map((call) => call.usage[field])
+    .filter((value): value is number => value !== null);
 
-  // Without an id the line could not be joined to anything, and an invented one
-  // would join it to the wrong thing. A caller that supplied none is a caller
-  // that cannot be traced, and saying so by writing nothing is honest.
+  return reported.length === 0 ? null : reported.reduce((total, value) => total + value, 0);
+}
+
+function recordFailure(logger: JsonLogger, correlationId: string, failureCode: string): void {
+  const parsed = parseCorrelationId(correlationId);
+
+  // A correlation id is required of every caller, so reaching here with an
+  // unparseable one means the id was forged rather than forgotten. Writing the
+  // line under an invented id would join it to the wrong incident, and writing
+  // it under the forged one would let a caller interleave their failures with
+  // somebody else's.
   if (parsed === undefined) return;
 
   logger.warn("chat.turn.not_answered", {
@@ -202,7 +217,10 @@ function failureOf(error: unknown): Readonly<{ failureClass: string; failureCode
 
 export async function runChatTurn(
   context: WorkspaceContext,
-  input: Readonly<{ correlationId?: string; question: string; sessionId: string }>,
+  // The correlation id is required rather than optional, so a caller cannot add
+  // a second entry point and silently lose every log line a failed turn leaves
+  // — which is the blind spot this function was changed to remove.
+  input: Readonly<{ correlationId: string; question: string; sessionId: string }>,
   dependencies: ChatTurnDependencies = {},
 ): Promise<ChatTurnResult> {
   const store = dependencies.store ?? getChatStore();
@@ -322,6 +340,7 @@ export async function runChatTurn(
 
   let result = first.result;
   let checked = check(result.text, assembly.evidenceIds);
+  let spent = [first.result] as Awaited<ReturnType<GeminiAdapter["generateStructuredText"]>>[];
 
   // The one repair. Attempted only when the reply is a whole response this
   // product declined to publish, and told which rule declined it — a second
@@ -329,20 +348,36 @@ export async function runChatTurn(
   const repairNote = checked.valid ? null : (repairNotes[checked.issueCode] ?? null);
 
   if (repairNote !== null) {
-    const repaired = await ask(`${instruction}\n\n${repairNote}`);
+    const repaired = await ask(
+      createChatInstruction({ context: assembly.text, repairNote, turns }),
+    );
+
     if (repaired.ok) {
       result = repaired.result;
       checked = check(result.text, assembly.evidenceIds);
+      spent = [...spent, repaired.result];
+    } else {
+      // The repair reached the provider and the provider refused. The stored
+      // row keeps the reason the answer was rejected, because that is what the
+      // reader is told — but the quota or timeout that decided there would be
+      // no second answer is a different fact about the product, and losing it
+      // would make a rate-limited workspace look like a badly behaved model.
+      recordFailure(logger, input.correlationId, `REPAIR_${repaired.failure.failureCode}`);
     }
   }
 
+  // Usage is summed across the calls the turn actually made, and the rest of the
+  // telemetry describes the response that was stored. A repaired turn costs two
+  // calls, and these columns are the only record of what a conversation spends:
+  // reporting the second call alone would under-count the bill by half on every
+  // repair, silently.
   const telemetry = {
     finishReason: result.finishReason,
-    inputTokens: result.usage.inputTokens,
+    inputTokens: sumUsage(spent, "inputTokens"),
     modelVersion: result.modelVersion,
-    outputTokens: result.usage.outputTokens,
-    providerLatencyMs: result.durationMs,
-    totalTokens: result.usage.totalTokens,
+    outputTokens: sumUsage(spent, "outputTokens"),
+    providerLatencyMs: spent.reduce((total, call) => total + call.durationMs, 0),
+    totalTokens: sumUsage(spent, "totalTokens"),
   } as const;
 
   if (!checked.valid) {
