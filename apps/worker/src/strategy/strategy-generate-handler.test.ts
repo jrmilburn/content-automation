@@ -103,11 +103,19 @@ describe("the rendered manifest", () => {
     expect(rendered).toContain("2026-02-01");
   });
 
-  it("bounds the numbers an explanation may contain to the ones it was given", () => {
+  it("quotes each entry's evidence whole, indented under its own id", () => {
+    // The manifest no longer prints a per-item allowlist of the digits an
+    // explanation may repeat, because the entry itself is now the evidence: a
+    // post's metrics, what was said in it and what the audience wrote. What
+    // bounds a number is that it appeared here or was calculated from something
+    // that did, and the model is told to declare its own arithmetic.
     const rendered = renderStrategyManifest(identity, [entry]);
 
-    expect(rendered).toContain("allowedNumbersInExplanations=12.5%");
-    expect(rendered).toContain("Write no other digits in an explanation.");
+    expect(rendered).toContain(`- stat_pos_0:\n    ${entry.summaryText}`);
+    expect(rendered).toContain(
+      "Every number you state must appear above or be arithmetic you performed on numbers " +
+        "that appear above. When it is your own calculation, say so and say how many posts it covers.",
+    );
   });
 
   it("names the manifest as untrusted data rather than instructions", () => {

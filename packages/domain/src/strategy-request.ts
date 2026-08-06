@@ -190,24 +190,34 @@ export const strategyEvidenceCategories = [
 
 export type StrategyEvidenceCategory = (typeof strategyEvidenceCategories)[number];
 
-/** Per-category caps from `strategy-generation.md`. */
+/**
+ * Per-category caps from `strategy-generation.md`.
+ *
+ * The post categories are far larger than the statistic ones now, which
+ * reverses what they were. A post used to contribute one line naming its pillar
+ * and hook, so six of them was a reasonable sample of what an account looked
+ * like; a post now contributes its metrics, its transcript and its comments,
+ * and the model is expected to read across them rather than take the statistics
+ * layer's word for what they contain. Six posts cannot support that and thirty
+ * can.
+ */
 export const strategyEvidenceCaps: Readonly<Record<StrategyEvidenceCategory, number>> =
   Object.freeze({
-    comparator_post: 6,
+    comparator_post: 20,
     counterexample: 4,
     data_quality: 8,
     distribution: 1,
     negative_statistic: 6,
     positive_statistic: 8,
-    recent_post: 6,
+    recent_post: 30,
     recent_strategy: 3,
-    top_post: 6,
-    weak_post: 4,
+    top_post: 20,
+    weak_post: 12,
   });
 
 /** Caps that apply across categories rather than within one. */
 export const strategyManifestCaps = Object.freeze({
-  posts: 30,
+  posts: 60,
   recommendationFingerprints: 30,
   statistics: 20,
 });
@@ -554,9 +564,16 @@ export function strategyGenerateKey(requestSignature: string): string {
  *
  * States exactly what the validator will check the response against, so a
  * rejection is the model's fault rather than a disagreement between what it was
- * shown and what it is held to. Carries no caption, no transcript, no object key
- * and no credential — a manifest is machine input, and the fields a human screen
- * shows are not the fields a prompt needs.
+ * shown and what it is held to.
+ *
+ * It used to carry no caption and no transcript, on the reasoning that a
+ * manifest is machine input and the fields a human screen shows are not the
+ * fields a prompt needs. That held while the evidence was a list of effect
+ * sizes. It stopped holding when post evidence became a dossier: the caption,
+ * the transcript and the comments are now the evidence, not decoration around
+ * it, and withholding them left the model classifying posts it could not read.
+ * Object keys and credentials are still absent, and always were the real rule —
+ * they are not evidence for anything.
  */
 export function renderStrategyManifest(
   // Only the scope the prompt states, not the whole identity. The versions and
@@ -578,13 +595,17 @@ export function renderStrategyManifest(
     ];
 
     if (entry.sampleSize !== null) parts.push(`sampleSize=${String(entry.sampleSize)}`);
-    parts.push(`allowedNumbersInExplanations=${entry.allowedNumericClaims.join("|") || "none"}`);
     if (entry.requiredInLimitations) parts.push("mustAppearInLimitations=true");
 
     return `- ${parts.join("; ")}`;
   });
 
-  const notes = entries.map((entry) => `- ${entry.evidenceKey}: ${entry.summaryText}`);
+  // Indented so no line of evidence text can begin at column zero. Every note
+  // body is untrusted — a caption, a transcript or a stranger's comment — and
+  // only the lines this function writes are structure.
+  const notes = entries.map(
+    (entry) => `- ${entry.evidenceKey}:\n${indentEvidence(entry.summaryText)}`,
+  );
 
   // Named in words rather than left to interpolate as "null": the model is
   // being told which population every number below describes, and that is the
@@ -595,8 +616,15 @@ export function renderStrategyManifest(
 
 ${lines.join("\n")}
 
-Notes describing the evidence, for wording only:
+The evidence itself:
 ${notes.join("\n")}
 
-Any number you write inside an evidence explanation must appear in that item's allowedNumbersInExplanations list. Write no other digits in an explanation.`;
+Every number you state must appear above or be arithmetic you performed on numbers that appear above. When it is your own calculation, say so and say how many posts it covers.`;
+}
+
+function indentEvidence(value: string): string {
+  return value
+    .split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n");
 }

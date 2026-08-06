@@ -297,6 +297,7 @@ export {
   type InstagramCredentialDue,
   type InstagramCredentialMaintenanceRecord,
 } from "./instagram-token.js";
+export { loadPostDossiers, type PostDossierEntry } from "./post-dossier.js";
 export {
   commitInstagramComments,
   countInstagramCommentsByPost,

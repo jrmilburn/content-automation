@@ -1,3 +1,4 @@
+import { instagramCommentsKey } from "@studio-parallel/domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const workspaceId = "0192f2a0-0000-7000-8000-0000000000ff";
@@ -6,12 +7,15 @@ const postId = "019a0000-0000-7000-8000-000000000401";
 
 const enqueueBackgroundJob = vi.fn();
 const listInstagramAccountsDueForSync = vi.fn();
+const listInstagramPostsDueForComments = vi.fn();
 const listInstagramPostsDueForSnapshot = vi.fn();
 
 vi.mock("@studio-parallel/db", () => ({
   createWorkspaceContext: (id: string) => ({ workspaceId: id }),
   enqueueBackgroundJob: (...args: unknown[]) => enqueueBackgroundJob(...args),
   listInstagramAccountsDueForSync: (...args: unknown[]) => listInstagramAccountsDueForSync(...args),
+  listInstagramPostsDueForComments: (...args: unknown[]) =>
+    listInstagramPostsDueForComments(...args),
   listInstagramPostsDueForSnapshot: (...args: unknown[]) =>
     listInstagramPostsDueForSnapshot(...args),
 }));
@@ -39,6 +43,7 @@ function createScheduler(now: () => Date) {
 beforeEach(() => {
   vi.clearAllMocks();
   listInstagramAccountsDueForSync.mockResolvedValue([]);
+  listInstagramPostsDueForComments.mockResolvedValue([]);
   listInstagramPostsDueForSnapshot.mockResolvedValue([]);
   enqueueBackgroundJob.mockResolvedValue({ created: true });
 });
@@ -50,7 +55,7 @@ describe("sync scheduler sweep", () => {
     ]);
     const { scheduler } = createScheduler(() => new Date("2026-07-31T02:00:00.000Z"));
 
-    await expect(scheduler.sweep()).resolves.toEqual({ snapshots: 0, syncs: 1 });
+    await expect(scheduler.sweep()).resolves.toEqual({ comments: 0, snapshots: 0, syncs: 1 });
 
     const enqueued = enqueueBackgroundJob.mock.calls[0]?.[2] as {
       idempotencyKey: string;
@@ -95,7 +100,7 @@ describe("sync scheduler sweep", () => {
     ]);
     const { scheduler } = createScheduler(() => new Date("2026-07-31T02:00:00.000Z"));
 
-    await expect(scheduler.sweep()).resolves.toEqual({ snapshots: 1, syncs: 0 });
+    await expect(scheduler.sweep()).resolves.toEqual({ comments: 0, snapshots: 1, syncs: 0 });
 
     const enqueued = enqueueBackgroundJob.mock.calls[0]?.[2] as {
       idempotencyKey: string;
@@ -121,6 +126,28 @@ describe("sync scheduler sweep", () => {
     expect(keys[0]).toBe(keys[1]);
   });
 
+  it("enqueues a comment read keyed by post and UTC day", async () => {
+    listInstagramPostsDueForComments.mockResolvedValue([{ postId, workspaceId }]);
+    const at = new Date("2026-07-31T02:00:00.000Z");
+    const { scheduler } = createScheduler(() => at);
+
+    await expect(scheduler.sweep()).resolves.toEqual({ comments: 1, snapshots: 0, syncs: 0 });
+
+    const enqueued = enqueueBackgroundJob.mock.calls[0]?.[2] as {
+      idempotencyKey: string;
+      queueName: string;
+      resourceType: string;
+    };
+    expect(enqueued.queueName).toBe("instagram.comments.post");
+    expect(enqueued.resourceType).toBe("instagram_post");
+    // Bucketed by day rather than carrying no timestamp the way a snapshot key
+    // does. A snapshot observes a window that closes; comments keep arriving, so
+    // the same post is worth re-reading tomorrow and not worth re-reading on
+    // the next sweep an hour from now.
+    expect(enqueued.idempotencyKey).toBe(instagramCommentsKey(postId, at));
+    expect(enqueued.idempotencyKey).toBe(`instagram-comments-${postId}-2026-07-31`);
+  });
+
   it("counts only jobs it actually created", async () => {
     listInstagramAccountsDueForSync.mockResolvedValue([
       { accountId, lastSuccessfulSyncAt: null, workspaceId },
@@ -129,7 +156,7 @@ describe("sync scheduler sweep", () => {
     const { scheduler } = createScheduler(() => new Date("2026-07-31T02:00:00.000Z"));
 
     // An already-scheduled account is not news.
-    await expect(scheduler.sweep()).resolves.toEqual({ snapshots: 0, syncs: 0 });
+    await expect(scheduler.sweep()).resolves.toEqual({ comments: 0, snapshots: 0, syncs: 0 });
   });
 });
 
@@ -149,7 +176,7 @@ describe("sync scheduler resilience", () => {
 
     const { errorMonitor, scheduler } = createScheduler(() => new Date("2026-07-31T02:00:00.000Z"));
 
-    await expect(scheduler.sweep()).resolves.toEqual({ snapshots: 0, syncs: 1 });
+    await expect(scheduler.sweep()).resolves.toEqual({ comments: 0, snapshots: 0, syncs: 1 });
     expect(errorMonitor.captureException).toHaveBeenCalled();
   });
 

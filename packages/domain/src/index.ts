@@ -270,6 +270,16 @@ export {
   type NormalisedInstagramMedia,
 } from "./instagram-media.js";
 export {
+  postDossierCommentCap,
+  postDossierTranscriptCap,
+  renderPostDossier,
+  renderPostDossierBody,
+  renderPostDossiers,
+  type PostDossier,
+  type PostDossierComment,
+  type PostDossierMetrics,
+} from "./post-dossier.js";
+export {
   hashInstagramCommentPayload,
   instagramCommentFields,
   instagramCommentPageSize,
@@ -406,7 +416,6 @@ export {
 } from "./job-retry.js";
 export {
   completeStrategyV1,
-  containsProhibitedClaim,
   createStrategyInstruction,
   createStrategyRecommendationFingerprint,
   strategyContractArtifacts,

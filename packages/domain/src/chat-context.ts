@@ -49,12 +49,18 @@ export type ChatContextAssembly = Readonly<{
 /**
  * How much of the request one turn's context may occupy.
  *
- * Well below the model's window, because the window is not the constraint: the
- * bill is. A conversation sends its context again on every turn, so a budget
- * sized to what the model could accept would multiply the cost of a twenty-turn
- * conversation by the size of the account's history.
+ * Still well below the model's window, and still a cost bound rather than a
+ * capability one: a conversation sends its context again on every turn, so this
+ * multiplies by conversation length rather than being paid once.
+ *
+ * Raised from 24 000 because at that size the post rows did not fit, and a
+ * budget that excludes the data is not a saving — it buys a cheaper turn that
+ * cannot answer the question, and the reader asks again. An ordinary account's
+ * whole analysed history, with transcripts and comments, lands inside this;
+ * a very large one has its oldest posts dropped by the cap in the source rather
+ * than having a block truncated here.
  */
-export const chatContextTokenBudget = 24_000;
+export const chatContextTokenBudget = 150_000;
 
 /** Characters per token. Deliberately pessimistic, so the estimate over-counts. */
 const charactersPerToken = 3;

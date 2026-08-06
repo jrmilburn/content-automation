@@ -10,7 +10,7 @@ import {
 } from "./business-profile.js";
 import { analysisTaxonomy } from "./analysis-contract.js";
 import { createChatInstruction } from "./chat-contract.js";
-import { containsProhibitedClaim, createStrategyInstruction } from "./strategy-contract.js";
+import { createStrategyInstruction } from "./strategy-contract.js";
 
 describe("business profile artifact", () => {
   it("pins the version and the hash of the text the prompts actually carry", () => {
@@ -19,14 +19,6 @@ describe("business profile artifact", () => {
     expect(createHash("sha256").update(businessProfileText).digest("hex")).toBe(
       businessProfileArtifacts.profile.sha256,
     );
-  });
-
-  it("makes no claim the strategy validator would reject in its own output", () => {
-    // The background sits in the same request as a rule banning causal and
-    // algorithmic language. Text that broke that rule would be teaching the
-    // model the register it is about to be punished for using.
-    const sentences = businessProfileText.split(/(?<=\.)\s+/u);
-    expect(sentences.filter((sentence) => containsProhibitedClaim(sentence))).toEqual([]);
   });
 
   it("carries no company number and no contact address", () => {
