@@ -399,23 +399,57 @@ export type MediaValidationConfig = Readonly<z.infer<typeof mediaValidationConfi
 // assistant and only for the assistant: a chat turn is seconds of text, not
 // minutes of video, and queueing it would make a conversation arrive one poll
 // at a time. Everything else the model is asked still belongs to the worker.
+/**
+ * The shape every Gemini model id must take, wherever it is configured.
+ *
+ * A factory rather than a shared instance so each field owns its own optional
+ * and default handling, and so an override cannot be given weaker validation
+ * than the model it overrides.
+ */
+function geminiModelId() {
+  return z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9][a-z0-9.-]*$/u, "must be a model id")
+    .refine(
+      (value) => !value.includes("latest"),
+      "must be an exact version, never a moving alias",
+    );
+}
+
 const geminiConfigSchema = z
   .object({
     APP_ENV: z.enum(["local", "test", "preview", "staging", "production"]).default("local"),
     GEMINI_API_HOST: z.url().default("https://generativelanguage.googleapis.com"),
     // An exact stable ID. A moving alias would silently change the model behind
     // a stored analysis, so `latest` is refused rather than merely discouraged.
-    GEMINI_MODEL: z
-      .string()
-      .trim()
-      .min(1)
-      .max(64)
-      .regex(/^[a-z0-9][a-z0-9.-]*$/u, "must be a model id")
-      .refine(
-        (value) => !value.includes("latest"),
-        "must be an exact version, never a moving alias",
-      )
-      .default(analysisModelRequested),
+    GEMINI_MODEL: geminiModelId().default(analysisModelRequested),
+    // Per-feature overrides, both unset by default so every call uses
+    // `GEMINI_MODEL` until one is deliberately pointed elsewhere.
+    //
+    // They exist so trying a different model is a configuration change rather
+    // than a code change. Analysis deliberately has no override: it is the one
+    // call whose output is stored, compared across months and re-read by every
+    // later strategy, so changing its model silently would make two analyses
+    // in the same comparison incomparable. Strategy and chat both read stored
+    // work and produce something a person reads once.
+    //
+    // Same guards as `GEMINI_MODEL`, including the refusal of `latest`, for the
+    // same reason: an override is exactly where a moving alias would be most
+    // tempting and least visible.
+    //
+    // The two are recorded differently, and the asymmetry is structural rather
+    // than an oversight. A chat turn runs in the process that holds this
+    // config, so `chat_messages.model_requested` records the override. A
+    // strategy's row is frozen by the web app at request time and the call is
+    // made later by the worker, so the requesting process cannot know which
+    // model the worker will use; `strategy_generations.model_requested` keeps
+    // the contract default and `model_version` — what the provider says it
+    // actually ran — is the field to read when a strategy override is in force.
+    GEMINI_CHAT_MODEL: geminiModelId().optional(),
+    GEMINI_STRATEGY_MODEL: geminiModelId().optional(),
     // The proofs return a full analysis inside 32k; a smaller ceiling truncates
     // the contract rather than saving money.
     GEMINI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1_024).max(65_536).default(32_000),

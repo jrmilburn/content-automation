@@ -274,7 +274,11 @@ export async function runChatTurn(
     contextHash: assembly.hash,
     contextSources: assembly.includedSources,
     contextTokenEstimate: assembly.tokenEstimate,
-    modelRequested: chatModelRequested,
+    // What this turn actually asked for, which is the override when one is
+    // set. The contract constant is the default rather than the answer: a row
+    // recording a model the request never named would make the one column that
+    // says what produced an answer the one column that cannot be trusted.
+    modelRequested: geminiConfig.GEMINI_CHAT_MODEL ?? chatModelRequested,
     promptVersion: chatPromptVersion,
     schemaVersion: chatSchemaVersion,
     strategyGenerationId,

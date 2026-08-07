@@ -41,8 +41,13 @@ export function createWebGeminiAdapter(): GeminiAdapter {
   return createGeminiHttpAdapter({
     // The shared request timeout is sized for a strategy call. A conversation
     // gets its own, so one slow turn cannot hold a request open for minutes.
+    //
+    // The model is overridden the same way and for the same reason: the
+    // transport reads one field, so pointing a feature at a different model is
+    // a config value rather than a second transport.
     config: Object.freeze({
       ...geminiConfig,
+      GEMINI_MODEL: geminiConfig.GEMINI_CHAT_MODEL ?? geminiConfig.GEMINI_MODEL,
       GEMINI_REQUEST_TIMEOUT_MS: geminiConfig.GEMINI_CHAT_TIMEOUT_MS,
     }),
     credentials: loadGeminiCredentials(),

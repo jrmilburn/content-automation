@@ -1,5 +1,6 @@
 import type { GeminiConfig } from "@studio-parallel/config";
 import { createWorkspaceContext, type ChatMessageRecord } from "@studio-parallel/db";
+import { chatModelRequested } from "@studio-parallel/domain";
 import { createFakeGemini, GeminiError } from "@studio-parallel/integrations";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -186,6 +187,36 @@ describe("runChatTurn", () => {
     expect(written[1]?.sequence).toBe(1);
     expect(written[1]?.content).toContain("direct question");
     expect(written[1]?.citedEvidenceKeys).toEqual(["stat_pos_0"]);
+  });
+
+  // The stored row's provenance, which the read projection does not carry.
+  const recordedModel = async (config: GeminiConfig): Promise<string | null | undefined> => {
+    const { store } = createStore();
+    const fake = createFakeGemini({ defaultResponseText: validReply() });
+
+    await runChatTurn(
+      context,
+      { correlationId, question: "What should I make next?", sessionId },
+      { gemini: fake.adapter, geminiConfig: config, store },
+    );
+
+    return vi.mocked(store.appendAnswer).mock.calls[0]?.[1].answer.modelRequested;
+  };
+
+  it("records the contract's model when no override is configured", async () => {
+    expect(await recordedModel(geminiConfig)).toBe(chatModelRequested);
+  });
+
+  it("records the override, so the row names the model the turn actually asked for", async () => {
+    // `model_requested` is the one column that says what produced an answer.
+    // Leaving it on the contract default while the request named something
+    // else would make it the one column that cannot be trusted.
+    expect(
+      await recordedModel({
+        ...geminiConfig,
+        GEMINI_CHAT_MODEL: "gemini-3.1-pro-preview",
+      } as GeminiConfig),
+    ).toBe("gemini-3.1-pro-preview");
   });
 
   it("sends the context and the conversation, and never the reader's question alone", async () => {
