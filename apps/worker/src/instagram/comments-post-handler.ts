@@ -122,7 +122,19 @@ async function importComments(input: {
   }
 
   const post = await database.instagramPost.findFirst({
-    select: { id: true, instagramAccountId: true, providerMediaId: true },
+    select: {
+      id: true,
+      instagramAccountId: true,
+      providerMediaId: true,
+      // What the provider itself says this post has, from the most recent
+      // insight snapshot. Read so an import that returns nothing can be told
+      // apart from a post nobody commented on — see the check after the loop.
+      snapshots: {
+        orderBy: { capturedAt: "desc" },
+        select: { comments: true },
+        take: 1,
+      },
+    },
     where: { id: job.resourceId, workspaceId: workspace.workspaceId },
   });
   if (!post) {
@@ -212,6 +224,36 @@ async function importComments(input: {
     }
 
     after = fetched.page.after;
+  }
+
+  // What the provider's own insight says this post has. Null means no snapshot
+  // has been captured yet, which is not evidence of anything either way.
+  const reportedComments = post.snapshots[0]?.comments ?? null;
+
+  // An empty read on a post the provider says has comments is not an import of
+  // nothing; it is a read that was refused without saying so.
+  //
+  // Meta answers this endpoint with HTTP 200 and an empty page when the app is
+  // not entitled to comment bodies — no error code, no permission message —
+  // which is indistinguishable from a post nobody commented on unless the two
+  // are compared. Reporting it as a successful import of zero is how a
+  // systematic denial stayed invisible across thirty-nine successful jobs and
+  // an empty table.
+  //
+  // Logged rather than thrown. Retrying cannot grant an entitlement, and
+  // failing every post on every sweep would bury the one line that says why.
+  const deniedSilently = reportedComments !== null && reportedComments > 0 && imported + updated === 0;
+
+  if (deniedSilently) {
+    logger.warn("instagram.comments.provider_returned_none", {
+      correlationId,
+      jobId: envelope.domainJobId,
+      reasonCode: "COMMENTS_WITHHELD_BY_PROVIDER",
+      stage: "fetching_page",
+      unit: "comments",
+      value: reportedComments,
+      workspaceId: workspace.workspaceId,
+    });
   }
 
   // Not a failure. A post past the page bound keeps the comments it has, and

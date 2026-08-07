@@ -409,6 +409,38 @@ describe("loadGeminiConfig", () => {
     );
   });
 
+  it("leaves both per-feature overrides unset, so one model is used until one is chosen", () => {
+    const config = loadGeminiConfig({});
+
+    expect(config.GEMINI_CHAT_MODEL).toBeUndefined();
+    expect(config.GEMINI_STRATEGY_MODEL).toBeUndefined();
+  });
+
+  it("accepts a different model for strategy and for chat", () => {
+    const config = loadGeminiConfig({
+      GEMINI_CHAT_MODEL: "gemini-3.5-flash",
+      GEMINI_STRATEGY_MODEL: "gemini-3.1-pro-preview",
+    });
+
+    expect(config.GEMINI_STRATEGY_MODEL).toBe("gemini-3.1-pro-preview");
+    expect(config.GEMINI_CHAT_MODEL).toBe("gemini-3.5-flash");
+    // The base model is untouched, so analysis keeps running what its stored
+    // results were produced by.
+    expect(config.GEMINI_MODEL).toBe(analysisModelRequested);
+  });
+
+  it.each(["GEMINI_CHAT_MODEL", "GEMINI_STRATEGY_MODEL"])(
+    "holds %s to the same guards as the model it overrides",
+    (key: string) => {
+      // An override is where a moving alias would be most tempting and least
+      // visible, so it is refused there too rather than only on the default.
+      expect(() => loadGeminiConfig({ [key]: "gemini-flash-latest" })).toThrow(
+        /must be an exact version, never a moving alias/,
+      );
+      expect(() => loadGeminiConfig({ [key]: "Not A Model" })).toThrow(/must be a model id/);
+    },
+  );
+
   it("requires HTTPS for the provider host in deployed environments", () => {
     expect(
       loadGeminiConfig({ APP_ENV: "local", GEMINI_API_HOST: "http://127.0.0.1:8080" })

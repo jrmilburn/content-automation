@@ -65,7 +65,10 @@ import {
   createStrategyGenerateHandler,
   strategyGenerateQueue,
 } from "./strategy/strategy-generate-handler.js";
-import { createWorkerGeminiAdapter } from "./analysis/gemini-client.js";
+import {
+  createStrategyGeminiAdapter,
+  createWorkerGeminiAdapter,
+} from "./analysis/gemini-client.js";
 import { createWorkerObjectStorage } from "./uploads/object-storage.js";
 
 const config = loadRuntimeConfig();
@@ -216,7 +219,7 @@ const registry = createQueueHandlerRegistry([
     // same slot rather than competing for quota beside it.
     acquireConcurrency: (signal) => providerConcurrency.acquire("gemini", signal),
     database,
-    gemini: createWorkerGeminiAdapter(config, geminiConfig),
+    gemini: createStrategyGeminiAdapter(config, geminiConfig),
     logger,
   }),
 ]);
