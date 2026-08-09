@@ -29,7 +29,7 @@
     "@studio-parallel/config": "*",
     "@studio-parallel/domain": "*",
     "@studio-parallel/observability": "*",
-    "pg-boss": "12.26.3"
+    "pg-boss": "12.27.0"
   },
   "devDependencies": {
     "@studio-parallel/db": "*"
