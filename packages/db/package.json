@@ -36,7 +36,7 @@
     "uuid": "14.0.1"
   },
   "devDependencies": {
-    "@types/pg": "8.20.0",
+    "@types/pg": "8.20.4",
     "prisma": "7.9.1"
   }
 }
