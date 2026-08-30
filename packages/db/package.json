@@ -26,17 +26,17 @@
     "validate": "prisma validate"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "7.9.1",
-    "@prisma/client": "7.9.1",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
     "@studio-parallel/config": "*",
     "@studio-parallel/domain": "*",
     "@studio-parallel/observability": "*",
     "dotenv": "17.4.2",
-    "pg": "8.22.0",
-    "uuid": "14.0.1"
+    "pg": "8.23.0",
+    "uuid": "14.0.2"
   },
   "devDependencies": {
-    "@types/pg": "8.20.0",
+    "@types/pg": "8.23.1",
     "prisma": "7.9.1"
   }
 }
